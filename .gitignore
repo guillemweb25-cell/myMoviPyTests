@@ -1,0 +1,51 @@
+# Entorn virtual
+.venv/
+venv/
+env/
+
+# Fitxers temporals i de cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+*.tmp
+*.swp
+*.DS_Store
+
+# Configuració local
+.env
+*.ini
+*.cfg
+
+# Vídeos i àudios generats
+output/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wav
+*.mp3
+*.m4a
+
+# Imatges generades o processades
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# Fitxers de Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# Fitxers de prova o d'execució
+test_*/
+tmp_*/
+cache/
+build/
+dist/
+*.spec
+
+# Editors
+.vscode/
+.idea/
