@@ -1,0 +1,6 @@
+yt-dlp
+ffmpeg-python
+assemblyai
+python-decouple
+moviepy
+
