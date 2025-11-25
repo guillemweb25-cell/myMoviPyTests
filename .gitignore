@@ -49,3 +49,5 @@ dist/
 # Editors
 .vscode/
 .idea/
+
+prompts
