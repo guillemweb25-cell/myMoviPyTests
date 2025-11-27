@@ -1,56 +1,61 @@
 #!/usr/bin/env python3
+# make_kenburns_tiktok.py  (para MoviePy 2.x)
 
 import argparse
 from pathlib import Path
+
 import numpy as np
 from PIL import Image
-from moviepy import VideoClip, ImageClip, concatenate_videoclips
+from moviepy import VideoClip, concatenate_videoclips
 
 EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 
-def ken_burns_clip(img_path, duration, out_w, out_h, z0, z1):
-    # cargamos imagen base
+def ken_burns_tiktok_clip(img_path, duration, out_w, out_h, z0, z1):
     base = Image.open(img_path).convert("RGB")
     W0, H0 = base.size
 
-    # escala mínima para cubrir el canvas
+    # escala mínima para cubrir el lienzo
     scale_base = max(out_w / W0, out_h / H0)
 
     def make_frame(t):
-        # zoom lineal
-        z = z0 + (z1 - z0) * (t / duration)
-        scale = scale_base * z
+        s = t / duration  # 0→1
 
-        # tamaño escalado
+        # easing suave
+        ease = s * s * (3 - 2 * s)
+
+        # zoom más fuerte
+        zoom = z0 + (z1 - z0) * ease      # ej. 1.0 → 1.25
+        scale = scale_base * zoom
+
         new_w = int(W0 * scale)
         new_h = int(H0 * scale)
-
-        # reescalar con Pillow
         img_resized = base.resize((new_w, new_h), Image.LANCZOS)
         arr = np.array(img_resized)
 
-        # crop centrado
-        x_center = new_w // 2
+        # paneo horizontal suave
+        pan_amp = int(new_w * 0.12)   # 12% del ancho
+        pan = np.sin(np.pi * (s - 0.5))
+        x_center = new_w // 2 + int(pan_amp * pan)
         y_center = new_h // 2
 
         x1 = x_center - out_w // 2
         y1 = y_center - out_h // 2
+        x1 = max(0, min(x1, new_w - out_w))
+        y1 = max(0, min(y1, new_h - out_h))
         x2 = x1 + out_w
         y2 = y1 + out_h
 
-        # recorte final
         frame = arr[y1:y2, x1:x2].copy()
         return frame
 
-    # clip por función de frame (MoviePy 2.x)
     return VideoClip(make_frame, duration=duration)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--folder", required=True)
-    ap.add_argument("--out", default="kenburns.mp4")
+    ap.add_argument("--out", default="kenburns_tiktok.mp4")
     ap.add_argument("--width", type=int, default=1920)
     ap.add_argument("--height", type=int, default=1080)
     ap.add_argument("--fps", type=int, default=30)
@@ -62,13 +67,14 @@ def main():
 
     clips = []
     for i, img in enumerate(imgs):
+        # alterna push-in / push-out
         if i % 2 == 0:
-            z0, z1 = 1.0, 1.08
+            z0, z1 = 1.0, 1.25
         else:
-            z0, z1 = 1.08, 1.0
+            z0, z1 = 1.25, 1.0
 
         clips.append(
-            ken_burns_clip(
+            ken_burns_tiktok_clip(
                 img,
                 duration=args.duration,
                 out_w=args.width,
