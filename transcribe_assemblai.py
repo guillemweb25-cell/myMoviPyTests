@@ -12,8 +12,9 @@ def transcribe_file(mp3_path: str, lang: str):
         raise SystemExit(f"❌ El fitxer no existeix: {mp3_path}")
 
     out_dir = mp3_path.parent
-    out_txt = out_dir / "transcription.txt"
-
+# 🔥 Generar el mateix nom que el MP3 però amb extensió .txt
+    out_txt = out_dir / (mp3_path.stem + ".txt")
+    
     api_key = config("AAI_API_KEY", default=None)
     if not api_key:
         raise SystemExit("❌ No hi ha AAI_API_KEY al .env")

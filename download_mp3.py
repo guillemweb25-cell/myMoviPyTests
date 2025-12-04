@@ -1,10 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import argparse, os, re
+from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
+
+
+def clean_title(title: str) -> str:
+    # Elimina emojis
+    title = re.sub(r"[\U00010000-\U0010ffff]", "", title)
+    # Elimina caràcters no desitjats
+    title = re.sub(r"[^a-zA-Z0-9ñÑáéíóúÁÉÍÓÚüÜ_-]+", "-", title)
+    # Elimina múltiples guions seguits
+    title = re.sub(r"-+", "-", title)
+    return title.strip("-").lower()
+
+
+def get_video_title(url: str, browser=None) -> str:
+    opts = {"quiet": True}
+    if browser:
+        opts["cookiesfrombrowser"] = (browser,)
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    return info["title"]
 
 
 def get_video_id(url: str) -> str:
@@ -12,23 +32,25 @@ def get_video_id(url: str) -> str:
     if u.netloc in {"youtu.be"}:
         return u.path.lstrip("/")
     qs = parse_qs(u.query)
-    # ID del vídeo o un fallback
-    return qs.get(
-        "v",
-        [re.sub(r"[^A-Za-z0-9_-]", "", u.path.strip("/")) or "video"]
-    )[0]
+    return qs.get("v", ["video"])[0]
 
 
-def download_mp3(
-    url: str,
-    ffmpeg_path: str | None = None,
-    browser: str | None = None,
-) -> None:
-    vid = get_video_id(url)
-    out_dir = os.path.join("output", vid)
+def download_mp3(url: str, ffmpeg_path=None, browser=None):
+
+    # ---------- 1) TITOL ----------
+    title = get_video_title(url, browser)
+    clean = clean_title(title)
+
+    # ---------- 2) DATA D’AVUI ----------
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    folder_name = f"{today}-{clean}"
+
+    out_dir = os.path.join("output", folder_name)
     os.makedirs(out_dir, exist_ok=True)
 
-    ydl_opts: dict = {
+    # ---------- 3) OPCIONS ----------
+    ydl_opts = {
         "outtmpl": os.path.join(out_dir, "%(title)s.%(ext)s"),
         "format": "bestaudio/best",
         "noplaylist": True,
@@ -43,33 +65,28 @@ def download_mp3(
         ydl_opts["ffmpeg_location"] = ffmpeg_path
 
     if browser:
-        # ha d’estar obert / instal·lat i amb sessió iniciada a YouTube
         ydl_opts["cookiesfrombrowser"] = (browser,)
         print(f"🍪 Usant cookies del navegador: {browser}")
 
-    print(f"➡️ Descargando MP3 para {url}")
+    print(f"➡️ Descargando MP3: {title}")
 
+    # ---------- 4) DESCARREGA ----------
     try:
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except DownloadError as e:
         msg = str(e)
         if "Sign in to confirm you're not a bot" in msg and not browser:
-            print("⚠️ YouTube demana login. Torna a provar afegint, per exemple:")
-            print("   --browser chrome   o   --browser firefox")
+            print("⚠️ YouTube demana login. Usa --browser chrome / firefox / brave")
         raise SystemExit(1)
 
-    print(f"✅ Guardado en {out_dir}")
+    print(f"✅ Guardado en: {out_dir}")
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--url", required=True, help="URL del vídeo de YouTube")
-    p.add_argument("--ffmpeg", help="Ruta a ffmpeg si no está en PATH", default=None)
-    p.add_argument(
-        "--browser",
-        help="Navegador per treure cookies (chrome, chromium, firefox, brave...)",
-        default=None,
-    )
+    p.add_argument("--url", required=True)
+    p.add_argument("--ffmpeg", default=None)
+    p.add_argument("--browser", default=None)
     a = p.parse_args()
     download_mp3(a.url, a.ffmpeg, a.browser)
