@@ -2,6 +2,8 @@
 .venv/
 venv/
 env/
+venvubuntu
+venv2
 
 # Fitxers temporals i de cache
 __pycache__/
