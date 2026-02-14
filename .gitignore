@@ -54,3 +54,6 @@ prompts
 storyblocks
 
 venvubuntu/
+
+*.txt
+*.lang
