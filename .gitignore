@@ -51,6 +51,7 @@ dist/
 # Editors
 .vscode/
 .idea/
+frontend/.vite/
 
 prompts
 storyblocks
