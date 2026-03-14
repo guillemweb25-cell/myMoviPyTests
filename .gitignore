@@ -55,6 +55,9 @@ dist/
 prompts
 storyblocks
 
+cookies/*
+!cookies/README.md
+
 venvubuntu/
 
 *.txt

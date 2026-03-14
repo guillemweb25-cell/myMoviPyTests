@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import argparse, os, re
+import argparse, json, os, re
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 
@@ -15,19 +15,21 @@ def clean_title(title: str) -> str:
     return title.strip("-").lower()
 
 
-def get_video_title(url: str, browser=None) -> str:
+def get_video_title(url: str, browser=None, cookies_file=None) -> str:
     opts = {"quiet": True}
-    if browser:
+    if cookies_file:
+        opts["cookiefile"] = cookies_file
+    elif browser:
         opts["cookiesfrombrowser"] = (browser,)
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     return info["title"]
 
 
-def download_video(url: str, ffmpeg_path=None, browser=None):
+def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None):
 
     # 1) TÍTULO
-    title = get_video_title(url, browser)
+    title = get_video_title(url, browser, cookies_file)
     clean = clean_title(title)
 
     # 2) FECHA
@@ -35,6 +37,21 @@ def download_video(url: str, ffmpeg_path=None, browser=None):
     folder_name = f"{today}-{clean}"
     out_dir = os.path.join("output", folder_name)
     os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "source_url.txt"), "w", encoding="utf-8") as handle:
+        handle.write(url)
+    with open(os.path.join(out_dir, "source.json"), "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "url": url,
+                "title": title,
+                "downloaded_at": datetime.now().isoformat(),
+                "browser": browser or "",
+                "cookies_file": cookies_file or "",
+            },
+            handle,
+            ensure_ascii=False,
+            indent=2,
+        )
 
     # 3) OPCIONES YT-DLP (VÍDEO)
     ydl_opts = {
@@ -47,7 +64,9 @@ def download_video(url: str, ffmpeg_path=None, browser=None):
     if ffmpeg_path:
         ydl_opts["ffmpeg_location"] = ffmpeg_path
 
-    if browser:
+    if cookies_file:
+        ydl_opts["cookiefile"] = cookies_file
+    elif browser:
         ydl_opts["cookiesfrombrowser"] = (browser,)
         print(f"🍪 Usando cookies del navegador: {browser}")
 
@@ -71,5 +90,6 @@ if __name__ == "__main__":
     p.add_argument("--url", required=True)
     p.add_argument("--ffmpeg", default=None)
     p.add_argument("--browser", default=None)
+    p.add_argument("--cookies", default=None)
     a = p.parse_args()
-    download_video(a.url, a.ffmpeg, a.browser)
+    download_video(a.url, a.ffmpeg, a.browser, a.cookies)
