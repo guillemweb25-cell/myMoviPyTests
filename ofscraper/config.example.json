@@ -1,0 +1,10 @@
+{
+  "main_profile": "main",
+  "file_options": {
+    "save_location": "/workspace/output/ofscraper",
+    "dir_format": "{model_username}/{response_type}/{media_type}",
+    "file_format": "{postedAt}_{media_id}_{filename}.{ext}",
+    "textlength": 80,
+    "space-replacer": "-"
+  }
+}

@@ -1,16 +1,99 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
-import type { FileEntry, Job, ScriptInfo } from './types'
+import type { DuplicateContentCheck, FileEntry, Job, ScriptInfo } from './types'
 
-type Section = 'dashboard' | 'content' | 'execute' | 'jobs' | 'files'
+type Section = 'dashboard' | 'content' | 'contentBlue' | 'execute' | 'jobs' | 'files'
 
 const sections: { id: Section; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'content', label: 'Contenido Web' },
+  { id: 'contentBlue', label: 'Descargar Azul' },
   { id: 'execute', label: 'Ejecutar Scripts' },
   { id: 'jobs', label: 'Historial' },
   { id: 'files', label: 'Explorador Output' },
 ]
+
+const bluePresets = [
+  { label: 'sin preset', value: '' },
+  { label: 'posts comprados', value: '--download-type purchased' },
+  { label: 'mensajes', value: '--download-type messages' },
+  { label: 'timeline', value: '--download-type timeline' },
+  { label: 'archivado', value: '--download-type archived' },
+  { label: 'solo videos', value: '--mediatype videos' },
+]
+
+function getUnsupportedContentMessage(url: string) {
+  try {
+    const hostname = new URL(url.trim()).hostname.toLowerCase().replace(/^www\./, '')
+    if (hostname === 'onlyfans.com') {
+      return 'OnlyFans no esta soportado por este flujo con yt-dlp, aunque tengas cookies validas.'
+    }
+  } catch {
+    return ''
+  }
+
+  return ''
+}
+
+function summarizeBlueLog(log: string) {
+  if (!log.trim()) return null
+
+  const flags = {
+    authenticated: log.includes('Welcome, '),
+    mediaDetected: log.includes('Returning 1 items') || /Returning \d+ items/.test(log),
+    cdmError: log.includes('CDM return an error'),
+    authError: log.includes('checking auth status') && (log.includes('auth failed') || log.includes('auth.json')),
+    unsupportedOption: log.includes('No such option:'),
+    zeroDownloads: log.includes('0 downloads total'),
+    failedCount: /(\d+) failed/.exec(log)?.[1] ?? '',
+  }
+
+  if (flags.unsupportedOption) {
+    return {
+      tone: 'warning',
+      title: 'Argumentos no validos para OF-Scraper',
+      detail: 'El comando arranco, pero algun argumento extra no existe para ese subcomando.',
+    }
+  }
+
+  if (flags.authError && !flags.authenticated) {
+    return {
+      tone: 'warning',
+      title: 'Autenticacion pendiente o invalida',
+      detail: 'OF-Scraper no parece haber podido completar la autenticacion con el perfil actual.',
+    }
+  }
+
+  if (flags.authenticated && flags.mediaDetected && flags.cdmError) {
+    return {
+      tone: 'warning',
+      title: 'Autenticacion correcta, pero fallo en CDM',
+      detail: 'El media fue detectado, pero la descarga parece fallar en la parte protegida o cifrada.',
+    }
+  }
+
+  if (flags.authenticated && flags.mediaDetected && flags.zeroDownloads) {
+    return {
+      tone: 'warning',
+      title: 'Media detectado pero no descargado',
+      detail: `OF-Scraper encontro contenido, pero termino sin descargas y con ${flags.failedCount || 'algun'} fallo.`,
+    }
+  }
+
+  if (flags.authenticated && flags.mediaDetected) {
+    return {
+      tone: 'ok',
+      title: 'Autenticacion y deteccion correctas',
+      detail: 'El flujo azul esta entrando bien en la cuenta y localizando media para procesar.',
+    }
+  }
+
+  return {
+    tone: 'neutral',
+    title: 'Log sin diagnostico claro',
+    detail: 'El flujo azul se ejecuto, pero este log no encaja en uno de los patrones conocidos todavia.',
+  }
+}
 
 export default function App() {
   const [activeSection, setActiveSection] = useState<Section>('dashboard')
@@ -42,6 +125,15 @@ export default function App() {
   const [contentFfmpeg, setContentFfmpeg] = useState('')
   const [contentLang, setContentLang] = useState('auto')
   const [contentSubtitleFormat, setContentSubtitleFormat] = useState<'vtt' | 'srt'>('vtt')
+  const [duplicateCheck, setDuplicateCheck] = useState<DuplicateContentCheck | null>(null)
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false)
+  const [blueTarget, setBlueTarget] = useState('')
+  const [blueBinary, setBlueBinary] = useState('ofscraper')
+  const [blueProfile, setBlueProfile] = useState('main')
+  const [blueConfigPath, setBlueConfigPath] = useState('ofscraper/config.json')
+  const [bluePreset, setBluePreset] = useState('')
+  const [blueExtraArgs, setBlueExtraArgs] = useState('')
+  const [isLaunchingBlue, setIsLaunchingBlue] = useState(false)
 
   async function refreshScripts() {
     try {
@@ -158,6 +250,24 @@ export default function App() {
     }
   }
 
+  async function checkDuplicateUrl(url: string) {
+    const trimmedUrl = url.trim()
+    if (!trimmedUrl) {
+      setDuplicateCheck(null)
+      return
+    }
+
+    setIsCheckingDuplicate(true)
+    try {
+      const data = await api.checkDuplicateContent(trimmedUrl)
+      setDuplicateCheck(data)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setIsCheckingDuplicate(false)
+    }
+  }
+
   async function handleCopyText() {
     if (!selectedFileContent) return
     try {
@@ -179,6 +289,11 @@ export default function App() {
       const sourceUrl = (await api.fileText(sourceUrlFile.path)).trim()
       if (!sourceUrl) {
         throw new Error('No hay URL guardada en source_url.txt')
+      }
+
+      const unsupportedMessage = getUnsupportedContentMessage(sourceUrl)
+      if (unsupportedMessage) {
+        throw new Error(unsupportedMessage)
       }
 
       let cookiesArg = ''
@@ -245,6 +360,16 @@ export default function App() {
     [scripts, selectedScript],
   )
 
+  const selectedJob = useMemo(
+    () => jobs.find((job) => job.id === selectedJobId) ?? null,
+    [jobs, selectedJobId],
+  )
+
+  const blueLogSummary = useMemo(
+    () => (selectedJob?.script === 'run_ofscraper.py' ? summarizeBlueLog(selectedLog) : null),
+    [selectedJob, selectedLog],
+  )
+
   const stats = useMemo(() => {
     const running = jobs.filter((j) => j.status === 'running').length
     const failed = jobs.filter((j) => j.status === 'failed').length
@@ -296,6 +421,19 @@ export default function App() {
       return
     }
 
+    const unsupportedMessage = getUnsupportedContentMessage(contentUrl)
+    if (unsupportedMessage) {
+      setError(unsupportedMessage)
+      return
+    }
+
+    const duplicateData = await api.checkDuplicateContent(contentUrl.trim())
+    setDuplicateCheck(duplicateData)
+    if (duplicateData.exists) {
+      setError('Esta URL ya existe en output. Revisa la carpeta detectada antes de descargarla de nuevo.')
+      return
+    }
+
     setIsLaunchingContent(true)
     setError('')
 
@@ -322,6 +460,34 @@ export default function App() {
       setError(String(e))
     } finally {
       setIsLaunchingContent(false)
+    }
+  }
+
+  async function handleLaunchBlue() {
+    if (!blueTarget.trim()) {
+      setError('Necesito una URL o target para el flujo azul.')
+      return
+    }
+
+    setIsLaunchingBlue(true)
+    setError('')
+
+    try {
+      const job = await api.runBlueJob({
+        target: blueTarget.trim(),
+        binary: blueBinary.trim() || 'ofscraper',
+        profile: blueProfile.trim() || undefined,
+        configPath: blueConfigPath.trim() || undefined,
+        extraArgs: [bluePreset.trim(), blueExtraArgs.trim()].filter(Boolean).join(' ') || undefined,
+      })
+      insertOrUpdateJob(job)
+      setSelectedJobId(job.id)
+      setSelectedLog('Preparando flujo aislado OF-Scraper...')
+      setActiveSection('jobs')
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setIsLaunchingBlue(false)
     }
   }
 
@@ -387,6 +553,7 @@ export default function App() {
                   placeholder="https://www.youtube.com/watch?v=..."
                   value={contentUrl}
                   onChange={(e) => setContentUrl(e.target.value)}
+                  onBlur={(e) => { void checkDuplicateUrl(e.target.value) }}
                 />
               </label>
 
@@ -452,6 +619,27 @@ export default function App() {
               </label>
             </div>
 
+            {isCheckingDuplicate && <p className="help">Comprobando si la URL ya existe...</p>}
+
+            {duplicateCheck?.exists && duplicateCheck.matches[0] && (
+              <div className="warning-box">
+                <strong>URL duplicada detectada</strong>
+                <p className="help">Ya existe contenido descargado para esta URL.</p>
+                <p className="help">{duplicateCheck.matches[0].folder}</p>
+                <div className="actions-row">
+                  <button
+                    onClick={() => {
+                      setActiveSection('files')
+                      setSelectedFile(null)
+                      refreshFiles(duplicateCheck.matches[0].folder)
+                    }}
+                  >
+                    Abrir carpeta existente
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="actions-row">
               <button className="primary" disabled={isLaunchingContent} onClick={handleLaunchContentPipeline}>
                 {isLaunchingContent ? 'Lanzando...' : contentMode === 'audio' ? 'Descargar y transcribir' : 'Descargar video MP4'}
@@ -463,6 +651,104 @@ export default function App() {
             <p className="help">
               Esta pestaña usa un pipeline dedicado para que podamos ir añadiendo nuevos pasos y pantallas sin
               depender de argumentos CLI manuales.
+            </p>
+          </section>
+        )}
+
+        {activeSection === 'contentBlue' && (
+          <section className="panel">
+            <h3>Descargar Azul</h3>
+            <p className="description">
+              Esta seccion queda separada del flujo principal para probar integraciones nuevas sin interferir con
+              la descarga y transcripcion que ya te funciona.
+            </p>
+
+            <div className="warning-box">
+              <strong>Zona aislada de pruebas</strong>
+              <p className="help">
+                Aqui usamos un wrapper independiente para `ofscraper`. No reutiliza la logica de `yt-dlp` y queda
+                encapsulado para no romper el flujo principal.
+              </p>
+            </div>
+
+            <div className="form-grid">
+              <label className="field span-2">
+                <span>URL o target</span>
+                <input
+                  type="text"
+                  placeholder="https://onlyfans.com/... o target equivalente"
+                  value={blueTarget}
+                  onChange={(e) => setBlueTarget(e.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>Binario</span>
+                <input
+                  type="text"
+                  placeholder="ofscraper"
+                  value={blueBinary}
+                  onChange={(e) => setBlueBinary(e.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>Perfil</span>
+                <input
+                  type="text"
+                  placeholder="main"
+                  value={blueProfile}
+                  onChange={(e) => setBlueProfile(e.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>Preset</span>
+                <select value={bluePreset} onChange={(e) => setBluePreset(e.target.value)}>
+                  {bluePresets.map((preset) => (
+                    <option key={preset.label} value={preset.value}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field span-2">
+                <span>Ruta config</span>
+                <input
+                  type="text"
+                  placeholder="ofscraper/config.json"
+                  value={blueConfigPath}
+                  onChange={(e) => setBlueConfigPath(e.target.value)}
+                />
+              </label>
+
+              <label className="field span-2">
+                <span>Argumentos extra</span>
+                <input
+                  type="text"
+                  placeholder="--download-type protected --some-other-flag"
+                  value={blueExtraArgs}
+                  onChange={(e) => setBlueExtraArgs(e.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="actions-row">
+              <button className="primary" disabled={isLaunchingBlue} onClick={handleLaunchBlue}>
+                {isLaunchingBlue ? 'Lanzando...' : 'Lanzar OF-Scraper'}
+              </button>
+              <button onClick={() => setActiveSection('jobs')}>Ver jobs</button>
+              <button onClick={() => setActiveSection('content')}>Volver a Contenido Web</button>
+            </div>
+
+            <p className="help">
+              Este flujo asume que `ofscraper` ya esta instalado y autenticado en el entorno del backend. Si no lo
+              encuentra, el log te lo dira claramente.
+            </p>
+            <p className="help">
+              Sugerencia: guarda tu configuracion en `ofscraper/` y combina un preset con argumentos extra solo
+              cuando necesites afinar mas.
             </p>
           </section>
         )}
@@ -509,6 +795,12 @@ export default function App() {
             </div>
             <div className="panel">
               <h3>Log</h3>
+              {blueLogSummary && (
+                <div className={`log-summary log-summary-${blueLogSummary.tone}`}>
+                  <strong>{blueLogSummary.title}</strong>
+                  <p className="help">{blueLogSummary.detail}</p>
+                </div>
+              )}
               <pre>{selectedLog || 'Selecciona un job para ver salida.'}</pre>
             </div>
           </section>

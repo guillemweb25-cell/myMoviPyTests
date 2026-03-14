@@ -33,3 +33,21 @@ export type ContentJobRequest = {
   lang: string
   subtitleFormat: 'vtt' | 'srt'
 }
+
+export type BlueJobRequest = {
+  target: string
+  binary?: string
+  profile?: string
+  configPath?: string
+  extraArgs?: string
+}
+
+export type DuplicateContentCheck = {
+  exists: boolean
+  normalizedUrl: string
+  matches: Array<{
+    folder: string
+    source_file: string
+    url: string
+  }>
+}

@@ -129,6 +129,33 @@ nav {
   border-radius: 10px;
 }
 
+.warning-box {
+  background: #fef3c7;
+  color: #78350f;
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+
+.log-summary {
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+
+.log-summary-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.log-summary-warning {
+  background: #fef3c7;
+  color: #78350f;
+}
+
+.log-summary-neutral {
+  background: #e2e8f0;
+  color: #334155;
+}
+
 .grid-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

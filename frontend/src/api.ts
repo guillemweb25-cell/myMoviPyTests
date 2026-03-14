@@ -1,4 +1,4 @@
-import type { ContentJobRequest, FileEntry, Job, ScriptInfo } from './types'
+import type { BlueJobRequest, ContentJobRequest, DuplicateContentCheck, FileEntry, Job, ScriptInfo } from './types'
 
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url)
@@ -33,6 +33,19 @@ export const api = {
     }
     return response.json() as Promise<Job>
   },
+  runBlueJob: async (payload: BlueJobRequest) => {
+    const response = await fetch('/api/blue/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) {
+      throw new Error(await response.text())
+    }
+    return response.json() as Promise<Job>
+  },
+  checkDuplicateContent: (url: string) =>
+    getJson<DuplicateContentCheck>(`/api/content/duplicates?url=${encodeURIComponent(url)}`),
   jobLog: async (id: string) => {
     const data = await getJson<{ content: string }>(`/api/jobs/${id}/log`)
     return data.content
