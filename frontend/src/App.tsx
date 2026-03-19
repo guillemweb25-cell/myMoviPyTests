@@ -116,7 +116,13 @@ export default function App() {
   const [isGeneratingTranscript, setIsGeneratingTranscript] = useState(false)
   const [isDownloadingVideo, setIsDownloadingVideo] = useState(false)
   const [isDetectingInsertedFrames, setIsDetectingInsertedFrames] = useState(false)
+  const [isExtractingQuartileFrames, setIsExtractingQuartileFrames] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState('')
+  const [pendingQuartileFramesJob, setPendingQuartileFramesJob] = useState<{
+    jobId: string
+    videoPath: string
+    folderPath: string
+  } | null>(null)
 
   const [contentUrl, setContentUrl] = useState('')
   const [contentMode, setContentMode] = useState<'audio' | 'video'>('audio')
@@ -211,6 +217,19 @@ export default function App() {
   function findSiblingFile(path: string, extension: string) {
     const siblingPath = replaceExtension(path, extension)
     return fileEntries.find((item) => item.path === siblingPath) ?? null
+  }
+
+  function findQuartileFrameName(videoPath: string) {
+    const videoName = videoPath.split('/').pop() ?? videoPath
+    const dotIndex = videoName.lastIndexOf('.')
+    const stem = dotIndex === -1 ? videoName : videoName.slice(0, dotIndex)
+    return `f01_${stem}.jpg`
+  }
+
+  function findQuartileFrameStem(path: string) {
+    const name = path.split('/').pop() ?? path
+    const match = name.match(/^f(?:01|25|50|75|100)_(.+)\.jpg$/i)
+    return match?.[1] ?? null
   }
 
   async function handleOpenFile(file: FileEntry) {
@@ -338,6 +357,31 @@ export default function App() {
     }
   }
 
+  async function handleExtractQuartileFrames(file: FileEntry) {
+    setIsExtractingQuartileFrames(true)
+    setError('')
+
+    try {
+      const job = await api.runJob(
+        'extract_quartile_frames.py',
+        `--video "${file.path}"`,
+      )
+      insertOrUpdateJob(job)
+      setPendingQuartileFramesJob({
+        jobId: job.id,
+        videoPath: file.path,
+        folderPath: file.path.split('/').slice(0, -1).join('/') || 'output',
+      })
+      setSelectedJobId(job.id)
+      setSelectedLog('Extrayendo primer frame, quartiles y ultimo frame...')
+      setActiveSection('jobs')
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setIsExtractingQuartileFrames(false)
+    }
+  }
+
   useEffect(() => {
     refreshScripts()
     refreshJobs()
@@ -354,6 +398,31 @@ export default function App() {
     if (!selectedJobId) return
     api.jobLog(selectedJobId).then(setSelectedLog).catch((e) => setError(String(e)))
   }, [selectedJobId, jobs])
+
+  useEffect(() => {
+    if (!pendingQuartileFramesJob) return
+
+    const job = jobs.find((item) => item.id === pendingQuartileFramesJob.jobId)
+    if (!job || job.status === 'queued' || job.status === 'running') return
+
+    if (job.status === 'completed') {
+      api.files(pendingQuartileFramesJob.folderPath)
+        .then((data) => {
+          setCurrentPath(data.base)
+          setFileEntries(data.items)
+          const firstFrameName = findQuartileFrameName(pendingQuartileFramesJob.videoPath)
+          const firstFrame = data.items.find((item) => item.name === firstFrameName) ?? null
+          setSelectedFile(firstFrame)
+          setSelectedFileContent('')
+          setActiveSection('files')
+        })
+        .catch((e) => setError(String(e)))
+        .finally(() => setPendingQuartileFramesJob(null))
+      return
+    }
+
+    setPendingQuartileFramesJob(null)
+  }, [jobs, pendingQuartileFramesJob])
 
   const selectedScriptInfo = useMemo(
     () => scripts.find((s) => s.name === selectedScript),
@@ -396,6 +465,26 @@ export default function App() {
     () => (selectedFile && getFileKind(selectedFile.path) === 'audio' ? fileEntries.find((item) => item.path.endsWith('/source.json') || item.name === 'source.json') ?? null : null),
     [selectedFile, fileEntries],
   )
+
+  const quartileGalleryItems = useMemo(() => {
+    if (!selectedFile) return []
+
+    let stem: string | null = null
+    if (getFileKind(selectedFile.path) === 'video') {
+      const videoName = selectedFile.name
+      const dotIndex = videoName.lastIndexOf('.')
+      stem = dotIndex === -1 ? videoName : videoName.slice(0, dotIndex)
+    } else if (getFileKind(selectedFile.path) === 'image') {
+      stem = findQuartileFrameStem(selectedFile.path)
+    }
+
+    if (!stem) return []
+
+    const orderedPrefixes = ['f01', 'f25', 'f50', 'f75', 'f100']
+    return orderedPrefixes
+      .map((prefix) => fileEntries.find((item) => item.name === `${prefix}_${stem}.jpg`) ?? null)
+      .filter((item): item is FileEntry => item !== null)
+  }, [selectedFile, fileEntries])
 
   async function handleRun() {
     if (!selectedScript) return
@@ -887,6 +976,15 @@ export default function App() {
                       {getFileKind(selectedFile.path) === 'video' && (
                         <button
                           className="panel-link panel-link-button"
+                          disabled={isExtractingQuartileFrames}
+                          onClick={() => handleExtractQuartileFrames(selectedFile)}
+                        >
+                          {isExtractingQuartileFrames ? 'Extrayendo frames...' : 'Sacar frames 01 25 50 75 100'}
+                        </button>
+                      )}
+                      {getFileKind(selectedFile.path) === 'video' && (
+                        <button
+                          className="panel-link panel-link-button"
                           disabled={isDetectingInsertedFrames}
                           onClick={() => handleDetectInsertedFrames(selectedFile)}
                         >
@@ -905,11 +1003,55 @@ export default function App() {
                   )}
 
                   {getFileKind(selectedFile.path) === 'video' && (
-                    <video className="media-preview" controls src={api.fileUrl(selectedFile.path)} />
+                    <>
+                      <video className="media-preview" controls src={api.fileUrl(selectedFile.path)} />
+                      {quartileGalleryItems.length > 0 && (
+                        <div className="mini-gallery">
+                          <div className="mini-gallery-header">
+                            <strong>Mini galeria de frames</strong>
+                            <span className="help">f01, f25, f50, f75 y f100</span>
+                          </div>
+                          <div className="mini-gallery-grid">
+                            {quartileGalleryItems.map((item) => (
+                              <button
+                                key={item.path}
+                                className="mini-gallery-item"
+                                onClick={() => handleOpenFile(item)}
+                              >
+                                <img src={api.fileUrl(item.path)} alt={item.name} />
+                                <span>{item.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {getFileKind(selectedFile.path) === 'image' && (
-                    <img className="image-preview" src={api.fileUrl(selectedFile.path)} alt={selectedFile.name} />
+                    <>
+                      <img className="image-preview" src={api.fileUrl(selectedFile.path)} alt={selectedFile.name} />
+                      {quartileGalleryItems.length > 0 && (
+                        <div className="mini-gallery">
+                          <div className="mini-gallery-header">
+                            <strong>Mini galeria de frames</strong>
+                            <span className="help">Pulsa para cambiar entre capturas</span>
+                          </div>
+                          <div className="mini-gallery-grid">
+                            {quartileGalleryItems.map((item) => (
+                              <button
+                                key={item.path}
+                                className={selectedFile.path === item.path ? 'mini-gallery-item active' : 'mini-gallery-item'}
+                                onClick={() => handleOpenFile(item)}
+                              >
+                                <img src={api.fileUrl(item.path)} alt={item.name} />
+                                <span>{item.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {getFileKind(selectedFile.path) === 'other' && (

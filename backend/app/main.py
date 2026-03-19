@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 import sys
@@ -12,8 +13,8 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .catalog import build_script_entry
@@ -23,6 +24,13 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT_DIR / "backend" / "scripts"
 LOGS_DIR = ROOT_DIR / "backend" / "runs"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def get_allowed_origins() -> list[str]:
+    raw_origins = os.getenv("BACKEND_CORS_ORIGINS", "*")
+    if raw_origins.strip() == "*":
+        return ["*"]
+    return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 
 
 @dataclass
@@ -104,7 +112,7 @@ app = FastAPI(title="Intro Python Backend", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -322,4 +330,4 @@ def get_file(path: str):
         raise HTTPException(status_code=400, detail="Ruta no permitida")
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="Fichero no encontrado")
-    return FileResponse(target)
+    return FileResponse(target, filename=target.name)
