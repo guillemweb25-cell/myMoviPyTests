@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import os
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
 import uuid
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlparse
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .catalog import build_script_entry
@@ -20,7 +24,17 @@ from .services import VideoContentRequest
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT_DIR / "backend" / "scripts"
 LOGS_DIR = ROOT_DIR / "backend" / "runs"
+UPLOADS_DIR = ROOT_DIR / "output" / "uploads"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+ALLOWED_UPLOAD_EXTENSIONS = {".mp3", ".mp4", ".m4a", ".wav"}
+
+
+def get_allowed_origins() -> list[str]:
+    raw_origins = os.getenv("BACKEND_CORS_ORIGINS", "*")
+    if raw_origins.strip() == "*":
+        return ["*"]
+    return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 
 
 @dataclass
@@ -56,11 +70,60 @@ class CreateContentJobRequest(BaseModel):
     subtitleFormat: str = Field(default="vtt", description="vtt | srt")
 
 
+class CreateBlueJobRequest(BaseModel):
+    target: str = Field(..., description="URL o target para OF-Scraper")
+    binary: str | None = Field(default=None, description="Binario a ejecutar, por defecto ofscraper")
+    profile: str | None = Field(default=None, description="Perfil/config de OF-Scraper")
+    configPath: str | None = Field(default=None, description="Ruta opcional a config.json")
+    extraArgs: str | None = Field(default=None, description="Argumentos extra en formato CLI")
+
+
+def safe_upload_name(filename: str | None) -> str:
+    candidate = Path(filename or "").name.strip()
+    if not candidate:
+        candidate = f"audio_{uuid.uuid4().hex[:8]}.mp3"
+    return candidate
+
+
+def normalize_content_url(url: str) -> str:
+    parsed = urlparse(url.strip())
+    host = parsed.netloc.lower().replace("www.", "")
+    path = parsed.path.rstrip("/")
+
+    if host in {"youtu.be"}:
+        video_id = path.lstrip("/")
+        return f"youtube:{video_id}"
+
+    if "youtube.com" in host:
+        query = dict(parse_qsl(parsed.query))
+        video_id = query.get("v")
+        if video_id:
+            return f"youtube:{video_id}"
+
+    if "instagram.com" in host:
+        parts = [part for part in path.split("/") if part]
+        if len(parts) >= 2 and parts[0] in {"reel", "p", "tv"}:
+            return f"instagram:{parts[0]}:{parts[1]}"
+
+    filtered_query = [(key, value) for key, value in parse_qsl(parsed.query) if not key.startswith("utm_")]
+    normalized_query = urlencode(sorted(filtered_query))
+    normalized = f"{host}{path}"
+    if normalized_query:
+        normalized = f"{normalized}?{normalized_query}"
+    return normalized
+
+
+def iter_source_url_files() -> Iterable[Path]:
+    if not (ROOT_DIR / "output").exists():
+        return []
+    return (ROOT_DIR / "output").rglob("source_url.txt")
+
+
 app = FastAPI(title="Intro Python Backend", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -173,6 +236,50 @@ def create_content_job(payload: CreateContentJobRequest) -> dict:
     return enqueue_job("process_video_content.py", request.to_cli_args())
 
 
+@app.post("/api/blue/jobs")
+def create_blue_job(payload: CreateBlueJobRequest) -> dict:
+    args = ["--target", payload.target]
+    if payload.binary:
+        args.extend(["--binary", payload.binary])
+    if payload.profile:
+        args.extend(["--profile", payload.profile])
+    if payload.configPath:
+        args.extend(["--config", payload.configPath])
+    if payload.extraArgs:
+        args.extend(["--extra-args", payload.extraArgs])
+    return enqueue_job("run_ofscraper.py", args)
+
+
+@app.post("/api/transcriptions/upload")
+async def upload_and_transcribe(
+    file: UploadFile = File(...),
+    lang: str = "auto",
+    subtitleFormat: str = "vtt",
+) -> dict:
+    filename = safe_upload_name(file.filename)
+    extension = Path(filename).suffix.lower()
+
+    if extension not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Formato no soportado. Usa mp3, mp4, m4a o wav.")
+
+    if subtitleFormat not in {"vtt", "srt"}:
+        raise HTTPException(status_code=400, detail="subtitleFormat debe ser vtt o srt.")
+
+    target_name = f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{extension}"
+    destination = UPLOADS_DIR / target_name
+
+    with destination.open("wb") as out_file:
+        shutil.copyfileobj(file.file, out_file)
+    await file.close()
+
+    relative_path = str(destination.relative_to(ROOT_DIR))
+    job = enqueue_job(
+        "transcribe_sutitles.py",
+        ["--file", relative_path, "--lang", lang or "auto", "--format", subtitleFormat],
+    )
+    return {"uploadedPath": relative_path, "job": job}
+
+
 @app.get("/api/jobs")
 def list_jobs() -> list[dict]:
     with jobs_lock:
@@ -202,6 +309,34 @@ def get_job_log(job_id: str) -> dict:
 
     content = log_path.read_text(encoding="utf-8", errors="ignore")
     return {"content": content[-40000:]}
+
+
+@app.get("/api/content/duplicates")
+def find_duplicate_content(url: str) -> dict:
+    normalized_target = normalize_content_url(url)
+    matches: list[dict[str, str]] = []
+
+    for source_file in iter_source_url_files():
+        raw_url = source_file.read_text(encoding="utf-8", errors="ignore").strip()
+        if not raw_url:
+            continue
+        if normalize_content_url(raw_url) != normalized_target:
+            continue
+
+        folder = source_file.parent
+        matches.append(
+            {
+                "folder": str(folder.relative_to(ROOT_DIR)),
+                "source_file": str(source_file.relative_to(ROOT_DIR)),
+                "url": raw_url,
+            }
+        )
+
+    return {
+        "exists": len(matches) > 0,
+        "normalizedUrl": normalized_target,
+        "matches": sorted(matches, key=lambda item: item["folder"], reverse=True),
+    }
 
 
 @app.get("/api/files")
@@ -236,4 +371,4 @@ def get_file(path: str):
         raise HTTPException(status_code=400, detail="Ruta no permitida")
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="Fichero no encontrado")
-    return FileResponse(target)
+    return FileResponse(target, filename=target.name)

@@ -33,3 +33,8 @@ export type ContentJobRequest = {
   lang: string
   subtitleFormat: 'vtt' | 'srt'
 }
+
+export type UploadTranscriptionResponse = {
+  uploadedPath: string
+  job: Job
+}

@@ -42,6 +42,10 @@ export default function App() {
   const [contentFfmpeg, setContentFfmpeg] = useState('')
   const [contentLang, setContentLang] = useState('auto')
   const [contentSubtitleFormat, setContentSubtitleFormat] = useState<'vtt' | 'srt'>('vtt')
+  const [uploadedMediaFile, setUploadedMediaFile] = useState<File | null>(null)
+  const [uploadLang, setUploadLang] = useState('auto')
+  const [uploadSubtitleFormat, setUploadSubtitleFormat] = useState<'vtt' | 'srt'>('vtt')
+  const [isUploadingAndTranscribing, setIsUploadingAndTranscribing] = useState(false)
 
   async function refreshScripts() {
     try {
@@ -325,6 +329,34 @@ export default function App() {
     }
   }
 
+  async function handleUploadAndTranscribe() {
+    if (!uploadedMediaFile) {
+      setError('Selecciona un archivo mp3, mp4, m4a o wav.')
+      return
+    }
+
+    setIsUploadingAndTranscribing(true)
+    setError('')
+
+    try {
+      const response = await api.uploadAndTranscribe(
+        uploadedMediaFile,
+        uploadLang.trim() || 'auto',
+        uploadSubtitleFormat,
+      )
+      insertOrUpdateJob(response.job)
+      setSelectedJobId(response.job.id)
+      setSelectedLog(`Archivo subido: ${response.uploadedPath}\nIniciando transcripcion...`)
+      setUploadedMediaFile(null)
+      refreshFiles('output/uploads')
+      setActiveSection('jobs')
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setIsUploadingAndTranscribing(false)
+    }
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -464,6 +496,60 @@ export default function App() {
               Esta pestaña usa un pipeline dedicado para que podamos ir añadiendo nuevos pasos y pantallas sin
               depender de argumentos CLI manuales.
             </p>
+
+            <hr style={{ width: '100%', border: 0, borderTop: '1px solid #cbd5e1' }} />
+
+            <h3>Subir Archivo y Transcribir</h3>
+            <p className="description">
+              Sube un `.mp3`, `.mp4`, `.m4a` o `.wav` y se generara el `.txt` automaticamente.
+            </p>
+
+            <div className="form-grid">
+              <label className="field span-2">
+                <span>Archivo local</span>
+                <input
+                  type="file"
+                  accept=".mp3,.mp4,.m4a,.wav,audio/*,video/mp4"
+                  onChange={(e) => setUploadedMediaFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+
+              <label className="field">
+                <span>Idioma</span>
+                <input
+                  type="text"
+                  placeholder="auto"
+                  value={uploadLang}
+                  onChange={(e) => setUploadLang(e.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>Formato subtitulos</span>
+                <select
+                  value={uploadSubtitleFormat}
+                  onChange={(e) => setUploadSubtitleFormat(e.target.value as 'vtt' | 'srt')}
+                >
+                  <option value="vtt">vtt</option>
+                  <option value="srt">srt</option>
+                </select>
+              </label>
+            </div>
+
+            {uploadedMediaFile && <p className="help">Archivo seleccionado: {uploadedMediaFile.name}</p>}
+
+            <div className="actions-row">
+              <button
+                className="primary"
+                disabled={isUploadingAndTranscribing}
+                onClick={handleUploadAndTranscribe}
+              >
+                {isUploadingAndTranscribing ? 'Subiendo...' : 'Subir y transcribir'}
+              </button>
+              <button onClick={() => { refreshFiles('output/uploads'); setActiveSection('files') }}>
+                Ver uploads
+              </button>
+            </div>
           </section>
         )}
 

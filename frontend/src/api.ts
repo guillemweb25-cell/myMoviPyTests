@@ -1,4 +1,4 @@
-import type { ContentJobRequest, FileEntry, Job, ScriptInfo } from './types'
+import type { ContentJobRequest, FileEntry, Job, ScriptInfo, UploadTranscriptionResponse } from './types'
 
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url)
@@ -32,6 +32,22 @@ export const api = {
       throw new Error(await response.text())
     }
     return response.json() as Promise<Job>
+  },
+  uploadAndTranscribe: async (file: File, lang: string, subtitleFormat: 'vtt' | 'srt') => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await fetch(
+      `/api/transcriptions/upload?lang=${encodeURIComponent(lang)}&subtitleFormat=${subtitleFormat}`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+    )
+    if (!response.ok) {
+      throw new Error(await response.text())
+    }
+    return response.json() as Promise<UploadTranscriptionResponse>
   },
   jobLog: async (id: string) => {
     const data = await getJson<{ content: string }>(`/api/jobs/${id}/log`)
