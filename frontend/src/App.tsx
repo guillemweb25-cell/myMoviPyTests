@@ -32,6 +32,8 @@ export default function App() {
   const [isLoadingFile, setIsLoadingFile] = useState(false)
   const [isGeneratingTranscript, setIsGeneratingTranscript] = useState(false)
   const [isDownloadingVideo, setIsDownloadingVideo] = useState(false)
+  const [isDownloadingThumbnail, setIsDownloadingThumbnail] = useState(false)
+  const [isConvertingImageToPng, setIsConvertingImageToPng] = useState(false)
   const [isDetectingInsertedFrames, setIsDetectingInsertedFrames] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState('')
 
@@ -125,6 +127,18 @@ export default function App() {
     return fileEntries.find((item) => item.path === siblingPath) ?? null
   }
 
+  function findImageInSameFolder(path: string) {
+    const slashIndex = path.lastIndexOf('/')
+    const folder = slashIndex === -1 ? '' : path.slice(0, slashIndex + 1)
+    return fileEntries.find((item) => !item.isDir && item.path.startsWith(folder) && getFileKind(item.path) === 'image') ?? null
+  }
+
+  function findFileInSameFolder(path: string, name: string) {
+    const slashIndex = path.lastIndexOf('/')
+    const folder = slashIndex === -1 ? '' : path.slice(0, slashIndex + 1)
+    return fileEntries.find((item) => !item.isDir && item.path === `${folder}${name}`) ?? null
+  }
+
   async function handleOpenFile(file: FileEntry) {
     setSelectedFile(file)
     setSelectedFileContent('')
@@ -206,6 +220,39 @@ export default function App() {
     }
   }
 
+  async function handleDownloadThumbnailFromSource() {
+    if (!sourceUrlFile) return
+
+    setIsDownloadingThumbnail(true)
+    setError('')
+
+    try {
+      const sourceUrl = (await api.fileText(sourceUrlFile.path)).trim()
+      if (!sourceUrl) {
+        throw new Error('No hay URL guardada en source_url.txt')
+      }
+
+      let cookiesArg = ''
+      if (sourceJsonFile) {
+        const rawJson = await api.fileText(sourceJsonFile.path)
+        const parsed = JSON.parse(rawJson) as { cookies_file?: string }
+        if (parsed.cookies_file) {
+          cookiesArg = ` --cookies "${parsed.cookies_file}"`
+        }
+      }
+
+      const job = await api.runJob('download_thumbnail.py', `--url "${sourceUrl}"${cookiesArg}`)
+      insertOrUpdateJob(job)
+      setSelectedJobId(job.id)
+      setSelectedLog('Preparando descarga de miniatura con yt-dlp...')
+      setActiveSection('jobs')
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setIsDownloadingThumbnail(false)
+    }
+  }
+
   async function handleDetectInsertedFrames(file: FileEntry) {
     const outputFolder = `${file.path.replace(/\.[^.]+$/, '')}_inserted_frames`
     setIsDetectingInsertedFrames(true)
@@ -224,6 +271,23 @@ export default function App() {
       setError(String(e))
     } finally {
       setIsDetectingInsertedFrames(false)
+    }
+  }
+
+  async function handleConvertImageToPng(file: FileEntry) {
+    setIsConvertingImageToPng(true)
+    setError('')
+
+    try {
+      const job = await api.runJob('convert_image_to_png.py', `--file "${file.path}"`)
+      insertOrUpdateJob(job)
+      setSelectedJobId(job.id)
+      setSelectedLog('Convirtiendo imagen a PNG...')
+      setActiveSection('jobs')
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setIsConvertingImageToPng(false)
     }
   }
 
@@ -266,15 +330,32 @@ export default function App() {
     [selectedFile, fileEntries],
   )
 
-  const sourceUrlFile = useMemo(
-    () => (selectedFile && getFileKind(selectedFile.path) === 'audio' ? fileEntries.find((item) => item.path.endsWith('/source_url.txt') || item.name === 'source_url.txt') ?? null : null),
-    [selectedFile, fileEntries],
-  )
+  const sourceUrlFile = useMemo(() => {
+    if (!selectedFile) return null
+    const kind = getFileKind(selectedFile.path)
+    if (kind !== 'audio' && kind !== 'video') return null
+    return findFileInSameFolder(selectedFile.path, 'source_url.txt')
+  }, [selectedFile, fileEntries])
 
-  const sourceJsonFile = useMemo(
-    () => (selectedFile && getFileKind(selectedFile.path) === 'audio' ? fileEntries.find((item) => item.path.endsWith('/source.json') || item.name === 'source.json') ?? null : null),
-    [selectedFile, fileEntries],
-  )
+  const sourceJsonFile = useMemo(() => {
+    if (!selectedFile) return null
+    const kind = getFileKind(selectedFile.path)
+    if (kind !== 'audio' && kind !== 'video') return null
+    return findFileInSameFolder(selectedFile.path, 'source.json')
+  }, [selectedFile, fileEntries])
+
+  const thumbnailFile = useMemo(() => {
+    if (!selectedFile) return null
+    const kind = getFileKind(selectedFile.path)
+    if (kind !== 'audio' && kind !== 'video') return null
+    return (
+      findSiblingFile(selectedFile.path, '.jpg')
+      ?? findSiblingFile(selectedFile.path, '.jpeg')
+      ?? findSiblingFile(selectedFile.path, '.png')
+      ?? findSiblingFile(selectedFile.path, '.webp')
+      ?? findImageInSameFolder(selectedFile.path)
+    )
+  }, [selectedFile, fileEntries])
 
   async function handleRun() {
     if (!selectedScript) return
@@ -660,6 +741,11 @@ export default function App() {
                           Ver video MP4
                         </button>
                       )}
+                      {getFileKind(selectedFile.path) === 'audio' && thumbnailFile && (
+                        <button className="panel-link panel-link-button" onClick={() => handleOpenFile(thumbnailFile)}>
+                          Ver miniatura
+                        </button>
+                      )}
                       {getFileKind(selectedFile.path) === 'audio' && sourceUrlFile && !siblingVideoFile && (
                         <button
                           className="panel-link panel-link-button"
@@ -667,6 +753,15 @@ export default function App() {
                           onClick={handleDownloadVideoFromSource}
                         >
                           {isDownloadingVideo ? 'Lanzando yt-dlp...' : 'Descargar video con yt-dlp'}
+                        </button>
+                      )}
+                      {getFileKind(selectedFile.path) === 'audio' && sourceUrlFile && siblingVideoFile && !thumbnailFile && (
+                        <button
+                          className="panel-link panel-link-button"
+                          disabled={isDownloadingThumbnail}
+                          onClick={handleDownloadThumbnailFromSource}
+                        >
+                          {isDownloadingThumbnail ? 'Lanzando yt-dlp...' : 'Descargar miniatura'}
                         </button>
                       )}
                       {getFileKind(selectedFile.path) === 'audio' && !transcriptFile && (
@@ -685,6 +780,29 @@ export default function App() {
                           onClick={() => handleDetectInsertedFrames(selectedFile)}
                         >
                           {isDetectingInsertedFrames ? 'Analizando...' : 'Detectar frames incrustados'}
+                        </button>
+                      )}
+                      {getFileKind(selectedFile.path) === 'video' && thumbnailFile && (
+                        <button className="panel-link panel-link-button" onClick={() => handleOpenFile(thumbnailFile)}>
+                          Ver miniatura
+                        </button>
+                      )}
+                      {getFileKind(selectedFile.path) === 'video' && sourceUrlFile && !thumbnailFile && (
+                        <button
+                          className="panel-link panel-link-button"
+                          disabled={isDownloadingThumbnail}
+                          onClick={handleDownloadThumbnailFromSource}
+                        >
+                          {isDownloadingThumbnail ? 'Lanzando yt-dlp...' : 'Descargar miniatura'}
+                        </button>
+                      )}
+                      {getFileKind(selectedFile.path) === 'image' && !selectedFile.path.toLowerCase().endsWith('.png') && (
+                        <button
+                          className="panel-link panel-link-button"
+                          disabled={isConvertingImageToPng}
+                          onClick={() => handleConvertImageToPng(selectedFile)}
+                        >
+                          {isConvertingImageToPng ? 'Convirtiendo...' : 'Convertir a PNG'}
                         </button>
                       )}
                     </div>

@@ -5,6 +5,7 @@ from pathlib import Path
 SCRIPT_DESCRIPTIONS = {
     "download_mp3.py": "Descarga audio desde YouTube y genera MP3.",
     "download_video.py": "Descarga video desde YouTube y lo fusiona en MP4.",
+    "download_thumbnail.py": "Descarga la miniatura de YouTube en PNG.",
     "process_video_content.py": "Pipeline web: URL a MP3, TXT y subtitulos.",
     "transcribe_assemblai.py": "Transcribe un MP3 con AssemblyAI y genera TXT/LANG.",
     "transcribe_sutitles.py": "Transcribe y genera subtitulos VTT/SRT.",
@@ -20,6 +21,7 @@ SCRIPT_DESCRIPTIONS = {
     "extract_frames.py": "Extrae todos los frames de un video.",
     "extract_inserted_frames.py": "Detecta clips cortos incrustados en un video.",
     "flip_horizontal.py": "Voltea una imagen horizontalmente.",
+    "convert_image_to_png.py": "Convierte imagenes a PNG.",
     "avi_2_mp4.py": "Convierte AVI a MP4.",
     "mkv_2_mp4.py": "Convierte MKV a MP4.",
     "webm2mp4.py": "Convierte todos los WEBM de una carpeta a MP4.",
@@ -32,6 +34,7 @@ SCRIPT_DESCRIPTIONS = {
 SCRIPT_ARGS_SCHEMA = {
     "download_mp3.py": ["--url", "--browser", "--ffmpeg"],
     "download_video.py": ["--url", "--browser", "--ffmpeg"],
+    "download_thumbnail.py": ["--url", "--browser"],
     "process_video_content.py": ["--url", "--browser", "--ffmpeg", "--lang", "--format"],
     "transcribe_assemblai.py": ["--file", "--lang"],
     "transcribe_sutitles.py": ["--file", "--lang", "--format"],
@@ -41,6 +44,7 @@ SCRIPT_ARGS_SCHEMA = {
     "extract_frames.py": ["--video", "--output"],
     "extract_inserted_frames.py": ["--video", "--output", "--min-frames", "--max-frames", "--min-boundary", "--max-context-diff"],
     "flip_horizontal.py": ["--file"],
+    "convert_image_to_png.py": ["--file"],
     "avi_2_mp4.py": ["--file", "--output"],
     "mkv_2_mp4.py": ["--file", "--output"],
     "webm2mp4.py": ["--folder"],
@@ -61,7 +65,7 @@ def infer_category(script_name: str) -> str:
         return "Video"
     if script_name in {"avi_2_mp4.py", "mkv_2_mp4.py", "webm2mp4.py", "m4a_2_mp3.py", "m4a_2_wav.py"}:
         return "Conversion"
-    if script_name in {"extract_frames.py", "extract_inserted_frames.py", "flip_horizontal.py"}:
+    if script_name in {"extract_frames.py", "extract_inserted_frames.py", "flip_horizontal.py", "convert_image_to_png.py"}:
         return "Image"
     if script_name in {"normalize_output.py", "rotar_pdf.py"}:
         return "Utility"
