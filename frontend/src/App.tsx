@@ -45,6 +45,7 @@ export default function App() {
   const [contentLang, setContentLang] = useState('auto')
   const [contentSubtitleFormat, setContentSubtitleFormat] = useState<'vtt' | 'srt'>('vtt')
   const [uploadedMediaFile, setUploadedMediaFile] = useState<File | null>(null)
+  const [uploadFolderTitle, setUploadFolderTitle] = useState('')
   const [uploadLang, setUploadLang] = useState('auto')
   const [uploadSubtitleFormat, setUploadSubtitleFormat] = useState<'vtt' | 'srt'>('vtt')
   const [isUploadingAndTranscribing, setIsUploadingAndTranscribing] = useState(false)
@@ -411,8 +412,13 @@ export default function App() {
   }
 
   async function handleUploadAndTranscribe() {
+    if (!uploadFolderTitle.trim()) {
+      setError('El titulo de carpeta es obligatorio, por ejemplo: audio_rufo_2')
+      return
+    }
+
     if (!uploadedMediaFile) {
-      setError('Selecciona un archivo mp3, mp4, m4a o wav.')
+      setError('Selecciona un archivo mp3, mp4, m4a, wav, ogg u opus.')
       return
     }
 
@@ -422,14 +428,20 @@ export default function App() {
     try {
       const response = await api.uploadAndTranscribe(
         uploadedMediaFile,
+        uploadFolderTitle.trim(),
         uploadLang.trim() || 'auto',
         uploadSubtitleFormat,
       )
       insertOrUpdateJob(response.job)
       setSelectedJobId(response.job.id)
-      setSelectedLog(`Archivo subido: ${response.uploadedPath}\nIniciando transcripcion...`)
+      const conversionMessage = response.convertedToMp3Path
+        ? `Convertido a MP3: ${response.convertedToMp3Path}\n`
+        : ''
+      setSelectedLog(
+        `Carpeta: ${response.folderPath}\nArchivo subido: ${response.uploadedPath}\n${conversionMessage}Fuente de transcripcion: ${response.transcriptionSourcePath}\nIniciando transcripcion...`,
+      )
       setUploadedMediaFile(null)
-      refreshFiles('output/uploads')
+      refreshFiles(response.folderPath)
       setActiveSection('jobs')
     } catch (e) {
       setError(String(e))
@@ -582,15 +594,25 @@ export default function App() {
 
             <h3>Subir Archivo y Transcribir</h3>
             <p className="description">
-              Sube un `.mp3`, `.mp4`, `.m4a` o `.wav` y se generara el `.txt` automaticamente.
+              Sube un `.mp3`, `.mp4`, `.m4a`, `.wav`, `.ogg` u `.opus` y se generara el `.txt` automaticamente.
             </p>
 
             <div className="form-grid">
               <label className="field span-2">
+                <span>Titulo carpeta (obligatorio)</span>
+                <input
+                  type="text"
+                  placeholder="audio_rufo_2"
+                  value={uploadFolderTitle}
+                  onChange={(e) => setUploadFolderTitle(e.target.value)}
+                />
+              </label>
+
+              <label className="field span-2">
                 <span>Archivo local</span>
                 <input
                   type="file"
-                  accept=".mp3,.mp4,.m4a,.wav,audio/*,video/mp4"
+                  accept=".mp3,.mp4,.m4a,.wav,.ogg,.oga,.opus,audio/*,video/mp4"
                   onChange={(e) => setUploadedMediaFile(e.target.files?.[0] ?? null)}
                 />
               </label>
@@ -622,7 +644,7 @@ export default function App() {
             <div className="actions-row">
               <button
                 className="primary"
-                disabled={isUploadingAndTranscribing}
+                disabled={isUploadingAndTranscribing || !uploadFolderTitle.trim()}
                 onClick={handleUploadAndTranscribe}
               >
                 {isUploadingAndTranscribing ? 'Subiendo...' : 'Subir y transcribir'}

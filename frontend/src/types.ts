@@ -35,6 +35,9 @@ export type ContentJobRequest = {
 }
 
 export type UploadTranscriptionResponse = {
+  folderPath: string
   uploadedPath: string
+  transcriptionSourcePath: string
+  convertedToMp3Path: string | null
   job: Job
 }

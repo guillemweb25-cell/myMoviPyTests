@@ -33,12 +33,17 @@ export const api = {
     }
     return response.json() as Promise<Job>
   },
-  uploadAndTranscribe: async (file: File, lang: string, subtitleFormat: 'vtt' | 'srt') => {
+  uploadAndTranscribe: async (
+    file: File,
+    folderTitle: string,
+    lang: string,
+    subtitleFormat: 'vtt' | 'srt',
+  ) => {
     const formData = new FormData()
     formData.append('file', file)
 
     const response = await fetch(
-      `/api/transcriptions/upload?lang=${encodeURIComponent(lang)}&subtitleFormat=${subtitleFormat}`,
+      `/api/transcriptions/upload?folderTitle=${encodeURIComponent(folderTitle)}&lang=${encodeURIComponent(lang)}&subtitleFormat=${subtitleFormat}`,
       {
         method: 'POST',
         body: formData,

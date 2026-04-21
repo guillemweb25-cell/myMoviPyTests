@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -28,6 +29,7 @@ UPLOADS_DIR = ROOT_DIR / "output" / "uploads"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_UPLOAD_EXTENSIONS = {".mp3", ".mp4", ".m4a", ".wav"}
+CONVERT_TO_MP3_EXTENSIONS = {".ogg", ".oga", ".opus"}
 
 
 def get_allowed_origins() -> list[str]:
@@ -83,6 +85,14 @@ def safe_upload_name(filename: str | None) -> str:
     if not candidate:
         candidate = f"audio_{uuid.uuid4().hex[:8]}.mp3"
     return candidate
+
+
+def normalize_folder_title(raw_title: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "_", raw_title.strip())
+    cleaned = cleaned.strip("._-")
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="El titulo de carpeta es obligatorio.")
+    return cleaned.lower()
 
 
 def normalize_content_url(url: str) -> str:
@@ -255,29 +265,73 @@ async def upload_and_transcribe(
     file: UploadFile = File(...),
     lang: str = "auto",
     subtitleFormat: str = "vtt",
+    folderTitle: str = "",
 ) -> dict:
     filename = safe_upload_name(file.filename)
     extension = Path(filename).suffix.lower()
 
-    if extension not in ALLOWED_UPLOAD_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Formato no soportado. Usa mp3, mp4, m4a o wav.")
+    if extension not in ALLOWED_UPLOAD_EXTENSIONS and extension not in CONVERT_TO_MP3_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Formato no soportado. Usa mp3, mp4, m4a, wav, ogg u opus.")
 
     if subtitleFormat not in {"vtt", "srt"}:
         raise HTTPException(status_code=400, detail="subtitleFormat debe ser vtt o srt.")
 
+    folder_name = normalize_folder_title(folderTitle)
+    target_folder = UPLOADS_DIR / folder_name
+    target_folder.mkdir(parents=True, exist_ok=True)
+
     target_name = f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{extension}"
-    destination = UPLOADS_DIR / target_name
+    destination = target_folder / target_name
 
     with destination.open("wb") as out_file:
         shutil.copyfileobj(file.file, out_file)
     await file.close()
 
-    relative_path = str(destination.relative_to(ROOT_DIR))
+    transcription_source = destination
+    converted_path: str | None = None
+
+    if extension in CONVERT_TO_MP3_EXTENSIONS:
+        mp3_destination = destination.with_suffix(".mp3")
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(destination),
+                    "-vn",
+                    "-acodec",
+                    "libmp3lame",
+                    str(mp3_destination),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=500, detail="ffmpeg no esta instalado en el backend.") from exc
+        except subprocess.CalledProcessError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No se pudo convertir el audio a mp3. Detalle: {exc.stderr[-300:] if exc.stderr else 'sin detalles'}",
+            ) from exc
+
+        transcription_source = mp3_destination
+        converted_path = str(mp3_destination.relative_to(ROOT_DIR))
+
+    relative_path = str(transcription_source.relative_to(ROOT_DIR))
     job = enqueue_job(
         "transcribe_sutitles.py",
         ["--file", relative_path, "--lang", lang or "auto", "--format", subtitleFormat],
     )
-    return {"uploadedPath": relative_path, "job": job}
+    return {
+        "folderPath": str(target_folder.relative_to(ROOT_DIR)),
+        "uploadedPath": str(destination.relative_to(ROOT_DIR)),
+        "transcriptionSourcePath": relative_path,
+        "convertedToMp3Path": converted_path,
+        "job": job,
+    }
 
 
 @app.get("/api/jobs")
