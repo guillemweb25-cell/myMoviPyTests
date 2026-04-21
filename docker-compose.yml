@@ -5,7 +5,7 @@ services:
       dockerfile: backend/Dockerfile
     container_name: intro_python_backend
     ports:
-      - "8000:8000"
+      - "8800:8000"
     volumes:
       - .:/workspace
     working_dir: /workspace/backend
@@ -21,7 +21,7 @@ services:
       - backend
     working_dir: /app
     ports:
-      - "5173:5173"
+      - "5074:5173"
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
