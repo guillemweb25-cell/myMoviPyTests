@@ -41,3 +41,12 @@ export type UploadTranscriptionResponse = {
   convertedToMp3Path: string | null
   job: Job
 }
+
+export type ComfyStatus = {
+  configured: boolean
+  online: boolean
+  url: string | null
+  pending: number | null
+  running: number | null
+  error: string | null
+}

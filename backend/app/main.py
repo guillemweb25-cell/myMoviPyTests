@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from .catalog import build_script_entry
 from .services import VideoContentRequest
+from .services.comfyui import ComfyUiClient
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT_DIR / "backend" / "scripts"
@@ -217,6 +218,11 @@ def run_job(job_id: str) -> None:
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok", "scriptsDir": str(SCRIPTS_DIR)}
+
+
+@app.get("/api/comfy/status")
+def comfy_status() -> dict:
+    return asdict(ComfyUiClient().status())
 
 
 @app.get("/api/scripts")

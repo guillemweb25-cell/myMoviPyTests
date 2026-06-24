@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
-import type { FileEntry, Job, ScriptInfo } from './types'
+import type { ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
 
 type Section = 'dashboard' | 'content' | 'execute' | 'jobs' | 'files'
 
@@ -16,6 +16,7 @@ export default function App() {
   const [activeSection, setActiveSection] = useState<Section>('dashboard')
   const [scripts, setScripts] = useState<ScriptInfo[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
+  const [comfyStatus, setComfyStatus] = useState<ComfyStatus | null>(null)
   const [selectedScript, setSelectedScript] = useState('')
   const [rawArgs, setRawArgs] = useState('')
   const [selectedJobId, setSelectedJobId] = useState<string>('')
@@ -71,6 +72,22 @@ export default function App() {
       }
     } catch (e) {
       setError(String(e))
+    }
+  }
+
+  async function refreshComfyStatus() {
+    try {
+      const data = await api.comfyStatus()
+      setComfyStatus(data)
+    } catch {
+      setComfyStatus({
+        configured: false,
+        online: false,
+        url: null,
+        pending: null,
+        running: null,
+        error: 'No se pudo consultar ComfyUI',
+      })
     }
   }
 
@@ -297,6 +314,7 @@ export default function App() {
     refreshJobs()
     refreshFiles('output')
     refreshCookies()
+    refreshComfyStatus()
   }, [])
 
   useEffect(() => {
@@ -473,7 +491,7 @@ export default function App() {
       <main className="main-content">
         <header className="topbar">
           <h2>Aplicacion Web para tus Scripts Python</h2>
-          <button onClick={() => { refreshScripts(); refreshJobs(); refreshFiles() }}>Refrescar</button>
+          <button onClick={() => { refreshScripts(); refreshJobs(); refreshFiles(); refreshComfyStatus() }}>Refrescar</button>
         </header>
 
         {error && <div className="error-box">{error}</div>}
@@ -485,6 +503,18 @@ export default function App() {
             <article className="card"><h3>En ejecucion</h3><strong>{stats.running}</strong></article>
             <article className="card"><h3>Fallidos</h3><strong>{stats.failed}</strong></article>
             <article className="card"><h3>Completados</h3><strong>{stats.completed}</strong></article>
+            <article className="card">
+              <h3>ComfyUI</h3>
+              <strong>{comfyStatus?.online ? 'Online' : comfyStatus?.configured ? 'Offline' : 'Sin URL'}</strong>
+              {comfyStatus?.online && (
+                <p className="card-detail">
+                  {comfyStatus.running ?? 0} running / {comfyStatus.pending ?? 0} pending
+                </p>
+              )}
+              {comfyStatus?.configured && !comfyStatus.online && (
+                <p className="card-detail">{comfyStatus.error ?? 'No responde'}</p>
+              )}
+            </article>
           </section>
         )}
 

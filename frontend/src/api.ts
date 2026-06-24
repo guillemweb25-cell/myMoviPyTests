@@ -1,4 +1,4 @@
-import type { ContentJobRequest, FileEntry, Job, ScriptInfo, UploadTranscriptionResponse } from './types'
+import type { ComfyStatus, ContentJobRequest, FileEntry, Job, ScriptInfo, UploadTranscriptionResponse } from './types'
 
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url)
@@ -11,6 +11,7 @@ async function getJson<T>(url: string): Promise<T> {
 export const api = {
   scripts: () => getJson<ScriptInfo[]>('/api/scripts'),
   jobs: () => getJson<Job[]>('/api/jobs'),
+  comfyStatus: () => getJson<ComfyStatus>('/api/comfy/status'),
   runJob: async (script: string, rawArgs: string) => {
     const response = await fetch('/api/jobs', {
       method: 'POST',
