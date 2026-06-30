@@ -6,6 +6,7 @@ venvubuntu
 venv2
 
 # Fitxers temporals i de cache
+*.timestamp-*.mjs
 __pycache__/
 *.py[cod]
 *.pyo
@@ -51,7 +52,7 @@ dist/
 # Editors
 .vscode/
 .idea/
-frontend/.vite/
+.codex
 
 prompts
 storyblocks

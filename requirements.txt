@@ -3,4 +3,8 @@ ffmpeg-python
 assemblyai
 python-decouple
 moviepy
-
+fastapi
+uvicorn[standard]
+opencv-python-headless
+python-multipart
+Pillow

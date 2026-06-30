@@ -1,104 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
-import type { DuplicateContentCheck, FileEntry, Job, ScriptInfo } from './types'
+import type { ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
 
-type Section = 'dashboard' | 'content' | 'contentBlue' | 'execute' | 'jobs' | 'files'
+type Section = 'dashboard' | 'content' | 'execute' | 'jobs' | 'files'
 
 const sections: { id: Section; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'content', label: 'Contenido Web' },
-  { id: 'contentBlue', label: 'Descargar Azul' },
   { id: 'execute', label: 'Ejecutar Scripts' },
   { id: 'jobs', label: 'Historial' },
   { id: 'files', label: 'Explorador Output' },
 ]
 
-const bluePresets = [
-  { label: 'sin preset', value: '' },
-  { label: 'posts comprados', value: '--download-type purchased' },
-  { label: 'mensajes', value: '--download-type messages' },
-  { label: 'timeline', value: '--download-type timeline' },
-  { label: 'archivado', value: '--download-type archived' },
-  { label: 'solo videos', value: '--mediatype videos' },
-]
-
-function getUnsupportedContentMessage(url: string) {
-  try {
-    const hostname = new URL(url.trim()).hostname.toLowerCase().replace(/^www\./, '')
-    if (hostname === 'onlyfans.com') {
-      return 'OnlyFans no esta soportado por este flujo con yt-dlp, aunque tengas cookies validas.'
-    }
-  } catch {
-    return ''
-  }
-
-  return ''
-}
-
-function summarizeBlueLog(log: string) {
-  if (!log.trim()) return null
-
-  const flags = {
-    authenticated: log.includes('Welcome, '),
-    mediaDetected: log.includes('Returning 1 items') || /Returning \d+ items/.test(log),
-    cdmError: log.includes('CDM return an error'),
-    authError: log.includes('checking auth status') && (log.includes('auth failed') || log.includes('auth.json')),
-    unsupportedOption: log.includes('No such option:'),
-    zeroDownloads: log.includes('0 downloads total'),
-    failedCount: /(\d+) failed/.exec(log)?.[1] ?? '',
-  }
-
-  if (flags.unsupportedOption) {
-    return {
-      tone: 'warning',
-      title: 'Argumentos no validos para OF-Scraper',
-      detail: 'El comando arranco, pero algun argumento extra no existe para ese subcomando.',
-    }
-  }
-
-  if (flags.authError && !flags.authenticated) {
-    return {
-      tone: 'warning',
-      title: 'Autenticacion pendiente o invalida',
-      detail: 'OF-Scraper no parece haber podido completar la autenticacion con el perfil actual.',
-    }
-  }
-
-  if (flags.authenticated && flags.mediaDetected && flags.cdmError) {
-    return {
-      tone: 'warning',
-      title: 'Autenticacion correcta, pero fallo en CDM',
-      detail: 'El media fue detectado, pero la descarga parece fallar en la parte protegida o cifrada.',
-    }
-  }
-
-  if (flags.authenticated && flags.mediaDetected && flags.zeroDownloads) {
-    return {
-      tone: 'warning',
-      title: 'Media detectado pero no descargado',
-      detail: `OF-Scraper encontro contenido, pero termino sin descargas y con ${flags.failedCount || 'algun'} fallo.`,
-    }
-  }
-
-  if (flags.authenticated && flags.mediaDetected) {
-    return {
-      tone: 'ok',
-      title: 'Autenticacion y deteccion correctas',
-      detail: 'El flujo azul esta entrando bien en la cuenta y localizando media para procesar.',
-    }
-  }
-
-  return {
-    tone: 'neutral',
-    title: 'Log sin diagnostico claro',
-    detail: 'El flujo azul se ejecuto, pero este log no encaja en uno de los patrones conocidos todavia.',
-  }
-}
-
 export default function App() {
   const [activeSection, setActiveSection] = useState<Section>('dashboard')
   const [scripts, setScripts] = useState<ScriptInfo[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
+  const [comfyStatus, setComfyStatus] = useState<ComfyStatus | null>(null)
   const [selectedScript, setSelectedScript] = useState('')
   const [rawArgs, setRawArgs] = useState('')
   const [selectedJobId, setSelectedJobId] = useState<string>('')
@@ -115,14 +33,10 @@ export default function App() {
   const [isLoadingFile, setIsLoadingFile] = useState(false)
   const [isGeneratingTranscript, setIsGeneratingTranscript] = useState(false)
   const [isDownloadingVideo, setIsDownloadingVideo] = useState(false)
+  const [isDownloadingThumbnail, setIsDownloadingThumbnail] = useState(false)
+  const [isConvertingImageToPng, setIsConvertingImageToPng] = useState(false)
   const [isDetectingInsertedFrames, setIsDetectingInsertedFrames] = useState(false)
-  const [isExtractingQuartileFrames, setIsExtractingQuartileFrames] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState('')
-  const [pendingQuartileFramesJob, setPendingQuartileFramesJob] = useState<{
-    jobId: string
-    videoPath: string
-    folderPath: string
-  } | null>(null)
 
   const [contentUrl, setContentUrl] = useState('')
   const [contentMode, setContentMode] = useState<'audio' | 'video'>('audio')
@@ -131,15 +45,11 @@ export default function App() {
   const [contentFfmpeg, setContentFfmpeg] = useState('')
   const [contentLang, setContentLang] = useState('auto')
   const [contentSubtitleFormat, setContentSubtitleFormat] = useState<'vtt' | 'srt'>('vtt')
-  const [duplicateCheck, setDuplicateCheck] = useState<DuplicateContentCheck | null>(null)
-  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false)
-  const [blueTarget, setBlueTarget] = useState('')
-  const [blueBinary, setBlueBinary] = useState('ofscraper')
-  const [blueProfile, setBlueProfile] = useState('main')
-  const [blueConfigPath, setBlueConfigPath] = useState('ofscraper/config.json')
-  const [bluePreset, setBluePreset] = useState('')
-  const [blueExtraArgs, setBlueExtraArgs] = useState('')
-  const [isLaunchingBlue, setIsLaunchingBlue] = useState(false)
+  const [uploadedMediaFile, setUploadedMediaFile] = useState<File | null>(null)
+  const [uploadFolderTitle, setUploadFolderTitle] = useState('')
+  const [uploadLang, setUploadLang] = useState('auto')
+  const [uploadSubtitleFormat, setUploadSubtitleFormat] = useState<'vtt' | 'srt'>('vtt')
+  const [isUploadingAndTranscribing, setIsUploadingAndTranscribing] = useState(false)
 
   async function refreshScripts() {
     try {
@@ -162,6 +72,22 @@ export default function App() {
       }
     } catch (e) {
       setError(String(e))
+    }
+  }
+
+  async function refreshComfyStatus() {
+    try {
+      const data = await api.comfyStatus()
+      setComfyStatus(data)
+    } catch {
+      setComfyStatus({
+        configured: false,
+        online: false,
+        url: null,
+        pending: null,
+        running: null,
+        error: 'No se pudo consultar ComfyUI',
+      })
     }
   }
 
@@ -219,17 +145,16 @@ export default function App() {
     return fileEntries.find((item) => item.path === siblingPath) ?? null
   }
 
-  function findQuartileFrameName(videoPath: string) {
-    const videoName = videoPath.split('/').pop() ?? videoPath
-    const dotIndex = videoName.lastIndexOf('.')
-    const stem = dotIndex === -1 ? videoName : videoName.slice(0, dotIndex)
-    return `f01_${stem}.jpg`
+  function findImageInSameFolder(path: string) {
+    const slashIndex = path.lastIndexOf('/')
+    const folder = slashIndex === -1 ? '' : path.slice(0, slashIndex + 1)
+    return fileEntries.find((item) => !item.isDir && item.path.startsWith(folder) && getFileKind(item.path) === 'image') ?? null
   }
 
-  function findQuartileFrameStem(path: string) {
-    const name = path.split('/').pop() ?? path
-    const match = name.match(/^f(?:01|25|50|75|100)_(.+)\.jpg$/i)
-    return match?.[1] ?? null
+  function findFileInSameFolder(path: string, name: string) {
+    const slashIndex = path.lastIndexOf('/')
+    const folder = slashIndex === -1 ? '' : path.slice(0, slashIndex + 1)
+    return fileEntries.find((item) => !item.isDir && item.path === `${folder}${name}`) ?? null
   }
 
   async function handleOpenFile(file: FileEntry) {
@@ -269,24 +194,6 @@ export default function App() {
     }
   }
 
-  async function checkDuplicateUrl(url: string) {
-    const trimmedUrl = url.trim()
-    if (!trimmedUrl) {
-      setDuplicateCheck(null)
-      return
-    }
-
-    setIsCheckingDuplicate(true)
-    try {
-      const data = await api.checkDuplicateContent(trimmedUrl)
-      setDuplicateCheck(data)
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setIsCheckingDuplicate(false)
-    }
-  }
-
   async function handleCopyText() {
     if (!selectedFileContent) return
     try {
@@ -310,11 +217,6 @@ export default function App() {
         throw new Error('No hay URL guardada en source_url.txt')
       }
 
-      const unsupportedMessage = getUnsupportedContentMessage(sourceUrl)
-      if (unsupportedMessage) {
-        throw new Error(unsupportedMessage)
-      }
-
       let cookiesArg = ''
       if (sourceJsonFile) {
         const rawJson = await api.fileText(sourceJsonFile.path)
@@ -333,6 +235,39 @@ export default function App() {
       setError(String(e))
     } finally {
       setIsDownloadingVideo(false)
+    }
+  }
+
+  async function handleDownloadThumbnailFromSource() {
+    if (!sourceUrlFile) return
+
+    setIsDownloadingThumbnail(true)
+    setError('')
+
+    try {
+      const sourceUrl = (await api.fileText(sourceUrlFile.path)).trim()
+      if (!sourceUrl) {
+        throw new Error('No hay URL guardada en source_url.txt')
+      }
+
+      let cookiesArg = ''
+      if (sourceJsonFile) {
+        const rawJson = await api.fileText(sourceJsonFile.path)
+        const parsed = JSON.parse(rawJson) as { cookies_file?: string }
+        if (parsed.cookies_file) {
+          cookiesArg = ` --cookies "${parsed.cookies_file}"`
+        }
+      }
+
+      const job = await api.runJob('download_thumbnail.py', `--url "${sourceUrl}"${cookiesArg}`)
+      insertOrUpdateJob(job)
+      setSelectedJobId(job.id)
+      setSelectedLog('Preparando descarga de miniatura con yt-dlp...')
+      setActiveSection('jobs')
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setIsDownloadingThumbnail(false)
     }
   }
 
@@ -357,28 +292,20 @@ export default function App() {
     }
   }
 
-  async function handleExtractQuartileFrames(file: FileEntry) {
-    setIsExtractingQuartileFrames(true)
+  async function handleConvertImageToPng(file: FileEntry) {
+    setIsConvertingImageToPng(true)
     setError('')
 
     try {
-      const job = await api.runJob(
-        'extract_quartile_frames.py',
-        `--video "${file.path}"`,
-      )
+      const job = await api.runJob('convert_image_to_png.py', `--file "${file.path}"`)
       insertOrUpdateJob(job)
-      setPendingQuartileFramesJob({
-        jobId: job.id,
-        videoPath: file.path,
-        folderPath: file.path.split('/').slice(0, -1).join('/') || 'output',
-      })
       setSelectedJobId(job.id)
-      setSelectedLog('Extrayendo primer frame, quartiles y ultimo frame...')
+      setSelectedLog('Convirtiendo imagen a PNG...')
       setActiveSection('jobs')
     } catch (e) {
       setError(String(e))
     } finally {
-      setIsExtractingQuartileFrames(false)
+      setIsConvertingImageToPng(false)
     }
   }
 
@@ -387,6 +314,7 @@ export default function App() {
     refreshJobs()
     refreshFiles('output')
     refreshCookies()
+    refreshComfyStatus()
   }, [])
 
   useEffect(() => {
@@ -399,44 +327,9 @@ export default function App() {
     api.jobLog(selectedJobId).then(setSelectedLog).catch((e) => setError(String(e)))
   }, [selectedJobId, jobs])
 
-  useEffect(() => {
-    if (!pendingQuartileFramesJob) return
-
-    const job = jobs.find((item) => item.id === pendingQuartileFramesJob.jobId)
-    if (!job || job.status === 'queued' || job.status === 'running') return
-
-    if (job.status === 'completed') {
-      api.files(pendingQuartileFramesJob.folderPath)
-        .then((data) => {
-          setCurrentPath(data.base)
-          setFileEntries(data.items)
-          const firstFrameName = findQuartileFrameName(pendingQuartileFramesJob.videoPath)
-          const firstFrame = data.items.find((item) => item.name === firstFrameName) ?? null
-          setSelectedFile(firstFrame)
-          setSelectedFileContent('')
-          setActiveSection('files')
-        })
-        .catch((e) => setError(String(e)))
-        .finally(() => setPendingQuartileFramesJob(null))
-      return
-    }
-
-    setPendingQuartileFramesJob(null)
-  }, [jobs, pendingQuartileFramesJob])
-
   const selectedScriptInfo = useMemo(
     () => scripts.find((s) => s.name === selectedScript),
     [scripts, selectedScript],
-  )
-
-  const selectedJob = useMemo(
-    () => jobs.find((job) => job.id === selectedJobId) ?? null,
-    [jobs, selectedJobId],
-  )
-
-  const blueLogSummary = useMemo(
-    () => (selectedJob?.script === 'run_ofscraper.py' ? summarizeBlueLog(selectedLog) : null),
-    [selectedJob, selectedLog],
   )
 
   const stats = useMemo(() => {
@@ -456,34 +349,31 @@ export default function App() {
     [selectedFile, fileEntries],
   )
 
-  const sourceUrlFile = useMemo(
-    () => (selectedFile && getFileKind(selectedFile.path) === 'audio' ? fileEntries.find((item) => item.path.endsWith('/source_url.txt') || item.name === 'source_url.txt') ?? null : null),
-    [selectedFile, fileEntries],
-  )
+  const sourceUrlFile = useMemo(() => {
+    if (!selectedFile) return null
+    const kind = getFileKind(selectedFile.path)
+    if (kind !== 'audio' && kind !== 'video') return null
+    return findFileInSameFolder(selectedFile.path, 'source_url.txt')
+  }, [selectedFile, fileEntries])
 
-  const sourceJsonFile = useMemo(
-    () => (selectedFile && getFileKind(selectedFile.path) === 'audio' ? fileEntries.find((item) => item.path.endsWith('/source.json') || item.name === 'source.json') ?? null : null),
-    [selectedFile, fileEntries],
-  )
+  const sourceJsonFile = useMemo(() => {
+    if (!selectedFile) return null
+    const kind = getFileKind(selectedFile.path)
+    if (kind !== 'audio' && kind !== 'video') return null
+    return findFileInSameFolder(selectedFile.path, 'source.json')
+  }, [selectedFile, fileEntries])
 
-  const quartileGalleryItems = useMemo(() => {
-    if (!selectedFile) return []
-
-    let stem: string | null = null
-    if (getFileKind(selectedFile.path) === 'video') {
-      const videoName = selectedFile.name
-      const dotIndex = videoName.lastIndexOf('.')
-      stem = dotIndex === -1 ? videoName : videoName.slice(0, dotIndex)
-    } else if (getFileKind(selectedFile.path) === 'image') {
-      stem = findQuartileFrameStem(selectedFile.path)
-    }
-
-    if (!stem) return []
-
-    const orderedPrefixes = ['f01', 'f25', 'f50', 'f75', 'f100']
-    return orderedPrefixes
-      .map((prefix) => fileEntries.find((item) => item.name === `${prefix}_${stem}.jpg`) ?? null)
-      .filter((item): item is FileEntry => item !== null)
+  const thumbnailFile = useMemo(() => {
+    if (!selectedFile) return null
+    const kind = getFileKind(selectedFile.path)
+    if (kind !== 'audio' && kind !== 'video') return null
+    return (
+      findSiblingFile(selectedFile.path, '.jpg')
+      ?? findSiblingFile(selectedFile.path, '.jpeg')
+      ?? findSiblingFile(selectedFile.path, '.png')
+      ?? findSiblingFile(selectedFile.path, '.webp')
+      ?? findImageInSameFolder(selectedFile.path)
+    )
   }, [selectedFile, fileEntries])
 
   async function handleRun() {
@@ -507,19 +397,6 @@ export default function App() {
   async function handleLaunchContentPipeline() {
     if (!contentUrl.trim()) {
       setError('Necesito una URL para descargar el audio.')
-      return
-    }
-
-    const unsupportedMessage = getUnsupportedContentMessage(contentUrl)
-    if (unsupportedMessage) {
-      setError(unsupportedMessage)
-      return
-    }
-
-    const duplicateData = await api.checkDuplicateContent(contentUrl.trim())
-    setDuplicateCheck(duplicateData)
-    if (duplicateData.exists) {
-      setError('Esta URL ya existe en output. Revisa la carpeta detectada antes de descargarla de nuevo.')
       return
     }
 
@@ -552,31 +429,42 @@ export default function App() {
     }
   }
 
-  async function handleLaunchBlue() {
-    if (!blueTarget.trim()) {
-      setError('Necesito una URL o target para el flujo azul.')
+  async function handleUploadAndTranscribe() {
+    if (!uploadFolderTitle.trim()) {
+      setError('El titulo de carpeta es obligatorio, por ejemplo: audio_rufo_2')
       return
     }
 
-    setIsLaunchingBlue(true)
+    if (!uploadedMediaFile) {
+      setError('Selecciona un archivo mp3, mp4, m4a, wav, ogg u opus.')
+      return
+    }
+
+    setIsUploadingAndTranscribing(true)
     setError('')
 
     try {
-      const job = await api.runBlueJob({
-        target: blueTarget.trim(),
-        binary: blueBinary.trim() || 'ofscraper',
-        profile: blueProfile.trim() || undefined,
-        configPath: blueConfigPath.trim() || undefined,
-        extraArgs: [bluePreset.trim(), blueExtraArgs.trim()].filter(Boolean).join(' ') || undefined,
-      })
-      insertOrUpdateJob(job)
-      setSelectedJobId(job.id)
-      setSelectedLog('Preparando flujo aislado OF-Scraper...')
+      const response = await api.uploadAndTranscribe(
+        uploadedMediaFile,
+        uploadFolderTitle.trim(),
+        uploadLang.trim() || 'auto',
+        uploadSubtitleFormat,
+      )
+      insertOrUpdateJob(response.job)
+      setSelectedJobId(response.job.id)
+      const conversionMessage = response.convertedToMp3Path
+        ? `Convertido a MP3: ${response.convertedToMp3Path}\n`
+        : ''
+      setSelectedLog(
+        `Carpeta: ${response.folderPath}\nArchivo subido: ${response.uploadedPath}\n${conversionMessage}Fuente de transcripcion: ${response.transcriptionSourcePath}\nIniciando transcripcion...`,
+      )
+      setUploadedMediaFile(null)
+      refreshFiles(response.folderPath)
       setActiveSection('jobs')
     } catch (e) {
       setError(String(e))
     } finally {
-      setIsLaunchingBlue(false)
+      setIsUploadingAndTranscribing(false)
     }
   }
 
@@ -603,7 +491,7 @@ export default function App() {
       <main className="main-content">
         <header className="topbar">
           <h2>Aplicacion Web para tus Scripts Python</h2>
-          <button onClick={() => { refreshScripts(); refreshJobs(); refreshFiles() }}>Refrescar</button>
+          <button onClick={() => { refreshScripts(); refreshJobs(); refreshFiles(); refreshComfyStatus() }}>Refrescar</button>
         </header>
 
         {error && <div className="error-box">{error}</div>}
@@ -615,6 +503,18 @@ export default function App() {
             <article className="card"><h3>En ejecucion</h3><strong>{stats.running}</strong></article>
             <article className="card"><h3>Fallidos</h3><strong>{stats.failed}</strong></article>
             <article className="card"><h3>Completados</h3><strong>{stats.completed}</strong></article>
+            <article className="card">
+              <h3>ComfyUI</h3>
+              <strong>{comfyStatus?.online ? 'Online' : comfyStatus?.configured ? 'Offline' : 'Sin URL'}</strong>
+              {comfyStatus?.online && (
+                <p className="card-detail">
+                  {comfyStatus.running ?? 0} running / {comfyStatus.pending ?? 0} pending
+                </p>
+              )}
+              {comfyStatus?.configured && !comfyStatus.online && (
+                <p className="card-detail">{comfyStatus.error ?? 'No responde'}</p>
+              )}
+            </article>
           </section>
         )}
 
@@ -642,7 +542,6 @@ export default function App() {
                   placeholder="https://www.youtube.com/watch?v=..."
                   value={contentUrl}
                   onChange={(e) => setContentUrl(e.target.value)}
-                  onBlur={(e) => { void checkDuplicateUrl(e.target.value) }}
                 />
               </label>
 
@@ -708,27 +607,6 @@ export default function App() {
               </label>
             </div>
 
-            {isCheckingDuplicate && <p className="help">Comprobando si la URL ya existe...</p>}
-
-            {duplicateCheck?.exists && duplicateCheck.matches[0] && (
-              <div className="warning-box">
-                <strong>URL duplicada detectada</strong>
-                <p className="help">Ya existe contenido descargado para esta URL.</p>
-                <p className="help">{duplicateCheck.matches[0].folder}</p>
-                <div className="actions-row">
-                  <button
-                    onClick={() => {
-                      setActiveSection('files')
-                      setSelectedFile(null)
-                      refreshFiles(duplicateCheck.matches[0].folder)
-                    }}
-                  >
-                    Abrir carpeta existente
-                  </button>
-                </div>
-              </div>
-            )}
-
             <div className="actions-row">
               <button className="primary" disabled={isLaunchingContent} onClick={handleLaunchContentPipeline}>
                 {isLaunchingContent ? 'Lanzando...' : contentMode === 'audio' ? 'Descargar y transcribir' : 'Descargar video MP4'}
@@ -741,104 +619,70 @@ export default function App() {
               Esta pestaña usa un pipeline dedicado para que podamos ir añadiendo nuevos pasos y pantallas sin
               depender de argumentos CLI manuales.
             </p>
-          </section>
-        )}
 
-        {activeSection === 'contentBlue' && (
-          <section className="panel">
-            <h3>Descargar Azul</h3>
+            <hr style={{ width: '100%', border: 0, borderTop: '1px solid #cbd5e1' }} />
+
+            <h3>Subir Archivo y Transcribir</h3>
             <p className="description">
-              Esta seccion queda separada del flujo principal para probar integraciones nuevas sin interferir con
-              la descarga y transcripcion que ya te funciona.
+              Sube un `.mp3`, `.mp4`, `.m4a`, `.wav`, `.ogg` u `.opus` y se generara el `.txt` automaticamente.
             </p>
-
-            <div className="warning-box">
-              <strong>Zona aislada de pruebas</strong>
-              <p className="help">
-                Aqui usamos un wrapper independiente para `ofscraper`. No reutiliza la logica de `yt-dlp` y queda
-                encapsulado para no romper el flujo principal.
-              </p>
-            </div>
 
             <div className="form-grid">
               <label className="field span-2">
-                <span>URL o target</span>
+                <span>Titulo carpeta (obligatorio)</span>
                 <input
                   type="text"
-                  placeholder="https://onlyfans.com/... o target equivalente"
-                  value={blueTarget}
-                  onChange={(e) => setBlueTarget(e.target.value)}
+                  placeholder="audio_rufo_2"
+                  value={uploadFolderTitle}
+                  onChange={(e) => setUploadFolderTitle(e.target.value)}
+                />
+              </label>
+
+              <label className="field span-2">
+                <span>Archivo local</span>
+                <input
+                  type="file"
+                  accept=".mp3,.mp4,.m4a,.wav,.ogg,.oga,.opus,audio/*,video/mp4"
+                  onChange={(e) => setUploadedMediaFile(e.target.files?.[0] ?? null)}
                 />
               </label>
 
               <label className="field">
-                <span>Binario</span>
+                <span>Idioma</span>
                 <input
                   type="text"
-                  placeholder="ofscraper"
-                  value={blueBinary}
-                  onChange={(e) => setBlueBinary(e.target.value)}
+                  placeholder="auto"
+                  value={uploadLang}
+                  onChange={(e) => setUploadLang(e.target.value)}
                 />
               </label>
 
               <label className="field">
-                <span>Perfil</span>
-                <input
-                  type="text"
-                  placeholder="main"
-                  value={blueProfile}
-                  onChange={(e) => setBlueProfile(e.target.value)}
-                />
-              </label>
-
-              <label className="field">
-                <span>Preset</span>
-                <select value={bluePreset} onChange={(e) => setBluePreset(e.target.value)}>
-                  {bluePresets.map((preset) => (
-                    <option key={preset.label} value={preset.value}>
-                      {preset.label}
-                    </option>
-                  ))}
+                <span>Formato subtitulos</span>
+                <select
+                  value={uploadSubtitleFormat}
+                  onChange={(e) => setUploadSubtitleFormat(e.target.value as 'vtt' | 'srt')}
+                >
+                  <option value="vtt">vtt</option>
+                  <option value="srt">srt</option>
                 </select>
               </label>
-
-              <label className="field span-2">
-                <span>Ruta config</span>
-                <input
-                  type="text"
-                  placeholder="ofscraper/config.json"
-                  value={blueConfigPath}
-                  onChange={(e) => setBlueConfigPath(e.target.value)}
-                />
-              </label>
-
-              <label className="field span-2">
-                <span>Argumentos extra</span>
-                <input
-                  type="text"
-                  placeholder="--download-type protected --some-other-flag"
-                  value={blueExtraArgs}
-                  onChange={(e) => setBlueExtraArgs(e.target.value)}
-                />
-              </label>
             </div>
+
+            {uploadedMediaFile && <p className="help">Archivo seleccionado: {uploadedMediaFile.name}</p>}
 
             <div className="actions-row">
-              <button className="primary" disabled={isLaunchingBlue} onClick={handleLaunchBlue}>
-                {isLaunchingBlue ? 'Lanzando...' : 'Lanzar OF-Scraper'}
+              <button
+                className="primary"
+                disabled={isUploadingAndTranscribing || !uploadFolderTitle.trim()}
+                onClick={handleUploadAndTranscribe}
+              >
+                {isUploadingAndTranscribing ? 'Subiendo...' : 'Subir y transcribir'}
               </button>
-              <button onClick={() => setActiveSection('jobs')}>Ver jobs</button>
-              <button onClick={() => setActiveSection('content')}>Volver a Contenido Web</button>
+              <button onClick={() => { refreshFiles('output/uploads'); setActiveSection('files') }}>
+                Ver uploads
+              </button>
             </div>
-
-            <p className="help">
-              Este flujo asume que `ofscraper` ya esta instalado y autenticado en el entorno del backend. Si no lo
-              encuentra, el log te lo dira claramente.
-            </p>
-            <p className="help">
-              Sugerencia: guarda tu configuracion en `ofscraper/` y combina un preset con argumentos extra solo
-              cuando necesites afinar mas.
-            </p>
           </section>
         )}
 
@@ -884,12 +728,6 @@ export default function App() {
             </div>
             <div className="panel">
               <h3>Log</h3>
-              {blueLogSummary && (
-                <div className={`log-summary log-summary-${blueLogSummary.tone}`}>
-                  <strong>{blueLogSummary.title}</strong>
-                  <p className="help">{blueLogSummary.detail}</p>
-                </div>
-              )}
               <pre>{selectedLog || 'Selecciona un job para ver salida.'}</pre>
             </div>
           </section>
@@ -955,6 +793,11 @@ export default function App() {
                           Ver video MP4
                         </button>
                       )}
+                      {getFileKind(selectedFile.path) === 'audio' && thumbnailFile && (
+                        <button className="panel-link panel-link-button" onClick={() => handleOpenFile(thumbnailFile)}>
+                          Ver miniatura
+                        </button>
+                      )}
                       {getFileKind(selectedFile.path) === 'audio' && sourceUrlFile && !siblingVideoFile && (
                         <button
                           className="panel-link panel-link-button"
@@ -962,6 +805,15 @@ export default function App() {
                           onClick={handleDownloadVideoFromSource}
                         >
                           {isDownloadingVideo ? 'Lanzando yt-dlp...' : 'Descargar video con yt-dlp'}
+                        </button>
+                      )}
+                      {getFileKind(selectedFile.path) === 'audio' && sourceUrlFile && siblingVideoFile && !thumbnailFile && (
+                        <button
+                          className="panel-link panel-link-button"
+                          disabled={isDownloadingThumbnail}
+                          onClick={handleDownloadThumbnailFromSource}
+                        >
+                          {isDownloadingThumbnail ? 'Lanzando yt-dlp...' : 'Descargar miniatura'}
                         </button>
                       )}
                       {getFileKind(selectedFile.path) === 'audio' && !transcriptFile && (
@@ -976,19 +828,33 @@ export default function App() {
                       {getFileKind(selectedFile.path) === 'video' && (
                         <button
                           className="panel-link panel-link-button"
-                          disabled={isExtractingQuartileFrames}
-                          onClick={() => handleExtractQuartileFrames(selectedFile)}
-                        >
-                          {isExtractingQuartileFrames ? 'Extrayendo frames...' : 'Sacar frames 01 25 50 75 100'}
-                        </button>
-                      )}
-                      {getFileKind(selectedFile.path) === 'video' && (
-                        <button
-                          className="panel-link panel-link-button"
                           disabled={isDetectingInsertedFrames}
                           onClick={() => handleDetectInsertedFrames(selectedFile)}
                         >
                           {isDetectingInsertedFrames ? 'Analizando...' : 'Detectar frames incrustados'}
+                        </button>
+                      )}
+                      {getFileKind(selectedFile.path) === 'video' && thumbnailFile && (
+                        <button className="panel-link panel-link-button" onClick={() => handleOpenFile(thumbnailFile)}>
+                          Ver miniatura
+                        </button>
+                      )}
+                      {getFileKind(selectedFile.path) === 'video' && sourceUrlFile && !thumbnailFile && (
+                        <button
+                          className="panel-link panel-link-button"
+                          disabled={isDownloadingThumbnail}
+                          onClick={handleDownloadThumbnailFromSource}
+                        >
+                          {isDownloadingThumbnail ? 'Lanzando yt-dlp...' : 'Descargar miniatura'}
+                        </button>
+                      )}
+                      {getFileKind(selectedFile.path) === 'image' && !selectedFile.path.toLowerCase().endsWith('.png') && (
+                        <button
+                          className="panel-link panel-link-button"
+                          disabled={isConvertingImageToPng}
+                          onClick={() => handleConvertImageToPng(selectedFile)}
+                        >
+                          {isConvertingImageToPng ? 'Convirtiendo...' : 'Convertir a PNG'}
                         </button>
                       )}
                     </div>
@@ -1003,55 +869,11 @@ export default function App() {
                   )}
 
                   {getFileKind(selectedFile.path) === 'video' && (
-                    <>
-                      <video className="media-preview" controls src={api.fileUrl(selectedFile.path)} />
-                      {quartileGalleryItems.length > 0 && (
-                        <div className="mini-gallery">
-                          <div className="mini-gallery-header">
-                            <strong>Mini galeria de frames</strong>
-                            <span className="help">f01, f25, f50, f75 y f100</span>
-                          </div>
-                          <div className="mini-gallery-grid">
-                            {quartileGalleryItems.map((item) => (
-                              <button
-                                key={item.path}
-                                className="mini-gallery-item"
-                                onClick={() => handleOpenFile(item)}
-                              >
-                                <img src={api.fileUrl(item.path)} alt={item.name} />
-                                <span>{item.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </>
+                    <video className="media-preview" controls src={api.fileUrl(selectedFile.path)} />
                   )}
 
                   {getFileKind(selectedFile.path) === 'image' && (
-                    <>
-                      <img className="image-preview" src={api.fileUrl(selectedFile.path)} alt={selectedFile.name} />
-                      {quartileGalleryItems.length > 0 && (
-                        <div className="mini-gallery">
-                          <div className="mini-gallery-header">
-                            <strong>Mini galeria de frames</strong>
-                            <span className="help">Pulsa para cambiar entre capturas</span>
-                          </div>
-                          <div className="mini-gallery-grid">
-                            {quartileGalleryItems.map((item) => (
-                              <button
-                                key={item.path}
-                                className={selectedFile.path === item.path ? 'mini-gallery-item active' : 'mini-gallery-item'}
-                                onClick={() => handleOpenFile(item)}
-                              >
-                                <img src={api.fileUrl(item.path)} alt={item.name} />
-                                <span>{item.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </>
+                    <img className="image-preview" src={api.fileUrl(selectedFile.path)} alt={selectedFile.name} />
                   )}
 
                   {getFileKind(selectedFile.path) === 'other' && (

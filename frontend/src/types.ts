@@ -34,20 +34,19 @@ export type ContentJobRequest = {
   subtitleFormat: 'vtt' | 'srt'
 }
 
-export type BlueJobRequest = {
-  target: string
-  binary?: string
-  profile?: string
-  configPath?: string
-  extraArgs?: string
+export type UploadTranscriptionResponse = {
+  folderPath: string
+  uploadedPath: string
+  transcriptionSourcePath: string
+  convertedToMp3Path: string | null
+  job: Job
 }
 
-export type DuplicateContentCheck = {
-  exists: boolean
-  normalizedUrl: string
-  matches: Array<{
-    folder: string
-    source_file: string
-    url: string
-  }>
+export type ComfyStatus = {
+  configured: boolean
+  online: boolean
+  url: string | null
+  pending: number | null
+  running: number | null
+  error: string | null
 }
