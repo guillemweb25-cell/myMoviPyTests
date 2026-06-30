@@ -1,16 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap');
 
 :root {
-  --bg: #f1f5f9;
-  --surface: #ffffff;
-  --surface-soft: #e2e8f0;
-  --ink: #0f172a;
-  --ink-soft: #475569;
-  --accent: #0f766e;
-  --accent-strong: #115e59;
-  --danger: #b91c1c;
-  --ok: #166534;
-  --warning: #9a3412;
+  --bg: #0b1120;
+  --surface: #111827;
+  --surface-soft: #1f2937;
+  --ink: #e5e7eb;
+  --ink-soft: #94a3b8;
+  --accent: #14b8a6;
+  --accent-strong: #0d9488;
+  --danger: #f87171;
+  --ok: #4ade80;
+  --warning: #fbbf24;
+  --border: #1f2937;
+  --input-bg: #0f172a;
 }
 
 * { box-sizing: border-box; }
@@ -20,8 +22,8 @@ body {
   min-height: 100vh;
   font-family: 'Space Grotesk', sans-serif;
   color: var(--ink);
-  background: radial-gradient(circle at 10% 10%, #d1fae5 0%, var(--bg) 40%),
-              radial-gradient(circle at 90% 20%, #bfdbfe 0%, var(--bg) 35%),
+  background: radial-gradient(circle at 10% 10%, #0e2a26 0%, var(--bg) 40%),
+              radial-gradient(circle at 90% 20%, #10233f 0%, var(--bg) 35%),
               var(--bg);
 }
 
@@ -37,11 +39,12 @@ button, input, textarea, select {
 
 .sidebar {
   padding: 24px;
-  background: linear-gradient(170deg, #0f172a, #1e293b);
+  background: linear-gradient(170deg, #050a16, #111827);
   color: #fff;
   display: flex;
   flex-direction: column;
   gap: 28px;
+  border-right: 1px solid var(--border);
 }
 
 .sidebar h1 {
@@ -72,7 +75,7 @@ nav {
 }
 
 .nav-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .nav-btn.active {
@@ -89,12 +92,13 @@ nav {
 
 .topbar {
   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
 }
 
 .topbar h2 {
@@ -115,7 +119,7 @@ nav {
 
 .panel .primary {
   background: var(--accent);
-  color: #fff;
+  color: #052e2b;
 }
 
 .panel .primary:hover {
@@ -123,8 +127,9 @@ nav {
 }
 
 .error-box {
-  background: #fee2e2;
-  color: #7f1d1d;
+  background: rgba(248, 113, 113, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.3);
   padding: 10px 14px;
   border-radius: 10px;
 }
@@ -137,9 +142,10 @@ nav {
 
 .card, .panel {
   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 16px;
-  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
 }
 
 .card h3,
@@ -173,10 +179,16 @@ nav {
 .panel textarea,
 .panel select,
 .panel input {
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
-  background: #f8fafc;
+  background: var(--input-bg);
+  color: var(--ink);
+}
+
+.panel textarea::placeholder,
+.panel input::placeholder {
+  color: #64748b;
 }
 
 .form-grid {
@@ -224,16 +236,16 @@ nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px;
-  background: #fff;
+  background: var(--surface-soft);
   cursor: pointer;
 }
 
 .job-item.selected {
   border-color: var(--accent);
-  background: #ecfeff;
+  background: rgba(20, 184, 166, 0.12);
 }
 
 .status {
@@ -243,14 +255,15 @@ nav {
   text-transform: uppercase;
 }
 
-.status.running { background: #fef3c7; color: var(--warning); }
-.status.failed { background: #fee2e2; color: var(--danger); }
-.status.completed { background: #dcfce7; color: var(--ok); }
-.status.queued { background: #e2e8f0; color: #334155; }
+.status.running { background: rgba(251, 191, 36, 0.16); color: var(--warning); }
+.status.failed { background: rgba(248, 113, 113, 0.16); color: var(--danger); }
+.status.completed { background: rgba(74, 222, 128, 0.16); color: var(--ok); }
+.status.queued { background: #1f2937; color: #94a3b8; }
 
 pre {
-  background: #0b1120;
+  background: #05080f;
   color: #cbd5e1;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
   margin: 0;
@@ -275,7 +288,7 @@ pre {
 .link-btn {
   border: 0;
   background: transparent;
-  color: #0f172a;
+  color: var(--ink);
   cursor: pointer;
   padding: 4px;
   text-align: left;
@@ -283,7 +296,7 @@ pre {
 
 .file-active {
   border-radius: 10px;
-  background: #ecfeff;
+  background: rgba(20, 184, 166, 0.12);
 }
 
 .viewer-header {
@@ -318,7 +331,7 @@ pre {
   width: 100%;
   max-height: 70vh;
   border-radius: 12px;
-  background: #0b1120;
+  background: #05080f;
 }
 
 .image-preview {

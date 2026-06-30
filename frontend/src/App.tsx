@@ -620,7 +620,7 @@ export default function App() {
               depender de argumentos CLI manuales.
             </p>
 
-            <hr style={{ width: '100%', border: 0, borderTop: '1px solid #cbd5e1' }} />
+            <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
 
             <h3>Subir Archivo y Transcribir</h3>
             <p className="description">
