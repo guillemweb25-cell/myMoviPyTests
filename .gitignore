@@ -7,6 +7,8 @@ venv2
 
 # Fitxers temporals i de cache
 *.timestamp-*.mjs
+*.db
+backend/runs/
 __pycache__/
 *.py[cod]
 *.pyo
@@ -48,6 +50,13 @@ cache/
 build/
 dist/
 *.spec
+
+# Node / frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
 
 # Editors
 .vscode/

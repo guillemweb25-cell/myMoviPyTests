@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import shlex
@@ -14,11 +15,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from . import db
 from .catalog import build_script_entry
 from .services import VideoContentRequest
 from .services.comfyui import ComfyUiClient
@@ -27,10 +29,16 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT_DIR / "backend" / "scripts"
 LOGS_DIR = ROOT_DIR / "backend" / "runs"
 UPLOADS_DIR = ROOT_DIR / "output" / "uploads"
+DB_PATH = ROOT_DIR / "backend" / "runs" / "jobs.db"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_UPLOAD_EXTENSIONS = {".mp3", ".mp4", ".m4a", ".wav"}
 CONVERT_TO_MP3_EXTENSIONS = {".ogg", ".oga", ".opus"}
+
+# Token de acceso. Si MEDIA_OPS_TOKEN no esta definido, la auth queda desactivada
+# (modo desarrollo). Rutas publicas que nunca exigen token:
+ACCESS_TOKEN = os.getenv("MEDIA_OPS_TOKEN", "").strip()
+PUBLIC_PATHS = {"/api/health", "/docs", "/openapi.json", "/redoc"}
 
 
 def get_allowed_origins() -> list[str]:
@@ -141,6 +149,42 @@ app.add_middleware(
 )
 
 
+def extract_token(request: Request) -> str | None:
+    """Toma el token de la cabecera Authorization Bearer, X-API-Key, o del
+    query param ``token`` (necesario para <img>/<audio>/<video> y EventSource,
+    que no pueden enviar cabeceras)."""
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    api_key = request.headers.get("x-api-key")
+    if api_key:
+        return api_key.strip()
+    token = request.query_params.get("token")
+    return token.strip() if token else None
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    needs_auth = (
+        ACCESS_TOKEN
+        and path.startswith("/api/")
+        and path not in PUBLIC_PATHS
+        and request.method != "OPTIONS"
+    )
+    if needs_auth and extract_token(request) != ACCESS_TOKEN:
+        return JSONResponse(status_code=401, content={"detail": "No autorizado"})
+    return await call_next(request)
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    db.init(DB_PATH)
+    restored = db.load_jobs(Job)
+    with jobs_lock:
+        jobs.update(restored)
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -172,6 +216,7 @@ def enqueue_job(script_name: str, args: list[str]) -> dict:
 
     with jobs_lock:
         jobs[job_id] = job
+    db.save_job(job)
 
     thread = threading.Thread(target=run_job, args=(job_id,), daemon=True)
     thread.start()
@@ -184,6 +229,7 @@ def run_job(job_id: str) -> None:
         job = jobs[job_id]
         job.status = "running"
         job.started_at = now_iso()
+    db.save_job(job)
 
     log_file = Path(job.log_path)
     try:
@@ -206,6 +252,7 @@ def run_job(job_id: str) -> None:
             job.return_code = return_code
             job.status = "completed" if return_code == 0 else "failed"
             job.ended_at = now_iso()
+        db.save_job(job)
     except Exception as exc:  # pragma: no cover
         with log_file.open("a", encoding="utf-8") as log:
             log.write(f"\n[backend-error] {exc}\n")
@@ -213,11 +260,12 @@ def run_job(job_id: str) -> None:
             job.status = "failed"
             job.return_code = -1
             job.ended_at = now_iso()
+        db.save_job(job)
 
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "scriptsDir": str(SCRIPTS_DIR)}
+    return {"status": "ok", "scriptsDir": str(SCRIPTS_DIR), "authRequired": bool(ACCESS_TOKEN)}
 
 
 @app.get("/api/comfy/status")
@@ -369,6 +417,48 @@ def get_job_log(job_id: str) -> dict:
 
     content = log_path.read_text(encoding="utf-8", errors="ignore")
     return {"content": content[-40000:]}
+
+
+@app.get("/api/jobs/{job_id}/stream")
+async def stream_job_log(job_id: str):
+    """Streaming en vivo del log via Server-Sent Events.
+
+    Emite los datos ya escritos y luego sigue el fichero hasta que el job
+    termina, momento en el que manda un evento ``end`` con el estado final.
+    """
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job no encontrado")
+
+    log_path = Path(job.log_path)
+
+    async def event_generator():
+        position = 0
+        while True:
+            if log_path.exists():
+                with log_path.open("r", encoding="utf-8", errors="ignore") as handle:
+                    handle.seek(position)
+                    chunk = handle.read()
+                    position = handle.tell()
+                if chunk:
+                    for line in chunk.splitlines():
+                        yield f"data: {line}\n\n"
+
+            with jobs_lock:
+                current = jobs.get(job_id)
+            status = current.status if current else "completed"
+            at_end = (not log_path.exists()) or position >= log_path.stat().st_size
+            if status in {"completed", "failed"} and at_end:
+                yield f"event: end\ndata: {status}\n\n"
+                return
+
+            await asyncio.sleep(0.5)
+
+    headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    return StreamingResponse(
+        event_generator(), media_type="text/event-stream", headers=headers
+    )
 
 
 @app.get("/api/content/duplicates")

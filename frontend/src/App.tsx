@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api } from './api'
+import { api, clearToken, getToken, setToken, UnauthorizedError } from './api'
 import type { ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
 
 type Section = 'dashboard' | 'content' | 'execute' | 'jobs' | 'files'
@@ -13,6 +13,8 @@ const sections: { id: Section; label: string }[] = [
 ]
 
 export default function App() {
+  const [authState, setAuthState] = useState<'checking' | 'authed' | 'login'>('checking')
+  const [tokenInput, setTokenInput] = useState('')
   const [activeSection, setActiveSection] = useState<Section>('dashboard')
   const [scripts, setScripts] = useState<ScriptInfo[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
@@ -51,6 +53,16 @@ export default function App() {
   const [uploadSubtitleFormat, setUploadSubtitleFormat] = useState<'vtt' | 'srt'>('vtt')
   const [isUploadingAndTranscribing, setIsUploadingAndTranscribing] = useState(false)
 
+  function handleApiError(e: unknown) {
+    if (e instanceof UnauthorizedError) {
+      clearToken()
+      setAuthState('login')
+      setError('Token invalido o sesion expirada. Vuelve a introducir el token.')
+      return
+    }
+    setError(e instanceof Error ? e.message : String(e))
+  }
+
   async function refreshScripts() {
     try {
       const data = await api.scripts()
@@ -59,7 +71,7 @@ export default function App() {
         setSelectedScript(data[0].name)
       }
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     }
   }
 
@@ -71,7 +83,7 @@ export default function App() {
         setSelectedJobId(data[0].id)
       }
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     }
   }
 
@@ -104,7 +116,7 @@ export default function App() {
       setCurrentPath(data.base)
       setFileEntries(data.items)
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     }
   }
 
@@ -171,7 +183,7 @@ export default function App() {
       const content = await api.fileText(file.path)
       setSelectedFileContent(content)
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     } finally {
       setIsLoadingFile(false)
     }
@@ -188,7 +200,7 @@ export default function App() {
       setSelectedLog('Lanzando transcripcion...')
       setActiveSection('jobs')
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     } finally {
       setIsGeneratingTranscript(false)
     }
@@ -201,7 +213,7 @@ export default function App() {
       setCopyFeedback('Texto copiado')
       window.setTimeout(() => setCopyFeedback(''), 1500)
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     }
   }
 
@@ -232,7 +244,7 @@ export default function App() {
       setSelectedLog('Preparando descarga de video con yt-dlp...')
       setActiveSection('jobs')
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     } finally {
       setIsDownloadingVideo(false)
     }
@@ -265,7 +277,7 @@ export default function App() {
       setSelectedLog('Preparando descarga de miniatura con yt-dlp...')
       setActiveSection('jobs')
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     } finally {
       setIsDownloadingThumbnail(false)
     }
@@ -286,7 +298,7 @@ export default function App() {
       setSelectedLog('Analizando video para detectar fotogramas incrustados...')
       setActiveSection('jobs')
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     } finally {
       setIsDetectingInsertedFrames(false)
     }
@@ -303,29 +315,77 @@ export default function App() {
       setSelectedLog('Convirtiendo imagen a PNG...')
       setActiveSection('jobs')
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     } finally {
       setIsConvertingImageToPng(false)
     }
   }
 
+  // Bootstrap: averigua si el backend exige token y decide pantalla inicial.
   useEffect(() => {
+    api
+      .health()
+      .then((info) => {
+        if (!info.authRequired) {
+          setAuthState('authed')
+        } else {
+          setAuthState(getToken() ? 'authed' : 'login')
+        }
+      })
+      .catch(() => setAuthState('authed'))
+  }, [])
+
+  useEffect(() => {
+    if (authState !== 'authed') return
     refreshScripts()
     refreshJobs()
     refreshFiles('output')
     refreshCookies()
     refreshComfyStatus()
-  }, [])
+  }, [authState])
 
   useEffect(() => {
+    if (authState !== 'authed') return
     const timer = setInterval(refreshJobs, 1500)
     return () => clearInterval(timer)
-  }, [])
+  }, [authState])
 
+  const selectedJobStatus = useMemo(
+    () => jobs.find((j) => j.id === selectedJobId)?.status,
+    [jobs, selectedJobId],
+  )
+
+  // Log del job seleccionado: carga el contenido actual y, si sigue en marcha,
+  // se suscribe al stream SSE para ver las nuevas lineas en vivo.
   useEffect(() => {
-    if (!selectedJobId) return
-    api.jobLog(selectedJobId).then(setSelectedLog).catch((e) => setError(String(e)))
-  }, [selectedJobId, jobs])
+    if (authState !== 'authed' || !selectedJobId) {
+      setSelectedLog('')
+      return
+    }
+
+    let cancelled = false
+    let source: EventSource | null = null
+
+    api
+      .jobLog(selectedJobId)
+      .then((content) => {
+        if (cancelled) return
+        setSelectedLog(content)
+        if (selectedJobStatus === 'running' || selectedJobStatus === 'queued') {
+          source = api.streamJobLog(selectedJobId, {
+            onLine: (line) => setSelectedLog((prev) => (prev ? `${prev}\n${line}` : line)),
+            onEnd: () => refreshJobs(),
+            onError: () => {},
+          })
+        }
+      })
+      .catch((e) => handleApiError(e))
+
+    return () => {
+      cancelled = true
+      source?.close()
+    }
+  }, [authState, selectedJobId, selectedJobStatus])
 
   const selectedScriptInfo = useMemo(
     () => scripts.find((s) => s.name === selectedScript),
@@ -388,7 +448,7 @@ export default function App() {
       setSelectedLog('Lanzando job...')
       setActiveSection('jobs')
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     } finally {
       setIsSubmitting(false)
     }
@@ -423,7 +483,7 @@ export default function App() {
       refreshFiles('output')
       setActiveSection('jobs')
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     } finally {
       setIsLaunchingContent(false)
     }
@@ -462,10 +522,51 @@ export default function App() {
       refreshFiles(response.folderPath)
       setActiveSection('jobs')
     } catch (e) {
-      setError(String(e))
+      handleApiError(e)
     } finally {
       setIsUploadingAndTranscribing(false)
     }
+  }
+
+  function handleLogin() {
+    if (!tokenInput.trim()) return
+    setToken(tokenInput.trim())
+    setTokenInput('')
+    setError('')
+    setAuthState('authed')
+  }
+
+  function handleLogout() {
+    clearToken()
+    setAuthState('login')
+  }
+
+  if (authState === 'checking') {
+    return (
+      <div className="login-shell">
+        <p className="description">Cargando...</p>
+      </div>
+    )
+  }
+
+  if (authState === 'login') {
+    return (
+      <div className="login-shell">
+        <div className="panel login-card">
+          <h1>Media Ops</h1>
+          <p className="description">Introduce el token de acceso para continuar.</p>
+          {error && <div className="error-box">{error}</div>}
+          <input
+            type="password"
+            placeholder="Token de acceso"
+            value={tokenInput}
+            onChange={(e) => setTokenInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}
+          />
+          <button className="primary" onClick={handleLogin}>Entrar</button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -491,7 +592,10 @@ export default function App() {
       <main className="main-content">
         <header className="topbar">
           <h2>Aplicacion Web para tus Scripts Python</h2>
-          <button onClick={() => { refreshScripts(); refreshJobs(); refreshFiles(); refreshComfyStatus() }}>Refrescar</button>
+          <div className="actions-row">
+            <button onClick={() => { refreshScripts(); refreshJobs(); refreshFiles(); refreshComfyStatus() }}>Refrescar</button>
+            {getToken() && <button onClick={handleLogout}>Salir</button>}
+          </div>
         </header>
 
         {error && <div className="error-box">{error}</div>}
