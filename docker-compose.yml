@@ -11,7 +11,9 @@ services:
     volumes:
       - .:/workspace
     working_dir: /workspace/backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Actualiza yt-dlp a la ultima version en cada arranque (sus extractores se
+    # rompen cada pocas semanas) antes de levantar la API.
+    command: sh -c "pip install --no-cache-dir --upgrade yt-dlp && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build:

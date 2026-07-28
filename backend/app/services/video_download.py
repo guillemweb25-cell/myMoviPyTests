@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
+
+# Los scripts multimedia son modulos sueltos en backend/scripts; se agregan al
+# path para reutilizar el fallback de sitios KVS.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from kvs_fallback import download_direct, extract_kvs, is_flashvars_error  # noqa: E402
 
 
 def clean_title(title: str) -> str:
@@ -71,7 +77,15 @@ class VideoDownloadService:
         browser: str | None = None,
         cookies_file: str | None = None,
     ) -> Path:
-        title = self.get_video_title(url, browser, cookies_file)
+        kvs_formats = None
+        try:
+            title = self.get_video_title(url, browser, cookies_file)
+        except DownloadError as exc:
+            if not is_flashvars_error(str(exc)):
+                raise
+            print("Sitio KVS detectado; usando extraccion directa (fallback).")
+            title, kvs_formats = extract_kvs(url, cookies_file)
+
         out_dir = self.build_output_folder(title)
         out_dir.mkdir(parents=True, exist_ok=True)
         self.write_source_metadata(out_dir, url, title, browser)
@@ -90,6 +104,18 @@ class VideoDownloadService:
                     indent=2,
                 ),
                 encoding="utf-8",
+            )
+
+        if kvs_formats:
+            best = kvs_formats[-1]
+            print(f"Descargando audio (KVS {best['format_id']}): {title}")
+            return download_direct(
+                best["url"],
+                url,
+                out_dir,
+                clean_title(title),
+                extract_audio=True,
+                ffmpeg_path=ffmpeg_path,
             )
 
         ydl_opts: dict[str, object] = {

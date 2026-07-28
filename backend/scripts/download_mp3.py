@@ -7,6 +7,8 @@ from urllib.parse import urlparse, parse_qs
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
+from kvs_fallback import download_direct, extract_kvs, is_flashvars_error
+
 
 def clean_title(title: str) -> str:
     # Elimina emojis
@@ -39,8 +41,15 @@ def get_video_id(url: str) -> str:
 
 def download_mp3(url: str, ffmpeg_path=None, browser=None, cookies_file=None):
 
-    # ---------- 1) TITOL ----------
-    title = get_video_title(url, browser, cookies_file)
+    # ---------- 1) TITOL (amb fallback KVS) ----------
+    kvs_formats = None
+    try:
+        title = get_video_title(url, browser, cookies_file)
+    except DownloadError as exc:
+        if not is_flashvars_error(str(exc)):
+            raise
+        print("Sitio KVS detectado; usando extraccion directa (fallback).")
+        title, kvs_formats = extract_kvs(url, cookies_file)
     clean = clean_title(title)
 
     # ---------- 2) DATA D’AVUI ----------
@@ -90,11 +99,25 @@ def download_mp3(url: str, ffmpeg_path=None, browser=None, cookies_file=None):
     print(f"➡️ Descargando MP3: {title}")
 
     # ---------- 4) DESCARREGA ----------
+    if kvs_formats:
+        best = kvs_formats[-1]
+        print(f"Descargando audio (KVS {best['format_id']})")
+        download_direct(best["url"], url, out_dir, clean, extract_audio=True, ffmpeg_path=ffmpeg_path)
+        print(f"✅ Guardado en: {out_dir}")
+        return
+
     try:
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
     except DownloadError as e:
         msg = str(e)
+        if is_flashvars_error(msg):
+            print("Sitio KVS detectado; usando extraccion directa (fallback).")
+            _, kvs_formats = extract_kvs(url, cookies_file)
+            best = kvs_formats[-1]
+            download_direct(best["url"], url, out_dir, clean, extract_audio=True, ffmpeg_path=ffmpeg_path)
+            print(f"✅ Guardado en: {out_dir}")
+            return
         if "Sign in to confirm you're not a bot" in msg and not browser:
             print("⚠️ YouTube demana login. Usa --browser chrome / firefox / brave")
         raise SystemExit(1)
