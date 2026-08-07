@@ -73,6 +73,11 @@ class YouTubeService:
     def is_authenticated(self) -> bool:
         return self.get_credentials() is not None
 
+    def unlink(self) -> None:
+        """Borra el token para forzar una nueva autorizacion (elegir otro canal)."""
+        if self.token_path.exists():
+            self.token_path.unlink()
+
     # --- flujo OAuth ---
     def get_auth_url(self, redirect_uri: str) -> str:
         if not self.secret_path.exists():
@@ -86,7 +91,9 @@ class YouTubeService:
             "scope": " ".join(SCOPES),
             "response_type": "code",
             "access_type": "offline",
-            "prompt": "consent",
+            # select_account + consent fuerza el selector de cuenta/canal (marca)
+            # para elegir el canal de YouTube correcto cada vez.
+            "prompt": "select_account consent",
             "include_granted_scopes": "true",
             "state": str(self.channel_id),
         }

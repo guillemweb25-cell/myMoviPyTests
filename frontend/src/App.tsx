@@ -232,6 +232,18 @@ export default function App() {
     }
   }
 
+  async function handleUnlinkYoutube() {
+    if (activeChannelId === null) return
+    if (!window.confirm('¿Desvincular YouTube de este canal? Podras volver a vincular eligiendo otro canal.')) return
+    try {
+      await api.youtubeUnlink(activeChannelId)
+      await refreshYoutubeStatus(activeChannelId)
+      refreshChannels()
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
   async function handleDeleteChannel() {
     if (activeChannelId === null) return
     if (!window.confirm('¿Eliminar este canal?')) return
@@ -1364,7 +1376,13 @@ export default function App() {
                 <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
                 <h3>YouTube</h3>
                 {ytStatus?.linked ? (
-                  <p className="description">✅ Cuenta vinculada: {ytStatus.channelName || activeChannel.youtubeName || 'YouTube'}</p>
+                  <>
+                    <p className="description">✅ Canal de YouTube vinculado: <strong>{ytStatus.channelName || activeChannel.youtubeName || 'YouTube'}</strong></p>
+                    <p className="help">Si no es el canal correcto, desvincula y vuelve a vincular eligiendo el canal adecuado en Google.</p>
+                    <div className="actions-row">
+                      <button onClick={handleUnlinkYoutube}>Desvincular / cambiar de canal</button>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <p className="description">

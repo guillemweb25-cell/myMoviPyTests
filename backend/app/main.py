@@ -632,6 +632,17 @@ async def upload_youtube_secret(channel_id: int, file: UploadFile = File(...)) -
     return {"hasSecret": True}
 
 
+@app.post("/api/youtube/{channel_id}/unlink")
+def youtube_unlink(channel_id: int) -> dict:
+    from .services.youtube_service import YouTubeService
+
+    if not db.get_channel(channel_id):
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
+    YouTubeService(channel_id, YOUTUBE_CREDS_DIR).unlink()
+    db.update_channel(channel_id, {"youtube_linked": 0, "youtube_name": ""})
+    return {"linked": False}
+
+
 @app.get("/api/youtube/{channel_id}/auth-url")
 def youtube_auth_url(channel_id: int) -> dict:
     from .services.youtube_service import YouTubeService
