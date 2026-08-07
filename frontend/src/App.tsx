@@ -71,16 +71,15 @@ export default function App() {
   const [selectedClipSource, setSelectedClipSource] = useState('')
   const [clipCandidates, setClipCandidates] = useState<ClipCandidate[]>([])
   const [clipCount, setClipCount] = useState(5)
-  const [clipSubtitles, setClipSubtitles] = useState(true)
-  const [clipTopRatio, setClipTopRatio] = useState(0.7)
-  const [clipFocus, setClipFocus] = useState<'left' | 'center' | 'right'>('center')
-  const [clipZoom, setClipZoom] = useState(1.0)
   const [clipUrl, setClipUrl] = useState('')
   const [clipUrlCookies, setClipUrlCookies] = useState('')
   const [isPreparingSource, setIsPreparingSource] = useState(false)
   const [clipSourceStatus, setClipSourceStatus] = useState('')
   const [isDetectingClips, setIsDetectingClips] = useState(false)
   const [renderingClipKey, setRenderingClipKey] = useState('')
+  const [uploadingClipId, setUploadingClipId] = useState('')
+  const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>('create')
+  const [copiedUrl, setCopiedUrl] = useState('')
 
   function handleApiError(e: unknown) {
     if (e instanceof UnauthorizedError) {
@@ -339,6 +338,7 @@ export default function App() {
       setClipUrl('')
       setClipSourceStatus('')
       await runDetect(newest.transcriptPath)
+      setClipTab('manage')
     } catch (e) {
       setClipSourceStatus('')
       handleApiError(e)
@@ -355,31 +355,72 @@ export default function App() {
     await runDetect(selectedClipSource)
   }
 
+  async function waitForJob(jobId: string): Promise<string> {
+    let status = 'running'
+    while (status === 'queued' || status === 'running') {
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      const current = await api.job(jobId)
+      insertOrUpdateJob(current)
+      status = current.status
+    }
+    return status
+  }
+
+  async function handleClipSettingChange(clip: ClipCandidate, patch: Partial<ClipCandidate>) {
+    const merged = {
+      focus: (patch.focus ?? clip.focus) as string,
+      zoom: patch.zoom ?? clip.zoom,
+      topRatio: patch.topRatio ?? clip.topRatio,
+      subtitles: patch.subtitles ?? clip.subtitles,
+    }
+    setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, ...patch } : c)))
+    try {
+      await api.updateClipSettings(clip.id, merged)
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
   async function handleRenderClip(clip: ClipCandidate) {
-    const source = clipSources.find((item) => item.transcriptPath === selectedClipSource)
-    if (!source) return
-    const key = `${clip.start}-${clip.end}`
-    setRenderingClipKey(key)
+    setRenderingClipKey(clip.id)
     setError('')
     try {
-      const job = await api.renderClip({
-        video: source.videoPath,
-        start: clip.start,
-        end: clip.end,
-        subtitles: clipSubtitles,
-        topRatio: clipTopRatio,
-        focus: clipFocus,
-        zoom: clipZoom,
-        title: clip.title,
-      })
+      const { job } = await api.renderClip(clip.id)
       insertOrUpdateJob(job)
-      setSelectedJobId(job.id)
-      setSelectedLog(`Renderizando clip vertical [${clip.start}s - ${clip.end}s]...`)
-      setActiveSection('jobs')
+      await waitForJob(job.id)
+      await loadSavedClips(selectedClipSource)
     } catch (e) {
       handleApiError(e)
     } finally {
       setRenderingClipKey('')
+    }
+  }
+
+  async function handleUploadClip(clip: ClipCandidate) {
+    setUploadingClipId(clip.id)
+    setError('')
+    try {
+      const job = await api.uploadClip(clip.id)
+      insertOrUpdateJob(job)
+      const status = await waitForJob(job.id)
+      if (status !== 'completed') {
+        setError('Fallo la subida a YouTube. Revisa el Historial.')
+      }
+      await loadSavedClips(selectedClipSource)
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setUploadingClipId('')
+    }
+  }
+
+  async function handleCopyUrl(url: string) {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiedUrl(url)
+      window.setTimeout(() => setCopiedUrl(''), 1500)
+    } catch (e) {
+      handleApiError(e)
     }
   }
 
@@ -1099,142 +1140,188 @@ export default function App() {
         {activeSection === 'clipping' && (
           <section className="panel">
             <div className="viewer-header">
-              <h3>Clipping — clips verticales virales</h3>
-              {activeChannel && (
-                <button className="panel-link panel-link-button" onClick={() => setActiveSection('channel')}>
-                  Canal: {activeChannel.name} ({activeChannel.language}) ⚙
-                </button>
-              )}
-            </div>
-            <p className="description">
-              Elige un video con transcripcion (o descarga uno nuevo desde una URL). La IA propone los
-              mejores momentos y los conviertes en clips verticales 1080×1920 (pantalla partida) con
-              subtitulos karaoke opcionales.
-            </p>
-
-            <div className="form-grid">
-              <label className="field span-2">
-                <span>Descargar y preparar desde URL</span>
-                <input
-                  type="url"
-                  placeholder="https://... (descarga el video y lo transcribe)"
-                  value={clipUrl}
-                  onChange={(e) => setClipUrl(e.target.value)}
-                />
-              </label>
-
-              <label className="field">
-                <span>Cookies (opcional)</span>
-                <select value={clipUrlCookies} onChange={(e) => setClipUrlCookies(e.target.value)}>
-                  <option value="">sin cookies</option>
-                  {cookieEntries.map((item) => (
-                    <option key={item.path} value={item.path}>{item.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="field" style={{ justifyContent: 'flex-end' }}>
-                <button className="primary" disabled={isPreparingSource || !clipUrl.trim()} onClick={handlePrepareClipSource}>
-                  {isPreparingSource ? 'Procesando...' : 'Descargar y transcribir'}
-                </button>
-              </div>
+              <h3>Clipping{activeChannel ? ` — ${activeChannel.name}` : ''}</h3>
             </div>
 
-            {clipSourceStatus && <p className="help">⏳ {clipSourceStatus}</p>}
-
-            <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
-
-            <div className="form-grid">
-              <label className="field span-2">
-                <span>Video (con transcripcion)</span>
-                <select value={selectedClipSource} onChange={(e) => handleSelectClipSource(e.target.value)}>
-                  {clipSources.length === 0 && <option value="">No hay videos con transcripcion</option>}
-                  {clipSources.map((item) => (
-                    <option key={item.transcriptPath} value={item.transcriptPath}>{item.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field">
-                <span>Nº de clips</span>
-                <input type="number" min={1} max={12} value={clipCount} onChange={(e) => setClipCount(Number(e.target.value) || 5)} />
-              </label>
-
-              <label className="field">
-                <span>Subtitulos karaoke</span>
-                <select value={clipSubtitles ? 'si' : 'no'} onChange={(e) => setClipSubtitles(e.target.value === 'si')}>
-                  <option value="si">Si, incrustados</option>
-                  <option value="no">No</option>
-                </select>
-              </label>
-
-              <label className="field">
-                <span>Proporcion (clip arriba)</span>
-                <select value={String(clipTopRatio)} onChange={(e) => setClipTopRatio(Number(e.target.value))}>
-                  <option value="0.5">50 / 50</option>
-                  <option value="0.6">60 / 40</option>
-                  <option value="0.7">70 / 30</option>
-                  <option value="0.8">80 / 20</option>
-                </select>
-              </label>
-
-              <label className="field">
-                <span>Encuadre</span>
-                <select value={clipFocus} onChange={(e) => setClipFocus(e.target.value as 'left' | 'center' | 'right')}>
-                  <option value="left">Izquierda</option>
-                  <option value="center">Centro</option>
-                  <option value="right">Derecha</option>
-                </select>
-              </label>
-
-              <label className="field">
-                <span>Zoom</span>
-                <select value={String(clipZoom)} onChange={(e) => setClipZoom(Number(e.target.value))}>
-                  <option value="1">Sin zoom</option>
-                  <option value="1.3">1.3×</option>
-                  <option value="1.6">1.6×</option>
-                  <option value="2">2×</option>
-                </select>
-              </label>
+            <div className="subtabs">
+              <button className={clipTab === 'create' ? 'subtab active' : 'subtab'} onClick={() => setClipTab('create')}>Crear clipping</button>
+              <button className={clipTab === 'manage' ? 'subtab active' : 'subtab'} onClick={() => setClipTab('manage')}>Mis clippings</button>
+              <button className="subtab" onClick={() => setActiveSection('channel')}>YouTube ⚙</button>
             </div>
 
-            <div className="actions-row">
-              <button className="primary" disabled={isDetectingClips || !selectedClipSource} onClick={handleDetectClips}>
-                {isDetectingClips ? 'Analizando transcripcion...' : 'Detectar clips virales'}
-              </button>
-              <button onClick={() => refreshClipSources()}>Recargar videos</button>
-            </div>
+            {clipTab === 'create' && (
+              <>
+                <p className="description">
+                  Descarga un video desde una URL (se transcribe solo) o elige uno ya preparado, y detecta
+                  los mejores momentos. Luego los gestionas en “Mis clippings”.
+                </p>
 
-            {clipCandidates.length > 0 && (
-              <div className="jobs-list" style={{ maxHeight: 'unset' }}>
-                {clipCandidates.map((clip) => {
-                  const key = `${clip.start}-${clip.end}`
-                  return (
-                    <article key={key} className="card" style={{ boxShadow: 'none' }}>
+                <div className="form-grid">
+                  <label className="field span-2">
+                    <span>Descargar y preparar desde URL</span>
+                    <input
+                      type="url"
+                      placeholder="https://... (descarga el video y lo transcribe)"
+                      value={clipUrl}
+                      onChange={(e) => setClipUrl(e.target.value)}
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>Cookies (opcional)</span>
+                    <select value={clipUrlCookies} onChange={(e) => setClipUrlCookies(e.target.value)}>
+                      <option value="">sin cookies</option>
+                      {cookieEntries.map((item) => (
+                        <option key={item.path} value={item.path}>{item.name}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="field" style={{ justifyContent: 'flex-end' }}>
+                    <button className="primary" disabled={isPreparingSource || !clipUrl.trim()} onClick={handlePrepareClipSource}>
+                      {isPreparingSource ? 'Procesando...' : 'Descargar y transcribir'}
+                    </button>
+                  </div>
+                </div>
+
+                {clipSourceStatus && <p className="help">⏳ {clipSourceStatus}</p>}
+
+                <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
+
+                <div className="form-grid">
+                  <label className="field span-2">
+                    <span>Video (con transcripcion)</span>
+                    <select value={selectedClipSource} onChange={(e) => handleSelectClipSource(e.target.value)}>
+                      {clipSources.length === 0 && <option value="">No hay videos con transcripcion</option>}
+                      {clipSources.map((item) => (
+                        <option key={item.transcriptPath} value={item.transcriptPath}>{item.name}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="field">
+                    <span>Nº de clips</span>
+                    <input type="number" min={1} max={12} value={clipCount} onChange={(e) => setClipCount(Number(e.target.value) || 5)} />
+                  </label>
+                </div>
+
+                <div className="actions-row">
+                  <button
+                    className="primary"
+                    disabled={isDetectingClips || !selectedClipSource}
+                    onClick={async () => { await handleDetectClips(); setClipTab('manage') }}
+                  >
+                    {isDetectingClips ? 'Analizando transcripcion...' : 'Detectar clips virales'}
+                  </button>
+                  <button onClick={() => refreshClipSources()}>Recargar videos</button>
+                </div>
+              </>
+            )}
+
+            {clipTab === 'manage' && (
+              <>
+                <div className="form-grid">
+                  <label className="field span-2">
+                    <span>Clipping (video)</span>
+                    <select value={selectedClipSource} onChange={(e) => handleSelectClipSource(e.target.value)}>
+                      {clipSources.length === 0 && <option value="">No hay clippings todavia</option>}
+                      {clipSources.map((item) => (
+                        <option key={item.transcriptPath} value={item.transcriptPath}>{item.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {clipCandidates.length === 0 && (
+                  <p className="description">Este clipping no tiene clips. Ve a “Crear clipping” y detecta.</p>
+                )}
+
+                <div className="jobs-list" style={{ maxHeight: 'unset' }}>
+                  {clipCandidates.map((clip) => (
+                    <article key={clip.id} className="card" style={{ boxShadow: 'none' }}>
                       <div className="viewer-header">
                         <div>
                           <h3 style={{ margin: 0 }}>
                             <span className="status completed" style={{ marginRight: 8 }}>{clip.score}</span>
                             {clip.title || 'Clip'}
                           </h3>
-                          <p className="help">
-                            {formatSeconds(clip.start)} → {formatSeconds(clip.end)} ({Math.round(clip.duration)}s)
-                          </p>
+                          <p className="help">{formatSeconds(clip.start)} → {formatSeconds(clip.end)} ({Math.round(clip.duration)}s)</p>
                         </div>
-                        <button
-                          className="panel-link panel-link-button"
-                          disabled={renderingClipKey === key}
-                          onClick={() => handleRenderClip(clip)}
-                        >
-                          {renderingClipKey === key ? 'Enviando...' : 'Renderizar vertical'}
-                        </button>
+                        <div className="actions-row">
+                          {clip.uploaded ? <span className="status completed">Subido</span>
+                            : clip.rendered ? <span className="status completed">Renderizado</span>
+                            : <span className="status queued">Sin generar</span>}
+                        </div>
                       </div>
+
                       <p className="card-detail">{clip.reason}</p>
-                      {clip.transcript && <p className="card-detail" style={{ opacity: 0.7 }}>“{clip.transcript}”</p>}
+
+                      <div className="form-grid">
+                        <label className="field">
+                          <span>Encuadre</span>
+                          <select value={clip.focus} onChange={(e) => handleClipSettingChange(clip, { focus: e.target.value as 'left' | 'center' | 'right' })}>
+                            <option value="left">Izquierda</option>
+                            <option value="center">Centro</option>
+                            <option value="right">Derecha</option>
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Zoom</span>
+                          <select value={String(clip.zoom)} onChange={(e) => handleClipSettingChange(clip, { zoom: Number(e.target.value) })}>
+                            <option value="1">Sin zoom</option>
+                            <option value="1.3">1.3×</option>
+                            <option value="1.6">1.6×</option>
+                            <option value="2">2×</option>
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Proporcion</span>
+                          <select value={String(clip.topRatio)} onChange={(e) => handleClipSettingChange(clip, { topRatio: Number(e.target.value) })}>
+                            <option value="0.5">50 / 50</option>
+                            <option value="0.6">60 / 40</option>
+                            <option value="0.7">70 / 30</option>
+                            <option value="0.8">80 / 20</option>
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Subtitulos</span>
+                          <select value={clip.subtitles ? 'si' : 'no'} onChange={(e) => handleClipSettingChange(clip, { subtitles: e.target.value === 'si' })}>
+                            <option value="si">Si</option>
+                            <option value="no">No</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="actions-row">
+                        <button className="primary" disabled={renderingClipKey === clip.id} onClick={() => handleRenderClip(clip)}>
+                          {renderingClipKey === clip.id ? 'Generando...' : clip.rendered ? 'Regenerar' : 'Generar vertical'}
+                        </button>
+                        {clip.rendered && clip.renderedPath && (
+                          <a className="panel-link" href={api.fileUrl(clip.renderedPath)} target="_blank" rel="noreferrer">Ver / Descargar</a>
+                        )}
+                        {clip.rendered && !clip.uploaded && (
+                          <button className="panel-link panel-link-button" disabled={uploadingClipId === clip.id} onClick={() => handleUploadClip(clip)}>
+                            {uploadingClipId === clip.id ? 'Subiendo...' : 'Subir a YouTube'}
+                          </button>
+                        )}
+                      </div>
+
+                      {clip.youtubeUrl && (
+                        <div className="actions-row" style={{ alignItems: 'center' }}>
+                          <a className="panel-link" href={clip.youtubeUrl} target="_blank" rel="noreferrer">{clip.youtubeUrl}</a>
+                          <button className="panel-link panel-link-button" onClick={() => handleCopyUrl(clip.youtubeUrl!)}>
+                            {copiedUrl === clip.youtubeUrl ? '¡Copiado!' : 'Copiar enlace'}
+                          </button>
+                        </div>
+                      )}
+
+                      {clip.rendered && clip.renderedPath && (
+                        <video className="media-preview" style={{ maxHeight: '46vh', width: 'auto' }} controls src={api.fileUrl(clip.renderedPath)} />
+                      )}
                     </article>
-                  )
-                })}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
           </section>
         )}

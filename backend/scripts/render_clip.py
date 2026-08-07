@@ -77,7 +77,10 @@ def main() -> None:
     if args.subtitles:
         print("Anadiendo subtitulos karaoke...", flush=True)
         final = add_subtitles(vertical, ffmpeg=args.ffmpeg)
-        print(f"Clip final con subtitulos: {final}", flush=True)
+        # Deja el resultado en la ruta determinista (--out) para poder localizarlo.
+        if final != out_path:
+            final.replace(out_path)
+        print(f"Clip final con subtitulos: {out_path}", flush=True)
     else:
         print(f"Clip final: {vertical}", flush=True)
 

@@ -61,7 +61,9 @@ export type ClipSource = {
 }
 
 export type ClipCandidate = {
-  id?: string
+  id: string
+  transcriptPath?: string
+  videoPath?: string
   start: number
   end: number
   duration: number
@@ -69,6 +71,15 @@ export type ClipCandidate = {
   reason: string
   score: number
   transcript: string
+  channelId?: number | null
+  focus: 'left' | 'center' | 'right'
+  zoom: number
+  topRatio: number
+  subtitles: boolean
+  renderedPath?: string
+  youtubeUrl?: string
+  rendered?: boolean
+  uploaded?: boolean
 }
 
 export type DetectClipsResponse = {

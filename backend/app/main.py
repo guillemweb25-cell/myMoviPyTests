@@ -81,6 +81,7 @@ class RunScriptRequest(BaseModel):
 
 class DetectClipsRequest(BaseModel):
     transcriptPath: str = Field(..., description="Ruta al .vtt/.srt dentro del workspace")
+    channelId: int | None = None
     count: int = Field(default=5, ge=1, le=12)
     minDuration: int = Field(default=15, ge=5, le=120)
     maxDuration: int = Field(default=60, ge=10, le=180)
@@ -118,15 +119,11 @@ def channel_output_rel(channel: dict) -> str:
     return f"output/{channel['id']:04d}-{channel_slug(channel['name'])}"
 
 
-class RenderClipRequest(BaseModel):
-    video: str = Field(..., description="Ruta al video dentro del workspace")
-    start: float = Field(..., description="Inicio en segundos")
-    end: float = Field(..., description="Fin en segundos")
-    subtitles: bool = Field(default=True, description="Quemar subtitulos karaoke")
-    topRatio: float = Field(default=0.7, ge=0.3, le=0.85)
+class ClipSettingsRequest(BaseModel):
     focus: str = Field(default="center", pattern="^(left|center|right)$")
     zoom: float = Field(default=1.0, ge=1.0, le=2.5)
-    title: str | None = None
+    topRatio: float = Field(default=0.7, ge=0.3, le=0.85)
+    subtitles: bool = True
 
 
 class CreateContentJobRequest(BaseModel):
@@ -747,32 +744,77 @@ def detect_clips_endpoint(payload: DetectClipsRequest) -> dict:
         data["id"] = uuid.uuid4().hex[:12]
         clip_dicts.append(data)
 
-    db.replace_clips(payload.transcriptPath, video_path, clip_dicts, now_iso())
-    return {"videoPath": video_path, "clips": clip_dicts}
+    db.replace_clips(payload.transcriptPath, video_path, payload.channelId, clip_dicts, now_iso())
+    return {"videoPath": video_path, "clips": db.load_clips(payload.transcriptPath)}
+
+
+def _annotate_clip(clip: dict) -> dict:
+    rendered_path = clip.get("renderedPath") or ""
+    clip["rendered"] = bool(rendered_path) and (ROOT_DIR / rendered_path).exists()
+    clip["uploaded"] = bool(clip.get("youtubeUrl"))
+    return clip
 
 
 @app.get("/api/clips/list")
 def list_saved_clips(transcriptPath: str) -> dict:
-    return {"clips": db.load_clips(transcriptPath)}
+    return {"clips": [_annotate_clip(c) for c in db.load_clips(transcriptPath)]}
 
 
-@app.post("/api/clips/render")
-def render_clip_endpoint(payload: RenderClipRequest) -> dict:
-    resolve_within_root(payload.video)
-    if payload.end <= payload.start:
-        raise HTTPException(status_code=400, detail="end debe ser mayor que start")
+@app.patch("/api/clips/{clip_id}/settings")
+def update_clip_settings_endpoint(clip_id: str, payload: ClipSettingsRequest) -> dict:
+    if not db.get_clip(clip_id):
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    db.update_clip(clip_id, {
+        "focus": payload.focus,
+        "zoom": payload.zoom,
+        "top_ratio": payload.topRatio,
+        "subtitles": int(payload.subtitles),
+    })
+    return _annotate_clip(db.get_clip(clip_id))
 
+
+@app.post("/api/clips/{clip_id}/render")
+def render_clip_endpoint(clip_id: str) -> dict:
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    video_rel = clip["videoPath"]
+    if not video_rel:
+        raise HTTPException(status_code=400, detail="El clip no tiene video asociado")
+    resolve_within_root(video_rel)
+
+    out_rel = str(Path(video_rel).parent / "clips" / f"clip_{clip_id}.mp4")
     args = [
-        "--video", payload.video,
-        "--start", f"{payload.start:.3f}",
-        "--end", f"{payload.end:.3f}",
-        "--top-ratio", f"{payload.topRatio:.2f}",
-        "--focus", payload.focus,
-        "--zoom", f"{payload.zoom:.2f}",
+        "--video", video_rel,
+        "--start", f"{clip['start']:.3f}",
+        "--end", f"{clip['end']:.3f}",
+        "--out", out_rel,
+        "--top-ratio", f"{clip['topRatio']:.2f}",
+        "--focus", clip["focus"],
+        "--zoom", f"{clip['zoom']:.2f}",
     ]
-    if payload.subtitles:
+    if clip["subtitles"]:
         args.append("--subtitles")
-    return enqueue_job("render_clip.py", args)
+
+    db.update_clip(clip_id, {"rendered_path": out_rel})
+    job = enqueue_job("render_clip.py", args)
+    return {"job": job, "renderedPath": out_rel}
+
+
+@app.post("/api/clips/{clip_id}/upload")
+def upload_clip_endpoint(clip_id: str) -> dict:
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    if not clip.get("channelId"):
+        raise HTTPException(status_code=400, detail="El clip no tiene canal. Detectalo desde un canal.")
+    channel = db.get_channel(clip["channelId"])
+    if not channel or not channel["youtubeLinked"]:
+        raise HTTPException(status_code=400, detail="El canal no esta vinculado a YouTube.")
+    rendered = clip.get("renderedPath") or ""
+    if not rendered or not (ROOT_DIR / rendered).exists():
+        raise HTTPException(status_code=400, detail="Renderiza el clip antes de subirlo.")
+    return enqueue_job("upload_clip.py", ["--clip", clip_id])
 
 
 @app.get("/api/files")

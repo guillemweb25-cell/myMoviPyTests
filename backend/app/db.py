@@ -41,7 +41,14 @@ CREATE TABLE IF NOT EXISTS clips (
     reason          TEXT,
     score           INTEGER,
     transcript      TEXT,
-    created_at      TEXT
+    created_at      TEXT,
+    channel_id      INTEGER,
+    focus           TEXT DEFAULT 'center',
+    zoom            REAL DEFAULT 1.0,
+    top_ratio       REAL DEFAULT 0.7,
+    subtitles       INTEGER DEFAULT 1,
+    rendered_path   TEXT DEFAULT '',
+    youtube_url     TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_path);
 CREATE TABLE IF NOT EXISTS channels (
@@ -63,6 +70,17 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+CLIP_MIGRATIONS = [
+    "ALTER TABLE clips ADD COLUMN channel_id INTEGER",
+    "ALTER TABLE clips ADD COLUMN focus TEXT DEFAULT 'center'",
+    "ALTER TABLE clips ADD COLUMN zoom REAL DEFAULT 1.0",
+    "ALTER TABLE clips ADD COLUMN top_ratio REAL DEFAULT 0.7",
+    "ALTER TABLE clips ADD COLUMN subtitles INTEGER DEFAULT 1",
+    "ALTER TABLE clips ADD COLUMN rendered_path TEXT DEFAULT ''",
+    "ALTER TABLE clips ADD COLUMN youtube_url TEXT DEFAULT ''",
+]
+
+
 def init(db_path: Path) -> None:
     """Configura la ruta de la base de datos y crea el esquema si falta."""
     global _DB_PATH
@@ -70,6 +88,12 @@ def init(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _db_lock, _connect() as conn:
         conn.executescript(SCHEMA)
+        # Migraciones para BD antiguas: anade columnas nuevas si faltan.
+        for statement in CLIP_MIGRATIONS:
+            try:
+                conn.execute(statement)
+            except sqlite3.OperationalError:
+                pass  # la columna ya existe
 
 
 def save_job(job: "Job") -> None:
@@ -142,21 +166,49 @@ def load_jobs(job_factory) -> dict[str, "Job"]:
     return result
 
 
-def replace_clips(transcript_path: str, video_path: str | None, clips: list[dict], created_at: str) -> None:
-    """Reemplaza los clips guardados de una transcripcion por el nuevo conjunto."""
+def _clip_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "transcriptPath": row["transcript_path"],
+        "videoPath": row["video_path"],
+        "start": row["start"],
+        "end": row["end"],
+        "duration": round(row["end"] - row["start"], 2),
+        "title": row["title"],
+        "reason": row["reason"],
+        "score": row["score"],
+        "transcript": row["transcript"],
+        "channelId": row["channel_id"],
+        "focus": row["focus"] or "center",
+        "zoom": row["zoom"] if row["zoom"] is not None else 1.0,
+        "topRatio": row["top_ratio"] if row["top_ratio"] is not None else 0.7,
+        "subtitles": bool(row["subtitles"]),
+        "renderedPath": row["rendered_path"] or "",
+        "youtubeUrl": row["youtube_url"] or "",
+    }
+
+
+def replace_clips(transcript_path: str, video_path: str | None, channel_id: int | None,
+                  clips: list[dict], created_at: str) -> None:
+    """Reemplaza los clips DETECTADOS (no renderizados ni subidos) de una
+    transcripcion. Los que ya tienen render o youtube se conservan."""
     with _db_lock, _connect() as conn:
-        conn.execute("DELETE FROM clips WHERE transcript_path = ?", (transcript_path,))
+        conn.execute(
+            "DELETE FROM clips WHERE transcript_path = ? AND rendered_path = '' AND youtube_url = ''",
+            (transcript_path,),
+        )
         conn.executemany(
             """
-            INSERT INTO clips (id, transcript_path, video_path, start, end, title,
-                               reason, score, transcript, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO clips (id, transcript_path, video_path, channel_id, start, end,
+                               title, reason, score, transcript, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     clip["id"],
                     transcript_path,
                     video_path,
+                    channel_id,
                     clip["start"],
                     clip["end"],
                     clip.get("title", ""),
@@ -177,19 +229,26 @@ def load_clips(transcript_path: str) -> list[dict]:
             "SELECT * FROM clips WHERE transcript_path = ? ORDER BY score DESC",
             (transcript_path,),
         ).fetchall()
-    return [
-        {
-            "id": row["id"],
-            "start": row["start"],
-            "end": row["end"],
-            "duration": round(row["end"] - row["start"], 2),
-            "title": row["title"],
-            "reason": row["reason"],
-            "score": row["score"],
-            "transcript": row["transcript"],
-        }
-        for row in rows
-    ]
+    return [_clip_to_dict(row) for row in rows]
+
+
+def get_clip(clip_id: str) -> dict | None:
+    with _db_lock, _connect() as conn:
+        row = conn.execute("SELECT * FROM clips WHERE id = ?", (clip_id,)).fetchone()
+    return _clip_to_dict(row) if row else None
+
+
+def update_clip(clip_id: str, fields: dict) -> dict | None:
+    allowed = {"focus", "zoom", "top_ratio", "subtitles", "rendered_path", "youtube_url"}
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    if updates:
+        assignments = ", ".join(f"{key} = ?" for key in updates)
+        with _db_lock, _connect() as conn:
+            conn.execute(
+                f"UPDATE clips SET {assignments} WHERE id = ?",
+                (*updates.values(), clip_id),
+            )
+    return get_clip(clip_id)
 
 
 def _channel_to_dict(row: sqlite3.Row) -> dict:
