@@ -42,9 +42,11 @@ ACCESS_TOKEN = os.getenv("MEDIA_OPS_TOKEN", "").strip()
 # El callback de YouTube lo invoca el navegador redirigido por Google, sin token.
 PUBLIC_PATHS = {"/api/health", "/docs", "/openapi.json", "/redoc", "/api/youtube/callback"}
 
-# URL publica de la app (para construir el redirect de OAuth de YouTube).
+# URL publica de la app. El redirect de OAuth apunta a la raiz del frontend, que
+# recoge ?code=&state= y lo reenvia al backend (mas facil de configurar en Google
+# Cloud que una ruta concreta).
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://mymovi.enguillem.es").rstrip("/")
-YOUTUBE_REDIRECT_URI = f"{PUBLIC_BASE_URL}/api/youtube/callback"
+YOUTUBE_REDIRECT_URI = f"{PUBLIC_BASE_URL}/"
 YOUTUBE_CREDS_DIR = ROOT_DIR / "youtube_creds"
 
 
@@ -644,22 +646,30 @@ def youtube_auth_url(channel_id: int) -> dict:
     return {"authUrl": url, "redirectUri": YOUTUBE_REDIRECT_URI}
 
 
-@app.get("/api/youtube/callback")
-def youtube_callback(code: str = "", state: str = "", error: str = ""):
+class YoutubeFinishRequest(BaseModel):
+    code: str
+    state: str
+
+
+@app.post("/api/youtube/finish")
+def youtube_finish(payload: YoutubeFinishRequest) -> dict:
     from .services.youtube_service import YouTubeService
 
-    if error or not code or not state:
-        return RedirectResponse(f"{PUBLIC_BASE_URL}/?youtube=error")
     try:
-        channel_id = int(state)
-        service = YouTubeService(channel_id, YOUTUBE_CREDS_DIR)
-        service.finish_oauth(code, YOUTUBE_REDIRECT_URI)
+        channel_id = int(payload.state)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="state invalido") from exc
+    if not db.get_channel(channel_id):
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
+    service = YouTubeService(channel_id, YOUTUBE_CREDS_DIR)
+    try:
+        service.finish_oauth(payload.code, YOUTUBE_REDIRECT_URI)
         info = service.get_channel_info()
         yt_name = info["snippet"]["title"] if info else ""
         db.update_channel(channel_id, {"youtube_linked": 1, "youtube_name": yt_name})
-    except Exception:  # noqa: BLE001
-        return RedirectResponse(f"{PUBLIC_BASE_URL}/?youtube=error")
-    return RedirectResponse(f"{PUBLIC_BASE_URL}/?youtube=ok")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"No se pudo finalizar OAuth: {exc}") from exc
+    return {"linked": True, "channelName": yt_name}
 
 
 @app.post("/api/clips/source-from-url")

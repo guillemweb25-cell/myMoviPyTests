@@ -698,18 +698,25 @@ export default function App() {
     }
   }, [activeChannelId])
 
-  // Retorno del OAuth de YouTube: Google redirige a /?youtube=ok|error.
+  // Retorno del OAuth de YouTube: Google redirige a la raiz con ?code=&state=.
   useEffect(() => {
     if (authState !== 'authed') return
     const params = new URLSearchParams(window.location.search)
-    const yt = params.get('youtube')
-    if (yt === 'ok') {
-      setActiveSection('channel')
-      refreshChannels()
+    const code = params.get('code')
+    const state = params.get('state')
+    if (code && state) {
       window.history.replaceState({}, '', window.location.pathname)
-    } else if (yt === 'error') {
-      setError('No se pudo vincular con YouTube. Revisa el client_secret y el redirect autorizado.')
-      window.history.replaceState({}, '', window.location.pathname)
+      api
+        .youtubeFinish(code, state)
+        .then((res) => {
+          setError('')
+          const channelId = Number(state)
+          setActiveChannelId(channelId)
+          setActiveSection('channel')
+          setYtStatus({ hasSecret: true, linked: true, channelName: res.channelName })
+          refreshChannels()
+        })
+        .catch((e) => handleApiError(e))
     }
   }, [authState])
 
@@ -1383,8 +1390,8 @@ export default function App() {
                       </button>
                     </div>
                     <p className="help">
-                      Redirect OAuth: <code>https://mymovi.enguillem.es/api/youtube/callback</code> (debe estar
-                      autorizado en el proyecto de Google Cloud).
+                      Redirect OAuth: <code>https://mymovi.enguillem.es/</code> (debe estar en “URIs de
+                      redireccion autorizados” del cliente OAuth en Google Cloud).
                     </p>
                   </>
                 )}

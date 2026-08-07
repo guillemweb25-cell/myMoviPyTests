@@ -89,6 +89,8 @@ export const api = {
     getJson<{ hasSecret: boolean; linked: boolean; channelName: string }>(`/api/youtube/${channelId}/status`),
   youtubeAuthUrl: (channelId: number) =>
     getJson<{ authUrl: string; redirectUri: string }>(`/api/youtube/${channelId}/auth-url`),
+  youtubeFinish: (code: string, state: string) =>
+    postJson<{ linked: boolean; channelName: string }>('/api/youtube/finish', { code, state }),
   uploadYoutubeSecret: async (channelId: number, file: File) => {
     const formData = new FormData()
     formData.append('file', file)
