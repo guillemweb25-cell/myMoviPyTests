@@ -38,10 +38,11 @@ def main() -> None:
     parser.add_argument("--ffmpeg", default=None)
     parser.add_argument("--lang", default="auto")
     parser.add_argument("--format", default="vtt")
+    parser.add_argument("--outbase", default="output", help="Carpeta base (p.ej. output/0002-canal)")
     args = parser.parse_args()
 
     print("Paso 1/2: descargando video...", flush=True)
-    result = download_video(args.url, args.ffmpeg, args.browser, args.cookies)
+    result = download_video(args.url, args.ffmpeg, args.browser, args.cookies, outbase=args.outbase)
     if not result or not result[0]:
         raise SystemExit("No se pudo determinar el video descargado.")
     video_path, out_dir = result

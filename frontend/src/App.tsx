@@ -247,13 +247,16 @@ export default function App() {
     }
   }
 
-  async function refreshClipSources() {
+  async function refreshClipSources(channelId: number | null = activeChannelId) {
     try {
-      const data = await api.clipSources()
+      const data = await api.clipSources(channelId)
       setClipSources(data)
-      if (!selectedClipSource && data.length > 0) {
+      if (data.length > 0) {
         setSelectedClipSource(data[0].transcriptPath)
         loadSavedClips(data[0].transcriptPath)
+      } else {
+        setSelectedClipSource('')
+        setClipCandidates([])
       }
     } catch (e) {
       handleApiError(e)
@@ -303,6 +306,7 @@ export default function App() {
     try {
       const job = await api.clipSourceFromUrl({
         url: clipUrl.trim(),
+        channelId: activeChannelId,
         cookiesFile: clipUrlCookies.trim() || undefined,
       })
       insertOrUpdateJob(job)
@@ -323,7 +327,7 @@ export default function App() {
       }
 
       setClipSourceStatus('Transcripcion lista. Buscando clips...')
-      const sources = await api.clipSources()
+      const sources = await api.clipSources(activeChannelId)
       setClipSources(sources)
       const newest = sources[0]
       if (!newest) {
@@ -649,6 +653,7 @@ export default function App() {
       setChannelDraft({ name: activeChannel.name, language: activeChannel.language, seoRules: activeChannel.seoRules })
       setYtStatus(null)
       refreshYoutubeStatus(activeChannel.id)
+      refreshClipSources(activeChannel.id)
     }
   }, [activeChannelId])
 
@@ -1197,7 +1202,7 @@ export default function App() {
               <button className="primary" disabled={isDetectingClips || !selectedClipSource} onClick={handleDetectClips}>
                 {isDetectingClips ? 'Analizando transcripcion...' : 'Detectar clips virales'}
               </button>
-              <button onClick={refreshClipSources}>Recargar videos</button>
+              <button onClick={() => refreshClipSources()}>Recargar videos</button>
             </div>
 
             {clipCandidates.length > 0 && (

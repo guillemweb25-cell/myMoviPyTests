@@ -100,11 +100,22 @@ class ChannelUpdateRequest(BaseModel):
 
 class ClipSourceFromUrlRequest(BaseModel):
     url: str = Field(..., description="URL del video a descargar")
+    channelId: int | None = None
     browser: str | None = None
     cookiesFile: str | None = None
     ffmpeg: str | None = None
     lang: str = Field(default="auto")
     subtitleFormat: str = Field(default="vtt")
+
+
+def channel_slug(name: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", name.strip().lower())
+    return cleaned.strip("-") or "canal"
+
+
+def channel_output_rel(channel: dict) -> str:
+    """Carpeta relativa de output para un canal: output/0002-slug."""
+    return f"output/{channel['id']:04d}-{channel_slug(channel['name'])}"
 
 
 class RenderClipRequest(BaseModel):
@@ -645,6 +656,11 @@ def clip_source_from_url(payload: ClipSourceFromUrlRequest) -> dict:
     if not payload.url.strip():
         raise HTTPException(status_code=400, detail="La URL es obligatoria")
     args = ["--url", payload.url.strip(), "--lang", payload.lang, "--format", payload.subtitleFormat]
+    if payload.channelId is not None:
+        channel = db.get_channel(payload.channelId)
+        if not channel:
+            raise HTTPException(status_code=404, detail="Canal no encontrado")
+        args.extend(["--outbase", channel_output_rel(channel)])
     if payload.browser:
         args.extend(["--browser", payload.browser])
     if payload.cookiesFile:
@@ -655,9 +671,14 @@ def clip_source_from_url(payload: ClipSourceFromUrlRequest) -> dict:
 
 
 @app.get("/api/clips/sources")
-def list_clip_sources() -> list[dict]:
-    """Lista carpetas de output que tienen un video y una transcripcion .vtt/.srt."""
+def list_clip_sources(channelId: int | None = None) -> list[dict]:
+    """Lista carpetas con video + transcripcion. Si se pasa channelId, solo las
+    de la carpeta de ese canal."""
     output_root = ROOT_DIR / "output"
+    if channelId is not None:
+        channel = db.get_channel(channelId)
+        if channel:
+            output_root = ROOT_DIR / channel_output_rel(channel)
     if not output_root.exists():
         return []
 

@@ -99,8 +99,9 @@ export const api = {
     })
     return handle<{ hasSecret: boolean }>(response)
   },
-  clipSources: () => getJson<ClipSource[]>('/api/clips/sources'),
-  clipSourceFromUrl: (payload: { url: string; browser?: string; cookiesFile?: string; lang?: string; subtitleFormat?: string }) =>
+  clipSources: (channelId?: number | null) =>
+    getJson<ClipSource[]>(channelId != null ? `/api/clips/sources?channelId=${channelId}` : '/api/clips/sources'),
+  clipSourceFromUrl: (payload: { url: string; channelId?: number | null; browser?: string; cookiesFile?: string; lang?: string; subtitleFormat?: string }) =>
     postJson<Job>('/api/clips/source-from-url', payload),
   detectClips: (transcriptPath: string, count: number, minDuration: number, maxDuration: number) =>
     postJson<DetectClipsResponse>('/api/clips/detect', { transcriptPath, count, minDuration, maxDuration }),

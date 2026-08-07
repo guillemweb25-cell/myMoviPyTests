@@ -28,7 +28,7 @@ def get_video_title(url: str, browser=None, cookies_file=None) -> str:
     return info["title"]
 
 
-def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None):
+def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None, outbase="output"):
 
     # 1) TÍTULO (con fallback KVS si yt-dlp no reconoce el reproductor)
     kvs_formats = None
@@ -44,7 +44,7 @@ def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None):
     # 2) FECHA
     today = datetime.now().strftime("%Y-%m-%d")
     folder_name = f"{today}-{clean}"
-    out_dir = os.path.join("output", folder_name)
+    out_dir = os.path.join(outbase, folder_name)
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "source_url.txt"), "w", encoding="utf-8") as handle:
         handle.write(url)
