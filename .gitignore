@@ -70,6 +70,9 @@ storyblocks
 cookies/*
 !cookies/README.md
 
+# Credenciales YouTube por canal (client_secret.json + token.json)
+youtube_creds/
+
 venvubuntu/
 
 *.txt

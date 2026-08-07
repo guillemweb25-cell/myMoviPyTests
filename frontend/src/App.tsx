@@ -64,6 +64,8 @@ export default function App() {
   const [channels, setChannels] = useState<Channel[]>([])
   const [activeChannelId, setActiveChannelId] = useState<number | null>(null)
   const [channelDraft, setChannelDraft] = useState<{ name: string; language: string; seoRules: string }>({ name: '', language: 'es', seoRules: '' })
+  const [ytStatus, setYtStatus] = useState<{ hasSecret: boolean; linked: boolean; channelName: string } | null>(null)
+  const [isUploadingSecret, setIsUploadingSecret] = useState(false)
 
   const [clipSources, setClipSources] = useState<ClipSource[]>([])
   const [selectedClipSource, setSelectedClipSource] = useState('')
@@ -194,6 +196,38 @@ export default function App() {
       setChannels((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
       setCopyFeedback('Canal guardado')
       window.setTimeout(() => setCopyFeedback(''), 1500)
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  async function refreshYoutubeStatus(channelId: number) {
+    try {
+      setYtStatus(await api.youtubeStatus(channelId))
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  async function handleUploadSecret(file: File | null) {
+    if (!file || activeChannelId === null) return
+    setIsUploadingSecret(true)
+    setError('')
+    try {
+      await api.uploadYoutubeSecret(activeChannelId, file)
+      await refreshYoutubeStatus(activeChannelId)
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setIsUploadingSecret(false)
+    }
+  }
+
+  async function handleLinkYoutube() {
+    if (activeChannelId === null) return
+    try {
+      const { authUrl } = await api.youtubeAuthUrl(activeChannelId)
+      window.location.href = authUrl
     } catch (e) {
       handleApiError(e)
     }
@@ -613,8 +647,25 @@ export default function App() {
   useEffect(() => {
     if (activeChannel) {
       setChannelDraft({ name: activeChannel.name, language: activeChannel.language, seoRules: activeChannel.seoRules })
+      setYtStatus(null)
+      refreshYoutubeStatus(activeChannel.id)
     }
   }, [activeChannelId])
+
+  // Retorno del OAuth de YouTube: Google redirige a /?youtube=ok|error.
+  useEffect(() => {
+    if (authState !== 'authed') return
+    const params = new URLSearchParams(window.location.search)
+    const yt = params.get('youtube')
+    if (yt === 'ok') {
+      setActiveSection('channel')
+      refreshChannels()
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (yt === 'error') {
+      setError('No se pudo vincular con YouTube. Revisa el client_secret y el redirect autorizado.')
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [authState])
 
   const selectedScriptInfo = useMemo(
     () => scripts.find((s) => s.name === selectedScript),
@@ -1213,11 +1264,38 @@ export default function App() {
 
                 <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
                 <h3>YouTube</h3>
-                <p className="description">
-                  {activeChannel.youtubeLinked
-                    ? `Cuenta vinculada: ${activeChannel.youtubeName || 'YouTube'}`
-                    : 'Vinculacion con YouTube (proximamente): subir client_secret.json y autorizar con Google para publicar los clips con SEO.'}
-                </p>
+                {ytStatus?.linked ? (
+                  <p className="description">✅ Cuenta vinculada: {ytStatus.channelName || activeChannel.youtubeName || 'YouTube'}</p>
+                ) : (
+                  <>
+                    <p className="description">
+                      1. Sube el <strong>client_secret.json</strong> del proyecto de Google:
+                    </p>
+                    <div className="actions-row">
+                      <input
+                        type="file"
+                        accept="application/json,.json"
+                        onChange={(e) => handleUploadSecret(e.target.files?.[0] ?? null)}
+                      />
+                      {isUploadingSecret && <span className="help">Subiendo...</span>}
+                      {ytStatus?.hasSecret && <span className="help">✅ client_secret cargado</span>}
+                    </div>
+                    <p className="description">2. Autoriza la cuenta con Google:</p>
+                    <div className="actions-row">
+                      <button
+                        className="primary"
+                        disabled={!ytStatus?.hasSecret}
+                        onClick={handleLinkYoutube}
+                      >
+                        Vincular con Google
+                      </button>
+                    </div>
+                    <p className="help">
+                      Redirect OAuth: <code>https://mymovi.enguillem.es/api/youtube/callback</code> (debe estar
+                      autorizado en el proyecto de Google Cloud).
+                    </p>
+                  </>
+                )}
               </>
             ) : (
               <div className="empty-preview">

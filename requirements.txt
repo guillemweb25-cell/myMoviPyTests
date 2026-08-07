@@ -1,6 +1,8 @@
 yt-dlp
 curl_cffi
 openai
+google-auth-oauthlib
+google-api-python-client
 ffmpeg-python
 assemblyai
 python-decouple

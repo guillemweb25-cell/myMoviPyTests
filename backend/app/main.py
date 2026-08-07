@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import shlex
@@ -17,7 +18,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import db
@@ -38,7 +39,13 @@ CONVERT_TO_MP3_EXTENSIONS = {".ogg", ".oga", ".opus"}
 # Token de acceso. Si MEDIA_OPS_TOKEN no esta definido, la auth queda desactivada
 # (modo desarrollo). Rutas publicas que nunca exigen token:
 ACCESS_TOKEN = os.getenv("MEDIA_OPS_TOKEN", "").strip()
-PUBLIC_PATHS = {"/api/health", "/docs", "/openapi.json", "/redoc"}
+# El callback de YouTube lo invoca el navegador redirigido por Google, sin token.
+PUBLIC_PATHS = {"/api/health", "/docs", "/openapi.json", "/redoc", "/api/youtube/callback"}
+
+# URL publica de la app (para construir el redirect de OAuth de YouTube).
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://mymovi.enguillem.es").rstrip("/")
+YOUTUBE_REDIRECT_URI = f"{PUBLIC_BASE_URL}/api/youtube/callback"
+YOUTUBE_CREDS_DIR = ROOT_DIR / "youtube_creds"
 
 
 def get_allowed_origins() -> list[str]:
@@ -568,6 +575,69 @@ def delete_channel_endpoint(channel_id: int) -> dict:
         raise HTTPException(status_code=404, detail="Canal no encontrado")
     db.delete_channel(channel_id)
     return {"deleted": channel_id}
+
+
+@app.get("/api/youtube/{channel_id}/status")
+def youtube_status(channel_id: int) -> dict:
+    from .services.youtube_service import YouTubeService
+
+    channel = db.get_channel(channel_id)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
+    service = YouTubeService(channel_id, YOUTUBE_CREDS_DIR)
+    return {
+        "hasSecret": service.has_secret(),
+        "linked": bool(channel["youtubeLinked"]),
+        "channelName": channel["youtubeName"],
+    }
+
+
+@app.post("/api/youtube/{channel_id}/secret")
+async def upload_youtube_secret(channel_id: int, file: UploadFile = File(...)) -> dict:
+    from .services.youtube_service import YouTubeService
+
+    if not db.get_channel(channel_id):
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
+    content = await file.read()
+    await file.close()
+    service = YouTubeService(channel_id, YOUTUBE_CREDS_DIR)
+    try:
+        service.save_secret(content)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=f"client_secret.json invalido: {exc}") from exc
+    return {"hasSecret": True}
+
+
+@app.get("/api/youtube/{channel_id}/auth-url")
+def youtube_auth_url(channel_id: int) -> dict:
+    from .services.youtube_service import YouTubeService
+
+    if not db.get_channel(channel_id):
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
+    service = YouTubeService(channel_id, YOUTUBE_CREDS_DIR)
+    try:
+        url = service.get_auth_url(YOUTUBE_REDIRECT_URI)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail="Sube primero el client_secret.json del canal.") from exc
+    return {"authUrl": url, "redirectUri": YOUTUBE_REDIRECT_URI}
+
+
+@app.get("/api/youtube/callback")
+def youtube_callback(code: str = "", state: str = "", error: str = ""):
+    from .services.youtube_service import YouTubeService
+
+    if error or not code or not state:
+        return RedirectResponse(f"{PUBLIC_BASE_URL}/?youtube=error")
+    try:
+        channel_id = int(state)
+        service = YouTubeService(channel_id, YOUTUBE_CREDS_DIR)
+        service.finish_oauth(code, YOUTUBE_REDIRECT_URI)
+        info = service.get_channel_info()
+        yt_name = info["snippet"]["title"] if info else ""
+        db.update_channel(channel_id, {"youtube_linked": 1, "youtube_name": yt_name})
+    except Exception:  # noqa: BLE001
+        return RedirectResponse(f"{PUBLIC_BASE_URL}/?youtube=error")
+    return RedirectResponse(f"{PUBLIC_BASE_URL}/?youtube=ok")
 
 
 @app.post("/api/clips/source-from-url")

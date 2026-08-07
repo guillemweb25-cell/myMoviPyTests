@@ -85,6 +85,20 @@ export const api = {
   updateChannel: (id: number, payload: { name?: string; language?: string; seoRules?: string }) =>
     patchJson<Channel>(`/api/channels/${id}`, payload),
   deleteChannel: (id: number) => del<{ deleted: number }>(`/api/channels/${id}`),
+  youtubeStatus: (channelId: number) =>
+    getJson<{ hasSecret: boolean; linked: boolean; channelName: string }>(`/api/youtube/${channelId}/status`),
+  youtubeAuthUrl: (channelId: number) =>
+    getJson<{ authUrl: string; redirectUri: string }>(`/api/youtube/${channelId}/auth-url`),
+  uploadYoutubeSecret: async (channelId: number, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await fetch(`/api/youtube/${channelId}/secret`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: formData,
+    })
+    return handle<{ hasSecret: boolean }>(response)
+  },
   clipSources: () => getJson<ClipSource[]>('/api/clips/sources'),
   clipSourceFromUrl: (payload: { url: string; browser?: string; cookiesFile?: string; lang?: string; subtitleFormat?: string }) =>
     postJson<Job>('/api/clips/source-from-url', payload),
