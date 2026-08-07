@@ -79,6 +79,18 @@ class DetectClipsRequest(BaseModel):
     maxDuration: int = Field(default=60, ge=10, le=180)
 
 
+class ChannelCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    language: str = Field(default="es")
+    seoRules: str = Field(default="")
+
+
+class ChannelUpdateRequest(BaseModel):
+    name: str | None = None
+    language: str | None = None
+    seoRules: str | None = None
+
+
 class ClipSourceFromUrlRequest(BaseModel):
     url: str = Field(..., description="URL del video a descargar")
     browser: str | None = None
@@ -523,6 +535,39 @@ def find_duplicate_content(url: str) -> dict:
         "normalizedUrl": normalized_target,
         "matches": sorted(matches, key=lambda item: item["folder"], reverse=True),
     }
+
+
+@app.get("/api/channels")
+def list_channels_endpoint() -> list[dict]:
+    return db.list_channels()
+
+
+@app.post("/api/channels")
+def create_channel_endpoint(payload: ChannelCreateRequest) -> dict:
+    return db.create_channel(payload.name.strip(), payload.language, payload.seoRules, now_iso())
+
+
+@app.patch("/api/channels/{channel_id}")
+def update_channel_endpoint(channel_id: int, payload: ChannelUpdateRequest) -> dict:
+    fields: dict = {}
+    if payload.name is not None:
+        fields["name"] = payload.name.strip()
+    if payload.language is not None:
+        fields["language"] = payload.language
+    if payload.seoRules is not None:
+        fields["seo_rules"] = payload.seoRules
+    channel = db.update_channel(channel_id, fields)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
+    return channel
+
+
+@app.delete("/api/channels/{channel_id}")
+def delete_channel_endpoint(channel_id: int) -> dict:
+    if not db.get_channel(channel_id):
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
+    db.delete_channel(channel_id)
+    return {"deleted": channel_id}
 
 
 @app.post("/api/clips/source-from-url")

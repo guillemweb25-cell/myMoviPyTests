@@ -42,6 +42,16 @@ export type UploadTranscriptionResponse = {
   job: Job
 }
 
+export type Channel = {
+  id: number
+  name: string
+  language: string
+  seoRules: string
+  youtubeLinked: boolean
+  youtubeName: string
+  createdAt: string
+}
+
 export type ClipSource = {
   folder: string
   name: string

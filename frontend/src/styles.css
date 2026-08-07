@@ -104,6 +104,72 @@ nav {
   color: #f8fafc;
 }
 
+.channels-block {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.channels-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #94a3b8;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.channel-add {
+  border: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+  border-radius: 8px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.channels-empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.channel-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.channel-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(20, 184, 166, 0.26);
+  color: #f8fafc;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.channel-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-yt {
+  color: #f87171;
+  font-size: 11px;
+}
+
 .main-content {
   padding: 22px;
   display: flex;

@@ -1,4 +1,18 @@
-import type { ClipCandidate, ClipSource, ComfyStatus, ContentJobRequest, DetectClipsResponse, FileEntry, Job, ScriptInfo, UploadTranscriptionResponse } from './types'
+import type { Channel, ClipCandidate, ClipSource, ComfyStatus, ContentJobRequest, DetectClipsResponse, FileEntry, Job, ScriptInfo, UploadTranscriptionResponse } from './types'
+
+async function patchJson<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  })
+  return handle<T>(response)
+}
+
+async function del<T>(url: string): Promise<T> {
+  const response = await fetch(url, { method: 'DELETE', headers: authHeaders() })
+  return handle<T>(response)
+}
 
 const TOKEN_KEY = 'mediaops_token'
 
@@ -65,6 +79,12 @@ export const api = {
   comfyStatus: () => getJson<ComfyStatus>('/api/comfy/status'),
   runJob: (script: string, rawArgs: string) => postJson<Job>('/api/jobs', { script, rawArgs }),
   runContentJob: (payload: ContentJobRequest) => postJson<Job>('/api/content/jobs', payload),
+  channels: () => getJson<Channel[]>('/api/channels'),
+  createChannel: (payload: { name: string; language: string; seoRules?: string }) =>
+    postJson<Channel>('/api/channels', payload),
+  updateChannel: (id: number, payload: { name?: string; language?: string; seoRules?: string }) =>
+    patchJson<Channel>(`/api/channels/${id}`, payload),
+  deleteChannel: (id: number) => del<{ deleted: number }>(`/api/channels/${id}`),
   clipSources: () => getJson<ClipSource[]>('/api/clips/sources'),
   clipSourceFromUrl: (payload: { url: string; browser?: string; cookiesFile?: string; lang?: string; subtitleFormat?: string }) =>
     postJson<Job>('/api/clips/source-from-url', payload),

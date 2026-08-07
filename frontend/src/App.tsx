@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, clearToken, getToken, setToken, UnauthorizedError } from './api'
-import type { ClipCandidate, ClipSource, ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
+import type { Channel, ClipCandidate, ClipSource, ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
 
-type Section = 'dashboard' | 'content' | 'clipping' | 'execute' | 'jobs' | 'files'
+type Section = 'dashboard' | 'content' | 'clipping' | 'channel' | 'execute' | 'jobs' | 'files'
 
 const sections: { id: Section; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -60,6 +60,10 @@ export default function App() {
   const [uploadLang, setUploadLang] = useState('auto')
   const [uploadSubtitleFormat, setUploadSubtitleFormat] = useState<'vtt' | 'srt'>('vtt')
   const [isUploadingAndTranscribing, setIsUploadingAndTranscribing] = useState(false)
+
+  const [channels, setChannels] = useState<Channel[]>([])
+  const [activeChannelId, setActiveChannelId] = useState<number | null>(null)
+  const [channelDraft, setChannelDraft] = useState<{ name: string; language: string; seoRules: string }>({ name: '', language: 'es', seoRules: '' })
 
   const [clipSources, setClipSources] = useState<ClipSource[]>([])
   const [selectedClipSource, setSelectedClipSource] = useState('')
@@ -149,6 +153,63 @@ export default function App() {
       setCookieEntries(data.items.filter((item) => !item.isDir))
     } catch {
       setCookieEntries([])
+    }
+  }
+
+  async function refreshChannels() {
+    try {
+      const data = await api.channels()
+      setChannels(data)
+      if (activeChannelId === null && data.length > 0) {
+        setActiveChannelId(data[0].id)
+      }
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  async function handleCreateChannel() {
+    const name = window.prompt('Nombre del canal:')
+    if (!name || !name.trim()) return
+    try {
+      const channel = await api.createChannel({ name: name.trim(), language: 'es' })
+      setChannels((prev) => [...prev, channel])
+      setActiveChannelId(channel.id)
+      setChannelDraft({ name: channel.name, language: channel.language, seoRules: channel.seoRules })
+      setActiveSection('channel')
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  function handleSelectChannel(channel: Channel) {
+    setActiveChannelId(channel.id)
+    setActiveSection('clipping')
+  }
+
+  async function handleSaveChannel() {
+    if (activeChannelId === null) return
+    try {
+      const updated = await api.updateChannel(activeChannelId, channelDraft)
+      setChannels((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      setCopyFeedback('Canal guardado')
+      window.setTimeout(() => setCopyFeedback(''), 1500)
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  async function handleDeleteChannel() {
+    if (activeChannelId === null) return
+    if (!window.confirm('¿Eliminar este canal?')) return
+    try {
+      await api.deleteChannel(activeChannelId)
+      const remaining = channels.filter((c) => c.id !== activeChannelId)
+      setChannels(remaining)
+      setActiveChannelId(remaining.length > 0 ? remaining[0].id : null)
+      setActiveSection('clipping')
+    } catch (e) {
+      handleApiError(e)
     }
   }
 
@@ -498,6 +559,7 @@ export default function App() {
     refreshCookies()
     refreshComfyStatus()
     refreshClipSources()
+    refreshChannels()
   }, [authState])
 
   useEffect(() => {
@@ -542,6 +604,17 @@ export default function App() {
       source?.close()
     }
   }, [authState, selectedJobId, selectedJobStatus])
+
+  const activeChannel = useMemo(
+    () => channels.find((c) => c.id === activeChannelId) ?? null,
+    [channels, activeChannelId],
+  )
+
+  useEffect(() => {
+    if (activeChannel) {
+      setChannelDraft({ name: activeChannel.name, language: activeChannel.language, seoRules: activeChannel.seoRules })
+    }
+  }, [activeChannelId])
 
   const selectedScriptInfo = useMemo(
     () => scripts.find((s) => s.name === selectedScript),
@@ -743,6 +816,27 @@ export default function App() {
             </button>
           ))}
         </nav>
+
+        <div className="channels-block">
+          <div className="channels-head">
+            <span>CANALES</span>
+            <button className="channel-add" title="Nuevo canal" onClick={handleCreateChannel}>＋</button>
+          </div>
+          <nav>
+            {channels.length === 0 && <p className="channels-empty">Sin canales todavia</p>}
+            {channels.map((channel) => (
+              <button
+                key={channel.id}
+                className={channel.id === activeChannelId ? 'nav-btn channel-btn active' : 'nav-btn channel-btn'}
+                onClick={() => handleSelectChannel(channel)}
+              >
+                <span className="channel-avatar">{channel.name.charAt(0).toUpperCase()}</span>
+                <span className="channel-name">{channel.name}</span>
+                {channel.youtubeLinked && <span className="channel-yt" title="YouTube vinculado">▶</span>}
+              </button>
+            ))}
+          </nav>
+        </div>
       </aside>
 
       <main className="main-content">
@@ -948,7 +1042,14 @@ export default function App() {
 
         {activeSection === 'clipping' && (
           <section className="panel">
-            <h3>Clipping — clips verticales virales</h3>
+            <div className="viewer-header">
+              <h3>Clipping — clips verticales virales</h3>
+              {activeChannel && (
+                <button className="panel-link panel-link-button" onClick={() => setActiveSection('channel')}>
+                  Canal: {activeChannel.name} ({activeChannel.language}) ⚙
+                </button>
+              )}
+            </div>
             <p className="description">
               Elige un video con transcripcion (o descarga uno nuevo desde una URL). La IA propone los
               mejores momentos y los conviertes en clips verticales 1080×1920 (pantalla partida) con
@@ -1077,6 +1178,51 @@ export default function App() {
                     </article>
                   )
                 })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeSection === 'channel' && (
+          <section className="panel">
+            {activeChannel ? (
+              <>
+                <h3>Configuracion del canal: {activeChannel.name}</h3>
+                <div className="form-grid">
+                  <label className="field span-2">
+                    <span>Nombre</span>
+                    <input value={channelDraft.name} onChange={(e) => setChannelDraft({ ...channelDraft, name: e.target.value })} />
+                  </label>
+                  <label className="field">
+                    <span>Idioma (para SEO/subtitulos)</span>
+                    <select value={channelDraft.language} onChange={(e) => setChannelDraft({ ...channelDraft, language: e.target.value })}>
+                      <option value="es">Espanol</option>
+                      <option value="en">Ingles</option>
+                    </select>
+                  </label>
+                  <label className="field span-2">
+                    <span>Reglas SEO del canal (titulos, descripcion, tags)</span>
+                    <textarea rows={4} value={channelDraft.seoRules} onChange={(e) => setChannelDraft({ ...channelDraft, seoRules: e.target.value })} placeholder="Ej: titulos con curiosidad, incluir hashtag #tarot, tono misterioso..." />
+                  </label>
+                </div>
+                <div className="actions-row">
+                  <button className="primary" onClick={handleSaveChannel}>{copyFeedback || 'Guardar canal'}</button>
+                  <button onClick={() => setActiveSection('clipping')}>Ir a Clipping</button>
+                  <button onClick={handleDeleteChannel}>Eliminar canal</button>
+                </div>
+
+                <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
+                <h3>YouTube</h3>
+                <p className="description">
+                  {activeChannel.youtubeLinked
+                    ? `Cuenta vinculada: ${activeChannel.youtubeName || 'YouTube'}`
+                    : 'Vinculacion con YouTube (proximamente): subir client_secret.json y autorizar con Google para publicar los clips con SEO.'}
+                </p>
+              </>
+            ) : (
+              <div className="empty-preview">
+                <h3>Canales</h3>
+                <p className="description">Crea un canal con el boton ＋ de la barra lateral.</p>
               </div>
             )}
           </section>

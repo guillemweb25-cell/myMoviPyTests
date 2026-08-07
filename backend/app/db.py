@@ -44,6 +44,15 @@ CREATE TABLE IF NOT EXISTS clips (
     created_at      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_path);
+CREATE TABLE IF NOT EXISTS channels (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT NOT NULL,
+    language       TEXT DEFAULT 'es',
+    seo_rules      TEXT DEFAULT '',
+    youtube_linked INTEGER DEFAULT 0,
+    youtube_name   TEXT DEFAULT '',
+    created_at     TEXT
+);
 """
 
 
@@ -181,3 +190,56 @@ def load_clips(transcript_path: str) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def _channel_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "language": row["language"],
+        "seoRules": row["seo_rules"],
+        "youtubeLinked": bool(row["youtube_linked"]),
+        "youtubeName": row["youtube_name"],
+        "createdAt": row["created_at"],
+    }
+
+
+def create_channel(name: str, language: str, seo_rules: str, created_at: str) -> dict:
+    with _db_lock, _connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO channels (name, language, seo_rules, created_at) VALUES (?, ?, ?, ?)",
+            (name, language, seo_rules, created_at),
+        )
+        channel_id = cursor.lastrowid
+        row = conn.execute("SELECT * FROM channels WHERE id = ?", (channel_id,)).fetchone()
+    return _channel_to_dict(row)
+
+
+def list_channels() -> list[dict]:
+    with _db_lock, _connect() as conn:
+        rows = conn.execute("SELECT * FROM channels ORDER BY id").fetchall()
+    return [_channel_to_dict(row) for row in rows]
+
+
+def get_channel(channel_id: int) -> dict | None:
+    with _db_lock, _connect() as conn:
+        row = conn.execute("SELECT * FROM channels WHERE id = ?", (channel_id,)).fetchone()
+    return _channel_to_dict(row) if row else None
+
+
+def update_channel(channel_id: int, fields: dict) -> dict | None:
+    allowed = {"name", "language", "seo_rules", "youtube_linked", "youtube_name"}
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    if updates:
+        assignments = ", ".join(f"{key} = ?" for key in updates)
+        with _db_lock, _connect() as conn:
+            conn.execute(
+                f"UPDATE channels SET {assignments} WHERE id = ?",
+                (*updates.values(), channel_id),
+            )
+    return get_channel(channel_id)
+
+
+def delete_channel(channel_id: int) -> None:
+    with _db_lock, _connect() as conn:
+        conn.execute("DELETE FROM channels WHERE id = ?", (channel_id,))
