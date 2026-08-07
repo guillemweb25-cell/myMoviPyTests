@@ -81,13 +81,13 @@ def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None):
 
     print(f"➡️ Descargando vídeo: {title}")
 
-    # 4) DESCARGA
+    # 4) DESCARGA. Devuelve (ruta_video, carpeta).
     if kvs_formats:
         best = kvs_formats[-1]
         print(f"Descargando vídeo (KVS {best['format_id']})")
-        download_direct(best["url"], url, out_dir, clean, ffmpeg_path=ffmpeg_path)
+        video_path = download_direct(best["url"], url, out_dir, clean, ffmpeg_path=ffmpeg_path)
         print(f"✅ Vídeo guardado en: {out_dir}")
-        return
+        return str(video_path), out_dir
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
@@ -98,14 +98,27 @@ def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None):
             print("Sitio KVS detectado; usando extraccion directa (fallback).")
             _, kvs_formats = extract_kvs(url, cookies_file)
             best = kvs_formats[-1]
-            download_direct(best["url"], url, out_dir, clean, ffmpeg_path=ffmpeg_path)
+            video_path = download_direct(best["url"], url, out_dir, clean, ffmpeg_path=ffmpeg_path)
             print(f"✅ Vídeo guardado en: {out_dir}")
-            return
+            return str(video_path), out_dir
         if "Sign in to confirm you're not a bot" in msg and not browser:
             print("⚠️ YouTube pide login. Usa --browser chrome / firefox / brave")
         raise SystemExit(1)
 
     print(f"✅ Vídeo guardado en: {out_dir}")
+    return _newest_video(out_dir), out_dir
+
+
+def _newest_video(out_dir: str):
+    import glob
+    videos = [
+        path
+        for ext in ("mp4", "mkv", "webm", "mov")
+        for path in glob.glob(os.path.join(out_dir, f"*.{ext}"))
+    ]
+    if not videos:
+        return None
+    return max(videos, key=os.path.getmtime)
 
 
 if __name__ == "__main__":

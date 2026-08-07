@@ -65,6 +65,8 @@ export const api = {
   runJob: (script: string, rawArgs: string) => postJson<Job>('/api/jobs', { script, rawArgs }),
   runContentJob: (payload: ContentJobRequest) => postJson<Job>('/api/content/jobs', payload),
   clipSources: () => getJson<ClipSource[]>('/api/clips/sources'),
+  clipSourceFromUrl: (payload: { url: string; browser?: string; cookiesFile?: string; lang?: string; subtitleFormat?: string }) =>
+    postJson<Job>('/api/clips/source-from-url', payload),
   detectClips: (transcriptPath: string, count: number, minDuration: number, maxDuration: number) =>
     postJson<DetectClipsResponse>('/api/clips/detect', { transcriptPath, count, minDuration, maxDuration }),
   renderClip: (payload: { video: string; start: number; end: number; subtitles: boolean; topRatio: number; title?: string }) =>

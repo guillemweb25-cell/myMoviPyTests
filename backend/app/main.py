@@ -79,6 +79,15 @@ class DetectClipsRequest(BaseModel):
     maxDuration: int = Field(default=60, ge=10, le=180)
 
 
+class ClipSourceFromUrlRequest(BaseModel):
+    url: str = Field(..., description="URL del video a descargar")
+    browser: str | None = None
+    cookiesFile: str | None = None
+    ffmpeg: str | None = None
+    lang: str = Field(default="auto")
+    subtitleFormat: str = Field(default="vtt")
+
+
 class RenderClipRequest(BaseModel):
     video: str = Field(..., description="Ruta al video dentro del workspace")
     start: float = Field(..., description="Inicio en segundos")
@@ -512,6 +521,20 @@ def find_duplicate_content(url: str) -> dict:
         "normalizedUrl": normalized_target,
         "matches": sorted(matches, key=lambda item: item["folder"], reverse=True),
     }
+
+
+@app.post("/api/clips/source-from-url")
+def clip_source_from_url(payload: ClipSourceFromUrlRequest) -> dict:
+    if not payload.url.strip():
+        raise HTTPException(status_code=400, detail="La URL es obligatoria")
+    args = ["--url", payload.url.strip(), "--lang", payload.lang, "--format", payload.subtitleFormat]
+    if payload.browser:
+        args.extend(["--browser", payload.browser])
+    if payload.cookiesFile:
+        args.extend(["--cookies", payload.cookiesFile])
+    if payload.ffmpeg:
+        args.extend(["--ffmpeg", payload.ffmpeg])
+    return enqueue_job("download_and_transcribe_video.py", args)
 
 
 @app.get("/api/clips/sources")

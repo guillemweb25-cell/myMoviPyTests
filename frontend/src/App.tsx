@@ -67,6 +67,9 @@ export default function App() {
   const [clipCount, setClipCount] = useState(5)
   const [clipSubtitles, setClipSubtitles] = useState(true)
   const [clipTopRatio, setClipTopRatio] = useState(0.7)
+  const [clipUrl, setClipUrl] = useState('')
+  const [clipUrlCookies, setClipUrlCookies] = useState('')
+  const [isPreparingSource, setIsPreparingSource] = useState(false)
   const [isDetectingClips, setIsDetectingClips] = useState(false)
   const [renderingClipKey, setRenderingClipKey] = useState('')
 
@@ -155,6 +158,30 @@ export default function App() {
       }
     } catch (e) {
       handleApiError(e)
+    }
+  }
+
+  async function handlePrepareClipSource() {
+    if (!clipUrl.trim()) {
+      setError('Pega una URL de video para descargar y transcribir.')
+      return
+    }
+    setIsPreparingSource(true)
+    setError('')
+    try {
+      const job = await api.clipSourceFromUrl({
+        url: clipUrl.trim(),
+        cookiesFile: clipUrlCookies.trim() || undefined,
+      })
+      insertOrUpdateJob(job)
+      setSelectedJobId(job.id)
+      setSelectedLog('Descargando y transcribiendo el video para clipping...')
+      setClipUrl('')
+      setActiveSection('jobs')
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setIsPreparingSource(false)
     }
   }
 
@@ -871,9 +898,40 @@ export default function App() {
           <section className="panel">
             <h3>Clipping — clips verticales virales</h3>
             <p className="description">
-              Elige un video con transcripcion. La IA propone los mejores momentos y los conviertes en
-              clips verticales 1080×1920 (pantalla partida) con subtitulos karaoke opcionales.
+              Elige un video con transcripcion (o descarga uno nuevo desde una URL). La IA propone los
+              mejores momentos y los conviertes en clips verticales 1080×1920 (pantalla partida) con
+              subtitulos karaoke opcionales.
             </p>
+
+            <div className="form-grid">
+              <label className="field span-2">
+                <span>Descargar y preparar desde URL</span>
+                <input
+                  type="url"
+                  placeholder="https://... (descarga el video y lo transcribe)"
+                  value={clipUrl}
+                  onChange={(e) => setClipUrl(e.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>Cookies (opcional)</span>
+                <select value={clipUrlCookies} onChange={(e) => setClipUrlCookies(e.target.value)}>
+                  <option value="">sin cookies</option>
+                  {cookieEntries.map((item) => (
+                    <option key={item.path} value={item.path}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="field" style={{ justifyContent: 'flex-end' }}>
+                <button className="primary" disabled={isPreparingSource || !clipUrl.trim()} onClick={handlePrepareClipSource}>
+                  {isPreparingSource ? 'Enviando...' : 'Descargar y transcribir'}
+                </button>
+              </div>
+            </div>
+
+            <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
 
             <div className="form-grid">
               <label className="field span-2">
