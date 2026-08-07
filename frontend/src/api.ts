@@ -61,6 +61,7 @@ export const api = {
   health: () => getJson<{ status: string; authRequired: boolean }>('/api/health'),
   scripts: () => getJson<ScriptInfo[]>('/api/scripts'),
   jobs: () => getJson<Job[]>('/api/jobs'),
+  job: (id: string) => getJson<Job>(`/api/jobs/${id}`),
   comfyStatus: () => getJson<ComfyStatus>('/api/comfy/status'),
   runJob: (script: string, rawArgs: string) => postJson<Job>('/api/jobs', { script, rawArgs }),
   runContentJob: (payload: ContentJobRequest) => postJson<Job>('/api/content/jobs', payload),

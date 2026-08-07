@@ -70,6 +70,7 @@ export default function App() {
   const [clipUrl, setClipUrl] = useState('')
   const [clipUrlCookies, setClipUrlCookies] = useState('')
   const [isPreparingSource, setIsPreparingSource] = useState(false)
+  const [clipSourceStatus, setClipSourceStatus] = useState('')
   const [isDetectingClips, setIsDetectingClips] = useState(false)
   const [renderingClipKey, setRenderingClipKey] = useState('')
 
@@ -161,6 +162,23 @@ export default function App() {
     }
   }
 
+  async function runDetect(transcriptPath: string) {
+    setIsDetectingClips(true)
+    setError('')
+    setClipCandidates([])
+    try {
+      const data = await api.detectClips(transcriptPath, clipCount, 15, 60)
+      setClipCandidates(data.clips)
+      if (data.clips.length === 0) {
+        setError('No se detectaron clips. Prueba con otra transcripcion.')
+      }
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setIsDetectingClips(false)
+    }
+  }
+
   async function handlePrepareClipSource() {
     if (!clipUrl.trim()) {
       setError('Pega una URL de video para descargar y transcribir.')
@@ -168,17 +186,44 @@ export default function App() {
     }
     setIsPreparingSource(true)
     setError('')
+    setClipSourceStatus('Descargando y transcribiendo el video (puede tardar)...')
     try {
       const job = await api.clipSourceFromUrl({
         url: clipUrl.trim(),
         cookiesFile: clipUrlCookies.trim() || undefined,
       })
       insertOrUpdateJob(job)
-      setSelectedJobId(job.id)
-      setSelectedLog('Descargando y transcribiendo el video para clipping...')
+
+      // Espera a que el job termine sin salir de la pestana Clipping.
+      let status = job.status
+      while (status === 'queued' || status === 'running') {
+        await new Promise((resolve) => setTimeout(resolve, 3000))
+        const current = await api.job(job.id)
+        insertOrUpdateJob(current)
+        status = current.status
+      }
+
+      if (status !== 'completed') {
+        setClipSourceStatus('')
+        setError('Fallo la descarga o la transcripcion. Revisa el Historial para el detalle.')
+        return
+      }
+
+      setClipSourceStatus('Transcripcion lista. Buscando clips...')
+      const sources = await api.clipSources()
+      setClipSources(sources)
+      const newest = sources[0]
+      if (!newest) {
+        setClipSourceStatus('')
+        setError('No se encontro el video preparado. Pulsa "Recargar videos".')
+        return
+      }
+      setSelectedClipSource(newest.transcriptPath)
       setClipUrl('')
-      setActiveSection('jobs')
+      setClipSourceStatus('')
+      await runDetect(newest.transcriptPath)
     } catch (e) {
+      setClipSourceStatus('')
       handleApiError(e)
     } finally {
       setIsPreparingSource(false)
@@ -190,20 +235,7 @@ export default function App() {
       setError('Selecciona un video con transcripcion.')
       return
     }
-    setIsDetectingClips(true)
-    setError('')
-    setClipCandidates([])
-    try {
-      const data = await api.detectClips(selectedClipSource, clipCount, 15, 60)
-      setClipCandidates(data.clips)
-      if (data.clips.length === 0) {
-        setError('No se detectaron clips. Prueba con otra transcripcion.')
-      }
-    } catch (e) {
-      handleApiError(e)
-    } finally {
-      setIsDetectingClips(false)
-    }
+    await runDetect(selectedClipSource)
   }
 
   async function handleRenderClip(clip: ClipCandidate) {
@@ -926,10 +958,12 @@ export default function App() {
 
               <div className="field" style={{ justifyContent: 'flex-end' }}>
                 <button className="primary" disabled={isPreparingSource || !clipUrl.trim()} onClick={handlePrepareClipSource}>
-                  {isPreparingSource ? 'Enviando...' : 'Descargar y transcribir'}
+                  {isPreparingSource ? 'Procesando...' : 'Descargar y transcribir'}
                 </button>
               </div>
             </div>
+
+            {clipSourceStatus && <p className="help">⏳ {clipSourceStatus}</p>}
 
             <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
 
