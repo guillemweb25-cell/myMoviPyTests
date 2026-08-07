@@ -51,6 +51,7 @@ export type ClipSource = {
 }
 
 export type ClipCandidate = {
+  id?: string
   start: number
   end: number
   duration: number

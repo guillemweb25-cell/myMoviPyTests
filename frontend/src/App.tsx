@@ -158,10 +158,26 @@ export default function App() {
       setClipSources(data)
       if (!selectedClipSource && data.length > 0) {
         setSelectedClipSource(data[0].transcriptPath)
+        loadSavedClips(data[0].transcriptPath)
       }
     } catch (e) {
       handleApiError(e)
     }
+  }
+
+  async function loadSavedClips(transcriptPath: string) {
+    try {
+      const data = await api.savedClips(transcriptPath)
+      setClipCandidates(data.clips)
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  function handleSelectClipSource(transcriptPath: string) {
+    setSelectedClipSource(transcriptPath)
+    setClipCandidates([])
+    if (transcriptPath) loadSavedClips(transcriptPath)
   }
 
   async function runDetect(transcriptPath: string) {
@@ -974,7 +990,7 @@ export default function App() {
             <div className="form-grid">
               <label className="field span-2">
                 <span>Video (con transcripcion)</span>
-                <select value={selectedClipSource} onChange={(e) => { setSelectedClipSource(e.target.value); setClipCandidates([]) }}>
+                <select value={selectedClipSource} onChange={(e) => handleSelectClipSource(e.target.value)}>
                   {clipSources.length === 0 && <option value="">No hay videos con transcripcion</option>}
                   {clipSources.map((item) => (
                     <option key={item.transcriptPath} value={item.transcriptPath}>{item.name}</option>

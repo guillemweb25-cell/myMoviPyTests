@@ -605,7 +605,19 @@ def detect_clips_endpoint(payload: DetectClipsRequest) -> dict:
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Fallo la deteccion de clips: {exc}") from exc
 
-    return {"videoPath": video_path, "clips": [clip.to_dict() for clip in clips]}
+    clip_dicts = []
+    for clip in clips:
+        data = clip.to_dict()
+        data["id"] = uuid.uuid4().hex[:12]
+        clip_dicts.append(data)
+
+    db.replace_clips(payload.transcriptPath, video_path, clip_dicts, now_iso())
+    return {"videoPath": video_path, "clips": clip_dicts}
+
+
+@app.get("/api/clips/list")
+def list_saved_clips(transcriptPath: str) -> dict:
+    return {"clips": db.load_clips(transcriptPath)}
 
 
 @app.post("/api/clips/render")

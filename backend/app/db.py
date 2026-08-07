@@ -31,6 +31,19 @@ CREATE TABLE IF NOT EXISTS jobs (
     return_code INTEGER,
     log_path    TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS clips (
+    id              TEXT PRIMARY KEY,
+    transcript_path TEXT NOT NULL,
+    video_path      TEXT,
+    start           REAL NOT NULL,
+    end             REAL NOT NULL,
+    title           TEXT,
+    reason          TEXT,
+    score           INTEGER,
+    transcript      TEXT,
+    created_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_path);
 """
 
 
@@ -118,3 +131,53 @@ def load_jobs(job_factory) -> dict[str, "Job"]:
             )
 
     return result
+
+
+def replace_clips(transcript_path: str, video_path: str | None, clips: list[dict], created_at: str) -> None:
+    """Reemplaza los clips guardados de una transcripcion por el nuevo conjunto."""
+    with _db_lock, _connect() as conn:
+        conn.execute("DELETE FROM clips WHERE transcript_path = ?", (transcript_path,))
+        conn.executemany(
+            """
+            INSERT INTO clips (id, transcript_path, video_path, start, end, title,
+                               reason, score, transcript, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    clip["id"],
+                    transcript_path,
+                    video_path,
+                    clip["start"],
+                    clip["end"],
+                    clip.get("title", ""),
+                    clip.get("reason", ""),
+                    clip.get("score", 0),
+                    clip.get("transcript", ""),
+                    created_at,
+                )
+                for clip in clips
+            ],
+        )
+
+
+def load_clips(transcript_path: str) -> list[dict]:
+    """Devuelve los clips guardados de una transcripcion, mayor score primero."""
+    with _db_lock, _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM clips WHERE transcript_path = ? ORDER BY score DESC",
+            (transcript_path,),
+        ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "start": row["start"],
+            "end": row["end"],
+            "duration": round(row["end"] - row["start"], 2),
+            "title": row["title"],
+            "reason": row["reason"],
+            "score": row["score"],
+            "transcript": row["transcript"],
+        }
+        for row in rows
+    ]
