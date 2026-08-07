@@ -119,6 +119,20 @@ def channel_output_rel(channel: dict) -> str:
     return f"output/{channel['id']:04d}-{channel_slug(channel['name'])}"
 
 
+def channel_id_from_path(rel_path: str | None) -> int | None:
+    """Deduce el id de canal de una ruta output/0002-slug/..."""
+    if not rel_path:
+        return None
+    parts = Path(rel_path).parts
+    if len(parts) >= 2 and parts[0] == "output":
+        match = re.match(r"(\d{4})-", parts[1])
+        if match:
+            channel_id = int(match.group(1))
+            if db.get_channel(channel_id):
+                return channel_id
+    return None
+
+
 class ClipSettingsRequest(BaseModel):
     focus: str = Field(default="center", pattern="^(left|center|right)$")
     zoom: float = Field(default=1.0, ge=1.0, le=2.5)
@@ -806,9 +820,12 @@ def upload_clip_endpoint(clip_id: str) -> dict:
     clip = db.get_clip(clip_id)
     if not clip:
         raise HTTPException(status_code=404, detail="Clip no encontrado")
-    if not clip.get("channelId"):
+    channel_id = clip.get("channelId") or channel_id_from_path(clip.get("videoPath"))
+    if not channel_id:
         raise HTTPException(status_code=400, detail="El clip no tiene canal. Detectalo desde un canal.")
-    channel = db.get_channel(clip["channelId"])
+    if clip.get("channelId") != channel_id:
+        db.update_clip(clip_id, {"channel_id": channel_id})  # auto-repara el canal
+    channel = db.get_channel(channel_id)
     if not channel or not channel["youtubeLinked"]:
         raise HTTPException(status_code=400, detail="El canal no esta vinculado a YouTube.")
     rendered = clip.get("renderedPath") or ""

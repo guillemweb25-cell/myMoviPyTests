@@ -282,7 +282,7 @@ export default function App() {
     setError('')
     setClipCandidates([])
     try {
-      const data = await api.detectClips(transcriptPath, clipCount, 15, 60)
+      const data = await api.detectClips(transcriptPath, clipCount, 15, 60, activeChannelId)
       setClipCandidates(data.clips)
       if (data.clips.length === 0) {
         setError('No se detectaron clips. Prueba con otra transcripcion.')

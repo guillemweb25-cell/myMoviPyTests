@@ -103,8 +103,8 @@ export const api = {
     getJson<ClipSource[]>(channelId != null ? `/api/clips/sources?channelId=${channelId}` : '/api/clips/sources'),
   clipSourceFromUrl: (payload: { url: string; channelId?: number | null; browser?: string; cookiesFile?: string; lang?: string; subtitleFormat?: string }) =>
     postJson<Job>('/api/clips/source-from-url', payload),
-  detectClips: (transcriptPath: string, count: number, minDuration: number, maxDuration: number) =>
-    postJson<DetectClipsResponse>('/api/clips/detect', { transcriptPath, count, minDuration, maxDuration }),
+  detectClips: (transcriptPath: string, count: number, minDuration: number, maxDuration: number, channelId?: number | null) =>
+    postJson<DetectClipsResponse>('/api/clips/detect', { transcriptPath, channelId, count, minDuration, maxDuration }),
   savedClips: (transcriptPath: string) =>
     getJson<{ clips: ClipCandidate[] }>(`/api/clips/list?transcriptPath=${encodeURIComponent(transcriptPath)}`),
   updateClipSettings: (clipId: string, payload: { focus: string; zoom: number; topRatio: number; subtitles: boolean }) =>
