@@ -42,6 +42,29 @@ export type UploadTranscriptionResponse = {
   job: Job
 }
 
+export type ClipSource = {
+  folder: string
+  name: string
+  videoPath: string
+  transcriptPath: string
+  modifiedAt: string
+}
+
+export type ClipCandidate = {
+  start: number
+  end: number
+  duration: number
+  title: string
+  reason: string
+  score: number
+  transcript: string
+}
+
+export type DetectClipsResponse = {
+  videoPath: string | null
+  clips: ClipCandidate[]
+}
+
 export type ComfyStatus = {
   configured: boolean
   online: boolean

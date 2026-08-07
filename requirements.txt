@@ -1,5 +1,6 @@
 yt-dlp
 curl_cffi
+openai
 ffmpeg-python
 assemblyai
 python-decouple

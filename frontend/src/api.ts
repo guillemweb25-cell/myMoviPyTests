@@ -1,4 +1,4 @@
-import type { ComfyStatus, ContentJobRequest, FileEntry, Job, ScriptInfo, UploadTranscriptionResponse } from './types'
+import type { ClipSource, ComfyStatus, ContentJobRequest, DetectClipsResponse, FileEntry, Job, ScriptInfo, UploadTranscriptionResponse } from './types'
 
 const TOKEN_KEY = 'mediaops_token'
 
@@ -64,6 +64,11 @@ export const api = {
   comfyStatus: () => getJson<ComfyStatus>('/api/comfy/status'),
   runJob: (script: string, rawArgs: string) => postJson<Job>('/api/jobs', { script, rawArgs }),
   runContentJob: (payload: ContentJobRequest) => postJson<Job>('/api/content/jobs', payload),
+  clipSources: () => getJson<ClipSource[]>('/api/clips/sources'),
+  detectClips: (transcriptPath: string, count: number, minDuration: number, maxDuration: number) =>
+    postJson<DetectClipsResponse>('/api/clips/detect', { transcriptPath, count, minDuration, maxDuration }),
+  renderClip: (payload: { video: string; start: number; end: number; subtitles: boolean; topRatio: number; title?: string }) =>
+    postJson<Job>('/api/clips/render', payload),
   uploadAndTranscribe: async (
     file: File,
     folderTitle: string,

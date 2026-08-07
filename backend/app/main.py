@@ -72,6 +72,22 @@ class RunScriptRequest(BaseModel):
     rawArgs: str | None = None
 
 
+class DetectClipsRequest(BaseModel):
+    transcriptPath: str = Field(..., description="Ruta al .vtt/.srt dentro del workspace")
+    count: int = Field(default=5, ge=1, le=12)
+    minDuration: int = Field(default=15, ge=5, le=120)
+    maxDuration: int = Field(default=60, ge=10, le=180)
+
+
+class RenderClipRequest(BaseModel):
+    video: str = Field(..., description="Ruta al video dentro del workspace")
+    start: float = Field(..., description="Inicio en segundos")
+    end: float = Field(..., description="Fin en segundos")
+    subtitles: bool = Field(default=True, description="Quemar subtitulos karaoke")
+    topRatio: float = Field(default=0.7, ge=0.3, le=0.85)
+    title: str | None = None
+
+
 class CreateContentJobRequest(BaseModel):
     url: str = Field(..., description="URL del video origen")
     browser: str | None = Field(default=None, description="chrome | firefox | brave | edge")
@@ -196,6 +212,15 @@ def script_path(script_name: str) -> Path:
     if SCRIPTS_DIR.resolve() not in candidate.parents:
         raise HTTPException(status_code=400, detail="Ruta de script no permitida")
     return candidate
+
+
+def resolve_within_root(relative_path: str) -> Path:
+    target = (ROOT_DIR / relative_path).resolve()
+    if ROOT_DIR.resolve() not in target.parents and target != ROOT_DIR.resolve():
+        raise HTTPException(status_code=400, detail="Ruta no permitida")
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail=f"Fichero no encontrado: {relative_path}")
+    return target
 
 
 def enqueue_job(script_name: str, args: list[str]) -> dict:
@@ -487,6 +512,92 @@ def find_duplicate_content(url: str) -> dict:
         "normalizedUrl": normalized_target,
         "matches": sorted(matches, key=lambda item: item["folder"], reverse=True),
     }
+
+
+@app.get("/api/clips/sources")
+def list_clip_sources() -> list[dict]:
+    """Lista carpetas de output que tienen un video y una transcripcion .vtt/.srt."""
+    output_root = ROOT_DIR / "output"
+    if not output_root.exists():
+        return []
+
+    sources = []
+    for transcript in sorted(output_root.rglob("*.vtt")) + sorted(output_root.rglob("*.srt")):
+        if "/clips/" in str(transcript):
+            continue
+        video = None
+        for ext in (".mp4", ".webm", ".mkv", ".mov"):
+            candidate = transcript.with_suffix(ext)
+            if candidate.exists():
+                video = candidate
+                break
+        if not video:
+            siblings = sorted(transcript.parent.glob("*.mp4"))
+            video = siblings[0] if siblings else None
+        if not video:
+            continue
+        sources.append(
+            {
+                "folder": str(transcript.parent.relative_to(ROOT_DIR)),
+                "name": video.stem,
+                "videoPath": str(video.relative_to(ROOT_DIR)),
+                "transcriptPath": str(transcript.relative_to(ROOT_DIR)),
+                "modifiedAt": datetime.fromtimestamp(video.stat().st_mtime, tz=timezone.utc).isoformat(),
+            }
+        )
+
+    sources.sort(key=lambda item: item["modifiedAt"], reverse=True)
+    return sources
+
+
+@app.post("/api/clips/detect")
+def detect_clips_endpoint(payload: DetectClipsRequest) -> dict:
+    from .services.clip_detector import detect_clips
+
+    transcript = resolve_within_root(payload.transcriptPath)
+    if transcript.suffix.lower() not in {".vtt", ".srt"}:
+        raise HTTPException(status_code=400, detail="La transcripcion debe ser .vtt o .srt")
+
+    # Busca un video hermano (mismo nombre base) en la misma carpeta.
+    video_path: str | None = None
+    for ext in (".mp4", ".webm", ".mkv", ".mov"):
+        candidate = transcript.with_suffix(ext)
+        if candidate.exists():
+            video_path = str(candidate.relative_to(ROOT_DIR))
+            break
+    if not video_path:
+        siblings = sorted(transcript.parent.glob("*.mp4"))
+        if siblings:
+            video_path = str(siblings[0].relative_to(ROOT_DIR))
+
+    try:
+        clips = detect_clips(
+            transcript,
+            count=payload.count,
+            min_dur=payload.minDuration,
+            max_dur=payload.maxDuration,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo la deteccion de clips: {exc}") from exc
+
+    return {"videoPath": video_path, "clips": [clip.to_dict() for clip in clips]}
+
+
+@app.post("/api/clips/render")
+def render_clip_endpoint(payload: RenderClipRequest) -> dict:
+    resolve_within_root(payload.video)
+    if payload.end <= payload.start:
+        raise HTTPException(status_code=400, detail="end debe ser mayor que start")
+
+    args = [
+        "--video", payload.video,
+        "--start", f"{payload.start:.3f}",
+        "--end", f"{payload.end:.3f}",
+        "--top-ratio", f"{payload.topRatio:.2f}",
+    ]
+    if payload.subtitles:
+        args.append("--subtitles")
+    return enqueue_job("render_clip.py", args)
 
 
 @app.get("/api/files")

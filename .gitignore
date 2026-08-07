@@ -62,6 +62,7 @@ frontend/vite.config.js
 .vscode/
 .idea/
 .codex
+.claude/
 
 prompts
 storyblocks
