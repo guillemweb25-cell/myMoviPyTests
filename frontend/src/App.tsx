@@ -67,6 +67,8 @@ export default function App() {
   const [clipCount, setClipCount] = useState(5)
   const [clipSubtitles, setClipSubtitles] = useState(true)
   const [clipTopRatio, setClipTopRatio] = useState(0.7)
+  const [clipFocus, setClipFocus] = useState<'left' | 'center' | 'right'>('center')
+  const [clipZoom, setClipZoom] = useState(1.0)
   const [clipUrl, setClipUrl] = useState('')
   const [clipUrlCookies, setClipUrlCookies] = useState('')
   const [isPreparingSource, setIsPreparingSource] = useState(false)
@@ -251,6 +253,8 @@ export default function App() {
         end: clip.end,
         subtitles: clipSubtitles,
         topRatio: clipTopRatio,
+        focus: clipFocus,
+        zoom: clipZoom,
         title: clip.title,
       })
       insertOrUpdateJob(job)
@@ -998,6 +1002,25 @@ export default function App() {
                   <option value="0.6">60 / 40</option>
                   <option value="0.7">70 / 30</option>
                   <option value="0.8">80 / 20</option>
+                </select>
+              </label>
+
+              <label className="field">
+                <span>Encuadre</span>
+                <select value={clipFocus} onChange={(e) => setClipFocus(e.target.value as 'left' | 'center' | 'right')}>
+                  <option value="left">Izquierda</option>
+                  <option value="center">Centro</option>
+                  <option value="right">Derecha</option>
+                </select>
+              </label>
+
+              <label className="field">
+                <span>Zoom</span>
+                <select value={String(clipZoom)} onChange={(e) => setClipZoom(Number(e.target.value))}>
+                  <option value="1">Sin zoom</option>
+                  <option value="1.3">1.3×</option>
+                  <option value="1.6">1.6×</option>
+                  <option value="2">2×</option>
                 </select>
               </label>
             </div>

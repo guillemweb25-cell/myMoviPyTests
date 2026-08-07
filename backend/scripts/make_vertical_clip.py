@@ -33,14 +33,27 @@ def parse_timecode(value: str) -> float:
     return hours * 3600 + minutes * 60 + seconds
 
 
-def build_filter(top_ratio: float) -> str:
+FOCUS_X = {
+    "left": "0",
+    "center": "(iw-ow)/2",
+    "right": "iw-ow",
+}
+
+
+def build_filter(top_ratio: float, focus: str = "center", zoom: float = 1.0) -> str:
     top_h = int(CANVAS_H * top_ratio)
     top_h -= top_h % 2  # alto par para el codec
     bottom_h = CANVAS_H - top_h
+
+    zoom = max(1.0, float(zoom))
+    scaled_w = int(CANVAS_W * zoom)
+    scaled_h = int(top_h * zoom)
+    x_expr = FOCUS_X.get(focus, FOCUS_X["center"])
+
     return (
         f"[0:v]split=2[top][botsrc];"
-        f"[top]scale={CANVAS_W}:{top_h}:force_original_aspect_ratio=increase,"
-        f"crop={CANVAS_W}:{top_h}[toppad];"
+        f"[top]scale={scaled_w}:{scaled_h}:force_original_aspect_ratio=increase,"
+        f"crop={CANVAS_W}:{top_h}:{x_expr}:(ih-oh)/2[toppad];"
         f"[botsrc]scale={CANVAS_W}:{bottom_h}:force_original_aspect_ratio=increase,"
         f"crop={CANVAS_W}:{bottom_h},boxblur=24:2,eq=brightness=-0.06[bot];"
         f"[toppad][bot]vstack=inputs=2[v]"
@@ -53,6 +66,8 @@ def make_clip(
     end: float,
     out_path: Path,
     top_ratio: float = 0.5,
+    focus: str = "center",
+    zoom: float = 1.0,
     ffmpeg: str = "ffmpeg",
 ) -> Path:
     duration = round(end - start, 3)
@@ -65,7 +80,7 @@ def make_clip(
         "-ss", f"{start:.3f}",
         "-i", str(video),
         "-t", f"{duration:.3f}",
-        "-filter_complex", build_filter(top_ratio),
+        "-filter_complex", build_filter(top_ratio, focus, zoom),
         "-map", "[v]",
         "-map", "0:a?",
         "-c:v", "libx264",
@@ -101,6 +116,8 @@ def main() -> None:
     parser.add_argument("--end", required=True, help="Fin (segundos o HH:MM:SS)")
     parser.add_argument("--out", default=None, help="Ruta de salida .mp4 (opcional)")
     parser.add_argument("--top-ratio", type=float, default=0.5, help="Fraccion de alto para el clip superior (0-1)")
+    parser.add_argument("--focus", default="center", choices=["left", "center", "right"], help="Encuadre horizontal del clip superior")
+    parser.add_argument("--zoom", type=float, default=1.0, help="Zoom del clip superior (1.0 = sin zoom)")
     parser.add_argument("--ffmpeg", default="ffmpeg", help="Ruta a ffmpeg")
     args = parser.parse_args()
 
@@ -112,7 +129,7 @@ def main() -> None:
     end = parse_timecode(args.end)
     out_path = Path(args.out) if args.out else default_output(video, start, end)
 
-    make_clip(video, start, end, out_path, top_ratio=args.top_ratio, ffmpeg=args.ffmpeg)
+    make_clip(video, start, end, out_path, top_ratio=args.top_ratio, focus=args.focus, zoom=args.zoom, ffmpeg=args.ffmpeg)
 
 
 if __name__ == "__main__":

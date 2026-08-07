@@ -55,6 +55,8 @@ def main() -> None:
     parser.add_argument("--end", required=True)
     parser.add_argument("--out", default=None)
     parser.add_argument("--top-ratio", type=float, default=0.5)
+    parser.add_argument("--focus", default="center", choices=["left", "center", "right"])
+    parser.add_argument("--zoom", type=float, default=1.0)
     parser.add_argument("--subtitles", action="store_true", help="Quemar subtitulos karaoke")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
@@ -67,7 +69,10 @@ def main() -> None:
     end = parse_timecode(args.end)
     out_path = Path(args.out) if args.out else default_output(video, start, end)
 
-    vertical = make_clip(video, start, end, out_path, top_ratio=args.top_ratio, ffmpeg=args.ffmpeg)
+    vertical = make_clip(
+        video, start, end, out_path,
+        top_ratio=args.top_ratio, focus=args.focus, zoom=args.zoom, ffmpeg=args.ffmpeg,
+    )
 
     if args.subtitles:
         print("Anadiendo subtitulos karaoke...", flush=True)

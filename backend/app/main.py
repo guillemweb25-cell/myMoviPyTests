@@ -94,6 +94,8 @@ class RenderClipRequest(BaseModel):
     end: float = Field(..., description="Fin en segundos")
     subtitles: bool = Field(default=True, description="Quemar subtitulos karaoke")
     topRatio: float = Field(default=0.7, ge=0.3, le=0.85)
+    focus: str = Field(default="center", pattern="^(left|center|right)$")
+    zoom: float = Field(default=1.0, ge=1.0, le=2.5)
     title: str | None = None
 
 
@@ -617,6 +619,8 @@ def render_clip_endpoint(payload: RenderClipRequest) -> dict:
         "--start", f"{payload.start:.3f}",
         "--end", f"{payload.end:.3f}",
         "--top-ratio", f"{payload.topRatio:.2f}",
+        "--focus", payload.focus,
+        "--zoom", f"{payload.zoom:.2f}",
     ]
     if payload.subtitles:
         args.append("--subtitles")
