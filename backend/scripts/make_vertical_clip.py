@@ -40,7 +40,10 @@ FOCUS_X = {
 }
 
 
-def build_filter(top_ratio: float, focus: str = "center", zoom: float = 1.0) -> str:
+BOTTOM_COLOR = "0x0b1120"  # fondo solido oscuro (lo ocupara ComfyUI mas adelante)
+
+
+def build_filter(top_ratio: float, focus: str = "center", zoom: float = 1.0, duration: float = 0.0) -> str:
     top_h = int(CANVAS_H * top_ratio)
     top_h -= top_h % 2  # alto par para el codec
     bottom_h = CANVAS_H - top_h
@@ -49,14 +52,13 @@ def build_filter(top_ratio: float, focus: str = "center", zoom: float = 1.0) -> 
     scaled_w = int(CANVAS_W * zoom)
     scaled_h = int(top_h * zoom)
     x_expr = FOCUS_X.get(focus, FOCUS_X["center"])
+    color_dur = f":d={duration:.3f}" if duration > 0 else ""
 
     return (
-        f"[0:v]split=2[top][botsrc];"
-        f"[top]scale={scaled_w}:{scaled_h}:force_original_aspect_ratio=increase,"
-        f"crop={CANVAS_W}:{top_h}:{x_expr}:(ih-oh)/2[toppad];"
-        f"[botsrc]scale={CANVAS_W}:{bottom_h}:force_original_aspect_ratio=increase,"
-        f"crop={CANVAS_W}:{bottom_h},boxblur=24:2,eq=brightness=-0.06[bot];"
-        f"[toppad][bot]vstack=inputs=2[v]"
+        f"[0:v]scale={scaled_w}:{scaled_h}:force_original_aspect_ratio=increase,"
+        f"crop={CANVAS_W}:{top_h}:{x_expr}:(ih-oh)/2,setsar=1[toppad];"
+        f"color=c={BOTTOM_COLOR}:s={CANVAS_W}x{bottom_h}:r=30{color_dur}[bot];"
+        f"[toppad][bot]vstack=inputs=2:shortest=1[v]"
     )
 
 
@@ -80,7 +82,7 @@ def make_clip(
         "-ss", f"{start:.3f}",
         "-i", str(video),
         "-t", f"{duration:.3f}",
-        "-filter_complex", build_filter(top_ratio, focus, zoom),
+        "-filter_complex", build_filter(top_ratio, focus, zoom, duration),
         "-map", "[v]",
         "-map", "0:a?",
         "-c:v", "libx264",
