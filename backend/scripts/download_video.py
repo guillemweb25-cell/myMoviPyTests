@@ -8,6 +8,7 @@ from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
 from kvs_fallback import download_direct, extract_kvs, is_flashvars_error
+from wetransfer_dl import is_wetransfer, resolve_wetransfer
 
 
 def clean_title(title: str) -> str:
@@ -28,7 +29,39 @@ def get_video_title(url: str, browser=None, cookies_file=None) -> str:
     return info["title"]
 
 
+def _write_source_metadata(out_dir, url, title, browser, cookies_file):
+    with open(os.path.join(out_dir, "source_url.txt"), "w", encoding="utf-8") as handle:
+        handle.write(url)
+    with open(os.path.join(out_dir, "source.json"), "w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "url": url,
+                "title": title,
+                "downloaded_at": datetime.now().isoformat(),
+                "browser": browser or "",
+                "cookies_file": cookies_file or "",
+            },
+            handle,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+
 def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None, outbase="output"):
+
+    # 0) WeTransfer (yt-dlp no lo soporta): resolver enlace directo y descargar.
+    if is_wetransfer(url):
+        direct, filename = resolve_wetransfer(url)
+        title = os.path.splitext(filename)[0]
+        clean = clean_title(title)
+        today = datetime.now().strftime("%Y-%m-%d")
+        out_dir = os.path.join(outbase, f"{today}-{clean}")
+        os.makedirs(out_dir, exist_ok=True)
+        _write_source_metadata(out_dir, url, title, browser, cookies_file)
+        print(f"➡️ Descargando de WeTransfer: {title}")
+        video_path = download_direct(direct, url, out_dir, clean, ffmpeg_path=ffmpeg_path)
+        print(f"✅ Vídeo guardado en: {out_dir}")
+        return str(video_path), out_dir
 
     # 1) TÍTULO (con fallback KVS si yt-dlp no reconoce el reproductor)
     kvs_formats = None

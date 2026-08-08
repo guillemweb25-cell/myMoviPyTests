@@ -1291,8 +1291,8 @@ export default function App() {
                     <input value={campName} onChange={(e) => setCampName(e.target.value)} placeholder="Ej: Trailblazers Kate McAndrew" />
                   </label>
                   <label className="field span-2">
-                    <span>Link del vídeo de YouTube a clipear</span>
-                    <input type="url" value={campSourceUrl} onChange={(e) => setCampSourceUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+                    <span>Link del vídeo a clipear (YouTube o WeTransfer)</span>
+                    <input type="url" value={campSourceUrl} onChange={(e) => setCampSourceUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=...  o  https://wetransfer.com/..." />
                   </label>
                   <label className="field span-2">
                     <span>Link de la campaña (Whop)</span>
