@@ -521,6 +521,18 @@ export default function App() {
     }
   }
 
+  async function handleTrimClip(clip: ClipCandidate, startDelta: number, endDelta: number) {
+    const newStart = Math.max(0, clip.start + startDelta)
+    const newEnd = clip.end + endDelta
+    if (newEnd - newStart < 1) return
+    setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, start: newStart, end: newEnd, duration: Math.round((newEnd - newStart) * 100) / 100 } : c)))
+    try {
+      await api.trimClip(clip.id, newStart, newEnd)
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
   async function handleRenderClip(clip: ClipCandidate) {
     setRenderingClipKey(clip.id)
     setError('')
@@ -1502,6 +1514,16 @@ export default function App() {
                             {clip.title || 'Clip'}
                           </h3>
                           <p className="help">{formatSeconds(clip.start)} → {formatSeconds(clip.end)} ({Math.round(clip.duration)}s)</p>
+                          <div className="actions-row" style={{ gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                            <span className="help">Inicio</span>
+                            <button className="link-btn" onClick={() => handleTrimClip(clip, -5, 0)}>−5s</button>
+                            <button className="link-btn" onClick={() => handleTrimClip(clip, 5, 0)}>+5s</button>
+                            <span className="help" style={{ marginLeft: 8 }}>Fin</span>
+                            <button className="link-btn" onClick={() => handleTrimClip(clip, 0, -5)}>−5s</button>
+                            <button className="link-btn" onClick={() => handleTrimClip(clip, 0, 5)}>+5s</button>
+                            <button className="link-btn" onClick={() => handleTrimClip(clip, 0, 10)}>+10s</button>
+                            <span className="help" style={{ opacity: 0.6 }}>(luego Regenerar)</span>
+                          </div>
                         </div>
                         <div className="actions-row">
                           {clip.uploaded ? <span className="status completed">Subido</span>

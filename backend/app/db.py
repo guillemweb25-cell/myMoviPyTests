@@ -273,7 +273,7 @@ def get_clip(clip_id: str) -> dict | None:
 
 def update_clip(clip_id: str, fields: dict) -> dict | None:
     allowed = {"focus", "zoom", "top_ratio", "subtitles", "rendered_path", "youtube_url", "channel_id",
-               "seo_title", "seo_description", "seo_tags", "overlay_text", "youtube_privacy"}
+               "seo_title", "seo_description", "seo_tags", "overlay_text", "youtube_privacy", "start", "end"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)

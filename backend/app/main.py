@@ -950,6 +950,23 @@ def list_saved_clips(transcriptPath: str) -> dict:
     return {"clips": [_annotate_clip(c) for c in db.load_clips(transcriptPath)]}
 
 
+class ClipTrimRequest(BaseModel):
+    start: float = Field(..., ge=0)
+    end: float = Field(..., gt=0)
+
+
+@app.patch("/api/clips/{clip_id}/trim")
+def trim_clip_endpoint(clip_id: str, payload: ClipTrimRequest) -> dict:
+    if not db.get_clip(clip_id):
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    if payload.end - payload.start < 1:
+        raise HTTPException(status_code=400, detail="El clip debe durar al menos 1 segundo.")
+    if payload.end - payload.start > 180:
+        raise HTTPException(status_code=400, detail="El clip no puede durar mas de 180 segundos.")
+    db.update_clip(clip_id, {"start": round(payload.start, 2), "end": round(payload.end, 2)})
+    return _annotate_clip(db.get_clip(clip_id))
+
+
 @app.patch("/api/clips/{clip_id}/settings")
 def update_clip_settings_endpoint(clip_id: str, payload: ClipSettingsRequest) -> dict:
     if not db.get_clip(clip_id):
