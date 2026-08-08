@@ -140,6 +140,7 @@ class ClipSettingsRequest(BaseModel):
     zoom: float = Field(default=1.0, ge=1.0, le=2.5)
     topRatio: float = Field(default=0.7, ge=0.3, le=0.85)
     subtitles: bool = True
+    overlayText: str = Field(default="", max_length=300)
 
 
 class CreateContentJobRequest(BaseModel):
@@ -804,6 +805,7 @@ def update_clip_settings_endpoint(clip_id: str, payload: ClipSettingsRequest) ->
         "zoom": payload.zoom,
         "top_ratio": payload.topRatio,
         "subtitles": int(payload.subtitles),
+        "overlay_text": payload.overlayText,
     })
     return _annotate_clip(db.get_clip(clip_id))
 
@@ -830,6 +832,8 @@ def render_clip_endpoint(clip_id: str) -> dict:
     ]
     if clip["subtitles"]:
         args.append("--subtitles")
+    if clip.get("overlayText"):
+        args.extend(["--overlay", clip["overlayText"]])
 
     db.update_clip(clip_id, {"rendered_path": out_rel})
     job = enqueue_job("render_clip.py", args)

@@ -110,7 +110,7 @@ export const api = {
     postJson<DetectClipsResponse>('/api/clips/detect', { transcriptPath, channelId, count, minDuration, maxDuration }),
   savedClips: (transcriptPath: string) =>
     getJson<{ clips: ClipCandidate[] }>(`/api/clips/list?transcriptPath=${encodeURIComponent(transcriptPath)}`),
-  updateClipSettings: (clipId: string, payload: { focus: string; zoom: number; topRatio: number; subtitles: boolean }) =>
+  updateClipSettings: (clipId: string, payload: { focus: string; zoom: number; topRatio: number; subtitles: boolean; overlayText: string }) =>
     patchJson<ClipCandidate>(`/api/clips/${clipId}/settings`, payload),
   renderClip: (clipId: string) => postJson<{ job: Job; renderedPath: string }>(`/api/clips/${clipId}/render`, {}),
   uploadClip: (clipId: string) => postJson<Job>(`/api/clips/${clipId}/upload`, {}),

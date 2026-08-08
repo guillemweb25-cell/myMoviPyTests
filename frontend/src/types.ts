@@ -83,6 +83,7 @@ export type ClipCandidate = {
   seoTitle?: string
   seoDescription?: string
   seoTags?: string
+  overlayText?: string
 }
 
 export type DetectClipsResponse = {

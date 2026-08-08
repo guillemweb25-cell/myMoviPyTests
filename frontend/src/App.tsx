@@ -385,6 +385,7 @@ export default function App() {
       zoom: patch.zoom ?? clip.zoom,
       topRatio: patch.topRatio ?? clip.topRatio,
       subtitles: patch.subtitles ?? clip.subtitles,
+      overlayText: patch.overlayText ?? clip.overlayText ?? '',
     }
     setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, ...patch } : c)))
     try {
@@ -1326,6 +1327,17 @@ export default function App() {
                           </select>
                         </label>
                       </div>
+
+                      <label className="field">
+                        <span>Texto fijo (visible todo el clip, encima de los subtitulos)</span>
+                        <textarea
+                          rows={2}
+                          placeholder="Ej: Subscribe to @thetrailblazerspod on YouTube for the full episode"
+                          value={clip.overlayText || ''}
+                          onChange={(e) => setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, overlayText: e.target.value } : c)))}
+                          onBlur={() => handleClipSettingChange(clip, { overlayText: clip.overlayText || '' })}
+                        />
+                      </label>
 
                       <div className="actions-row">
                         <button className="primary" disabled={renderingClipKey === clip.id} onClick={() => handleRenderClip(clip)}>

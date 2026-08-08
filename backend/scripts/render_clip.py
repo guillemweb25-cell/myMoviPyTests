@@ -11,10 +11,50 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 from make_vertical_clip import CANVAS_H, CANVAS_W, default_output, make_clip, parse_timecode
 from subtitle_engine import SubtitleEngine
+
+
+def _ass_time(seconds: float) -> str:
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = seconds % 60
+    return f"{hours}:{minutes:02d}:{secs:05.2f}"
+
+
+def burn_overlay(video_path: Path, text: str, duration: float, ffmpeg: str = "ffmpeg") -> Path:
+    """Quema un texto fijo (persistente) por encima de los subtitulos."""
+    font_size = int(CANVAS_W * 0.042)          # ~45px, mas pequeno que el karaoke
+    margin_v = int(CANVAS_H * 0.30)            # 30% desde abajo (encima del karaoke a 22%)
+    outline = max(2, font_size // 14)
+    wrapped = "\\N".join(textwrap.wrap(text.strip(), width=32)) or text.strip()
+
+    ass_content = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {CANVAS_W}
+PlayResY: {CANVAS_H}
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Overlay,Liberation Sans,{font_size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{outline},1,2,60,60,{margin_v},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,{_ass_time(duration)},Overlay,,0,0,0,,{wrapped}
+"""
+    ass_path = video_path.with_suffix(".overlay.ass")
+    ass_path.write_text(ass_content, encoding="utf-8")
+    out_path = video_path.with_name(f"{video_path.stem}_ovl.mp4")
+    try:
+        SubtitleEngine().burn_subtitles(video_path, ass_path, out_path)
+    finally:
+        ass_path.unlink(missing_ok=True)
+    out_path.replace(video_path)
+    return video_path
 
 
 def extract_audio(video_path: Path, ffmpeg: str = "ffmpeg") -> Path:
@@ -58,6 +98,7 @@ def main() -> None:
     parser.add_argument("--focus", default="center", choices=["left", "center", "right"])
     parser.add_argument("--zoom", type=float, default=1.0)
     parser.add_argument("--subtitles", action="store_true", help="Quemar subtitulos karaoke")
+    parser.add_argument("--overlay", default="", help="Texto fijo visible todo el clip (encima de los subs)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
 
@@ -69,20 +110,22 @@ def main() -> None:
     end = parse_timecode(args.end)
     out_path = Path(args.out) if args.out else default_output(video, start, end)
 
-    vertical = make_clip(
+    make_clip(
         video, start, end, out_path,
         top_ratio=args.top_ratio, focus=args.focus, zoom=args.zoom, ffmpeg=args.ffmpeg,
     )
 
     if args.subtitles:
         print("Anadiendo subtitulos karaoke...", flush=True)
-        final = add_subtitles(vertical, ffmpeg=args.ffmpeg)
-        # Deja el resultado en la ruta determinista (--out) para poder localizarlo.
+        final = add_subtitles(out_path, ffmpeg=args.ffmpeg)
         if final != out_path:
             final.replace(out_path)
-        print(f"Clip final con subtitulos: {out_path}", flush=True)
-    else:
-        print(f"Clip final: {vertical}", flush=True)
+
+    if args.overlay.strip():
+        print("Anadiendo texto fijo (overlay)...", flush=True)
+        burn_overlay(out_path, args.overlay, round(end - start, 3), ffmpeg=args.ffmpeg)
+
+    print(f"Clip final: {out_path}", flush=True)
 
 
 if __name__ == "__main__":
