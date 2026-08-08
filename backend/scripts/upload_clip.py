@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
@@ -72,7 +73,8 @@ def main() -> None:
     )
     video_id = response["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"
-    db.update_clip(args.clip, {"youtube_url": url, "youtube_privacy": args.privacy})
+    uploaded_at = datetime.now(timezone.utc).isoformat()
+    db.update_clip(args.clip, {"youtube_url": url, "youtube_privacy": args.privacy, "uploaded_at": uploaded_at})
     print(f"YOUTUBE_URL: {url}", flush=True)
     print("Subida completada.", flush=True)
 

@@ -95,6 +95,7 @@ export default function App() {
   const [renderNonce, setRenderNonce] = useState<Record<string, number>>({})
   const [clipFrames, setClipFrames] = useState<Record<string, { percent: number; path: string }[]>>({})
   const [extractingFramesId, setExtractingFramesId] = useState('')
+  const [now, setNow] = useState(() => Date.now())
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
@@ -845,6 +846,12 @@ export default function App() {
   }
 
   // Bootstrap: averigua si el backend exige token y decide pantalla inicial.
+  // Reloj para la cuenta atrás de la ventana de submit (30 min tras subir).
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 20000)
+    return () => window.clearInterval(t)
+  }, [])
+
   useEffect(() => {
     api
       .health()
@@ -1756,6 +1763,16 @@ export default function App() {
                           >
                             {clip.submitted ? '✅ Submiteado a Whop' : 'Marcar submiteado'}
                           </button>
+                          {!clip.submitted && clip.uploadedAt && (() => {
+                            const remainingMin = Math.floor((30 * 60000 - (now - new Date(clip.uploadedAt).getTime())) / 60000)
+                            return remainingMin >= 0 ? (
+                              <span className={remainingMin <= 5 ? 'submit-timer urgent' : 'submit-timer'}>
+                                ⏱ {remainingMin} min para submitear
+                              </span>
+                            ) : (
+                              <span className="submit-timer expired">⛔ fuera de plazo (&gt;30 min)</span>
+                            )
+                          })()}
                         </div>
                       )}
 

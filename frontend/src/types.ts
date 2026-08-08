@@ -114,6 +114,7 @@ export type ClipCandidate = {
   youtubePrivacy?: string
   endcardPercent?: number
   submitted?: boolean
+  uploadedAt?: string
 }
 
 export type DetectClipsResponse = {
