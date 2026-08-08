@@ -40,9 +40,6 @@ FOCUS_X = {
 }
 
 
-BOTTOM_COLOR = "0x0b1120"  # fondo solido oscuro (lo ocupara ComfyUI mas adelante)
-
-
 def build_filter(top_ratio: float, focus: str = "center", zoom: float = 1.0, duration: float = 0.0) -> str:
     top_h = int(CANVAS_H * top_ratio)
     top_h -= top_h % 2  # alto par para el codec
@@ -52,13 +49,16 @@ def build_filter(top_ratio: float, focus: str = "center", zoom: float = 1.0, dur
     scaled_w = int(CANVAS_W * zoom)
     scaled_h = int(top_h * zoom)
     x_expr = FOCUS_X.get(focus, FOCUS_X["center"])
-    color_dur = f":d={duration:.3f}" if duration > 0 else ""
 
     return (
-        f"[0:v]scale={scaled_w}:{scaled_h}:force_original_aspect_ratio=increase,"
+        # Arriba: recorte enfocado (encuadre + zoom). Abajo: la escena completa
+        # sin recortar (letterbox), para no perder a nadie ni la marca de agua.
+        f"[0:v]split=2[top][botsrc];"
+        f"[top]scale={scaled_w}:{scaled_h}:force_original_aspect_ratio=increase,"
         f"crop={CANVAS_W}:{top_h}:{x_expr}:(ih-oh)/2,setsar=1[toppad];"
-        f"color=c={BOTTOM_COLOR}:s={CANVAS_W}x{bottom_h}:r=30{color_dur}[bot];"
-        f"[toppad][bot]vstack=inputs=2:shortest=1[v]"
+        f"[botsrc]scale={CANVAS_W}:{bottom_h}:force_original_aspect_ratio=decrease,"
+        f"pad={CANVAS_W}:{bottom_h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[bot];"
+        f"[toppad][bot]vstack=inputs=2[v]"
     )
 
 
