@@ -32,8 +32,10 @@ def burn_overlay(video_path: Path, text: str, duration: float, ffmpeg: str = "ff
     wrapped = "\\N".join(textwrap.wrap(text.strip(), width=26)) or text.strip()
     n_lines = wrapped.count("\\N") + 1
 
-    # Posicion fija en la banda inferior, por encima del karaoke (que va a ~22% del fondo).
-    center_y = int(CANVAS_H * 0.70)
+    # Posicion fija por ENCIMA del karaoke. El karaoke se ancla a 22% del fondo y su
+    # texto sube hasta ~0.71*H; ponemos el overlay a 0.63*H para que la barra (que baja
+    # ~0.05*H) termine sobre el karaoke sin taparlo.
+    center_y = int(CANVAS_H * 0.63)
     bar_half = int(font_size * 0.75 * n_lines) + 22
     y1, y2 = center_y - bar_half, center_y + bar_half
     end = _ass_time(duration)
