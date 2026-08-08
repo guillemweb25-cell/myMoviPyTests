@@ -154,6 +154,7 @@ class ClipSettingsRequest(BaseModel):
     topRatio: float = Field(default=0.7, ge=0.3, le=0.85)
     subtitles: bool = True
     overlayText: str = Field(default="", max_length=300)
+    endcardPercent: int = Field(default=0, ge=0, le=99)
 
 
 class CreateContentJobRequest(BaseModel):
@@ -977,6 +978,7 @@ def update_clip_settings_endpoint(clip_id: str, payload: ClipSettingsRequest) ->
         "top_ratio": payload.topRatio,
         "subtitles": int(payload.subtitles),
         "overlay_text": payload.overlayText,
+        "endcard_percent": payload.endcardPercent,
     })
     return _annotate_clip(db.get_clip(clip_id))
 
@@ -1009,10 +1011,47 @@ def render_clip_endpoint(clip_id: str) -> dict:
         args.append("--subtitles")
     if clip.get("overlayText"):
         args.extend(["--overlay", clip["overlayText"]])
+    if clip.get("endcardPercent"):
+        args.extend(["--endcard", str(clip["endcardPercent"])])
 
     db.update_clip(clip_id, {"rendered_path": out_rel})
     job = enqueue_job("render_clip.py", args)
     return {"job": job, "renderedPath": out_rel}
+
+
+@app.post("/api/clips/{clip_id}/frames")
+def extract_clip_frames(clip_id: str) -> dict:
+    """Extrae 3 fotogramas (25/50/75%) del clip renderizado para elegir la miniatura."""
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    rendered = clip.get("renderedPath") or ""
+    rendered_abs = ROOT_DIR / rendered
+    if not rendered or not rendered_abs.exists():
+        raise HTTPException(status_code=400, detail="Renderiza el clip antes de elegir la miniatura.")
+
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(rendered_abs)],
+        capture_output=True, text=True,
+    )
+    try:
+        duration = float(probe.stdout.strip())
+    except ValueError:
+        duration = 0.0
+
+    frames_dir = rendered_abs.parent / "frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    result = []
+    for percent in (25, 50, 75):
+        out = frames_dir / f"clip_{clip_id}_f{percent}.jpg"
+        t = max(0.0, duration * percent / 100)
+        subprocess.run(
+            ["ffmpeg", "-y", "-ss", f"{t:.2f}", "-i", str(rendered_abs), "-frames:v", "1", "-q:v", "3", str(out)],
+            capture_output=True,
+        )
+        if out.exists():
+            result.append({"percent": percent, "path": str(out.relative_to(ROOT_DIR))})
+    return {"frames": result}
 
 
 @app.post("/api/clips/{clip_id}/seo")

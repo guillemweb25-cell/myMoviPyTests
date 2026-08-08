@@ -275,6 +275,39 @@ nav {
   gap: 4px;
 }
 
+.frame-choices {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.frame-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.frame-choice img {
+  width: 90px;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 5px;
+  display: block;
+}
+
+.frame-choice.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 .seo-head {
   display: flex;
   align-items: center;

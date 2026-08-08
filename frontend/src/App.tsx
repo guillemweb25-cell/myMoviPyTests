@@ -93,6 +93,8 @@ export default function App() {
   const [generatingSeoId, setGeneratingSeoId] = useState('')
   const [uploadPrivacy, setUploadPrivacy] = useState('private')
   const [renderNonce, setRenderNonce] = useState<Record<string, number>>({})
+  const [clipFrames, setClipFrames] = useState<Record<string, { percent: number; path: string }[]>>({})
+  const [extractingFramesId, setExtractingFramesId] = useState('')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
@@ -536,6 +538,7 @@ export default function App() {
       topRatio: patch.topRatio ?? clip.topRatio,
       subtitles: patch.subtitles ?? clip.subtitles,
       overlayText: patch.overlayText ?? clip.overlayText ?? '',
+      endcardPercent: patch.endcardPercent ?? clip.endcardPercent ?? 0,
     }
     setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, ...patch } : c)))
     try {
@@ -570,6 +573,19 @@ export default function App() {
       handleApiError(e)
     } finally {
       setRenderingClipKey('')
+    }
+  }
+
+  async function handleExtractFrames(clip: ClipCandidate) {
+    setExtractingFramesId(clip.id)
+    setError('')
+    try {
+      const { frames } = await api.extractFrames(clip.id)
+      setClipFrames((prev) => ({ ...prev, [clip.id]: frames }))
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setExtractingFramesId('')
     }
   }
 
@@ -1679,6 +1695,40 @@ export default function App() {
                             </div>
                             <textarea readOnly rows={2} value={clip.seoTags || ''} />
                           </div>
+                        </div>
+                      )}
+
+                      {clip.rendered && (
+                        <div className="seo-box">
+                          <div className="seo-head">
+                            <span>Cierre + miniatura (fundido a negro + fadeout + fotograma final con el caption grande)</span>
+                            <button className="link-btn" disabled={extractingFramesId === clip.id} onClick={() => handleExtractFrames(clip)}>
+                              {extractingFramesId === clip.id ? 'Extrayendo...' : 'Ver 3 fotogramas'}
+                            </button>
+                          </div>
+                          {clipFrames[clip.id] && (
+                            <div className="frame-choices">
+                              {clipFrames[clip.id].map((f) => (
+                                <button
+                                  key={f.percent}
+                                  className={clip.endcardPercent === f.percent ? 'frame-choice selected' : 'frame-choice'}
+                                  onClick={() => handleClipSettingChange(clip, { endcardPercent: f.percent })}
+                                >
+                                  <img src={api.fileUrl(f.path)} alt={`${f.percent}%`} />
+                                  <span>{f.percent}%</span>
+                                </button>
+                              ))}
+                              <button
+                                className={!clip.endcardPercent ? 'frame-choice selected' : 'frame-choice'}
+                                onClick={() => handleClipSettingChange(clip, { endcardPercent: 0 })}
+                              >
+                                <span style={{ padding: '30px 10px' }}>Sin cierre</span>
+                              </button>
+                            </div>
+                          )}
+                          {clip.endcardPercent ? (
+                            <p className="help">✅ Miniatura al {clip.endcardPercent}% elegida → pulsa <strong>Regenerar</strong> para añadir el cierre al vídeo.</p>
+                          ) : null}
                         </div>
                       )}
 

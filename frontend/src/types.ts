@@ -112,6 +112,7 @@ export type ClipCandidate = {
   seoTags?: string
   overlayText?: string
   youtubePrivacy?: string
+  endcardPercent?: number
 }
 
 export type DetectClipsResponse = {

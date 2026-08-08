@@ -67,6 +67,92 @@ Dialogue: 1,0:00:00.00,{end},Overlay,,0,0,0,,{{\\an5\\pos({CANVAS_W // 2},{cente
     return video_path
 
 
+def _probe_duration(path: Path) -> float:
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+        capture_output=True, text=True,
+    )
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+def _endcard_ass(caption: str, seconds: float) -> str:
+    """ASS para la tarjeta final: caption grande centrado sobre barra que tapa la zona de subtitulos."""
+    font_size = int(CANVAS_W * 0.06)
+    wrapped = "\\N".join(textwrap.wrap(caption.strip(), width=18)) or caption.strip()
+    n_lines = wrapped.count("\\N") + 1
+    center_y = int(CANVAS_H * 0.60)
+    bar_half = int(font_size * 0.85 * n_lines) + 40
+    y1, y2 = center_y - bar_half, center_y + bar_half
+    end = _ass_time(seconds)
+    bar = f"{{\\pos(0,0)\\p1}}m 0 {y1} l {CANVAS_W} {y1} {CANVAS_W} {y2} 0 {y2}{{\\p0}}"
+    return f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {CANVAS_W}
+PlayResY: {CANVAS_H}
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Bar,Liberation Sans,{font_size},&H90000000,&H000000FF,&H90000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
+Style: EC,Liberation Sans,{font_size},&H0000FFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,5,0,0,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,{end},Bar,,0,0,0,,{bar}
+Dialogue: 1,0:00:00.00,{end},EC,,0,0,0,,{{\\an5\\pos({CANVAS_W // 2},{center_y})}}{wrapped}
+"""
+
+
+def add_fade_and_endcard(video_path: Path, caption: str, percent: int,
+                         fade_secs: float = 1.5, endcard_secs: float = 3.0,
+                         ffmpeg: str = "ffmpeg") -> Path:
+    """Aplica fundido a negro + fadeout de audio y anade una tarjeta final (fotograma
+    al `percent` % del clip) con el caption grande. Devuelve video_path (sobrescrito)."""
+    duration = _probe_duration(video_path)
+    if duration <= 0:
+        return video_path
+    base = video_path.with_suffix("")
+    frame = base.with_name(base.name + "_ecframe.png")
+    faded = base.with_name(base.name + "_faded.mp4")
+    endcard = base.with_name(base.name + "_endcard.mp4")
+    ass_path = base.with_name(base.name + "_endcard.ass")
+    tmp_out = base.with_name(base.name + "_final.mp4")
+
+    frame_t = max(0.0, duration * max(1, min(99, percent)) / 100)
+    subprocess.run([ffmpeg, "-y", "-ss", f"{frame_t:.2f}", "-i", str(video_path), "-frames:v", "1", str(frame)],
+                   check=True, capture_output=True)
+
+    ass_path.write_text(_endcard_ass(caption, endcard_secs), encoding="utf-8")
+    subprocess.run([
+        ffmpeg, "-y", "-loop", "1", "-t", f"{endcard_secs}", "-i", str(frame),
+        "-f", "lavfi", "-t", f"{endcard_secs}", "-i", "anullsrc=r=44100:cl=stereo",
+        "-vf", f"ass={ass_path},fade=t=in:st=0:d=0.4", "-r", "30",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(endcard),
+    ], check=True, capture_output=True)
+
+    fade_start = max(0.0, duration - fade_secs)
+    subprocess.run([
+        ffmpeg, "-y", "-i", str(video_path),
+        "-vf", f"fade=t=out:st={fade_start:.2f}:d={fade_secs}",
+        "-af", f"afade=t=out:st={fade_start:.2f}:d={fade_secs}",
+        "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(faded),
+    ], check=True, capture_output=True)
+
+    subprocess.run([
+        ffmpeg, "-y", "-i", str(faded), "-i", str(endcard),
+        "-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
+        "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(tmp_out),
+    ], check=True, capture_output=True)
+
+    tmp_out.replace(video_path)
+    for extra in (frame, faded, endcard, ass_path):
+        extra.unlink(missing_ok=True)
+    return video_path
+
+
 def extract_audio(video_path: Path, ffmpeg: str = "ffmpeg") -> Path:
     audio_path = video_path.with_suffix(".clip_audio.wav")
     cmd = [ffmpeg, "-y", "-i", str(video_path), "-vn", "-ac", "1", "-ar", "16000", str(audio_path)]
@@ -110,6 +196,7 @@ def main() -> None:
     parser.add_argument("--subtitles", action="store_true", help="Quemar subtitulos karaoke")
     parser.add_argument("--lang", default="es", help="Idioma del audio para los subtitulos (es, en...)")
     parser.add_argument("--overlay", default="", help="Texto fijo visible todo el clip (encima de los subs)")
+    parser.add_argument("--endcard", type=int, default=0, help="%% del clip para el fotograma de cierre/miniatura (0 = sin tarjeta)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
 
@@ -135,6 +222,10 @@ def main() -> None:
     if args.overlay.strip():
         print("Anadiendo texto fijo (overlay)...", flush=True)
         burn_overlay(out_path, args.overlay, round(end - start, 3), ffmpeg=args.ffmpeg)
+
+    if args.endcard > 0:
+        print(f"Anadiendo fundido + tarjeta final (fotograma al {args.endcard}%)...", flush=True)
+        add_fade_and_endcard(out_path, args.overlay or "", args.endcard, ffmpeg=args.ffmpeg)
 
     print(f"Clip final: {out_path}", flush=True)
 
