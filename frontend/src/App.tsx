@@ -96,6 +96,7 @@ export default function App() {
   const [clipFrames, setClipFrames] = useState<Record<string, { percent: number; path: string }[]>>({})
   const [extractingFramesId, setExtractingFramesId] = useState('')
   const [now, setNow] = useState(() => Date.now())
+  const [batchRender, setBatchRender] = useState<{ total: number; done: number } | null>(null)
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
@@ -575,6 +576,20 @@ export default function App() {
     } finally {
       setRenderingClipKey('')
     }
+  }
+
+  async function handleRenderAllClips() {
+    // Renderiza en cola (uno tras otro) todos los clips que aún no están
+    // renderizados, para dejarlo trabajando e ir a subir luego.
+    const pending = clipCandidates.filter((c) => !c.rendered)
+    if (!pending.length) return
+    setBatchRender({ total: pending.length, done: 0 })
+    setError('')
+    for (let i = 0; i < pending.length; i++) {
+      await handleRenderClip(pending[i])
+      setBatchRender({ total: pending.length, done: i + 1 })
+    }
+    setBatchRender(null)
   }
 
   async function handleExtractFrames(clip: ClipCandidate) {
@@ -1578,6 +1593,30 @@ export default function App() {
                     {clipCandidates.length === 0 && (
                       <p className="description">Aún no hay clips. Pulsa “Detectar clips”.</p>
                     )}
+
+                    {clipCandidates.length > 0 && (() => {
+                      const pendientes = clipCandidates.filter((c) => !c.rendered).length
+                      return (
+                        <div className="batch-render-bar">
+                          <button
+                            className="primary"
+                            disabled={!!batchRender || pendientes === 0}
+                            onClick={handleRenderAllClips}
+                          >
+                            {batchRender
+                              ? `Renderizando ${batchRender.done}/${batchRender.total}...`
+                              : pendientes === 0
+                                ? 'Todos los verticales renderizados ✓'
+                                : `Generar todos los verticales (${pendientes})`}
+                          </button>
+                          <span className="help" style={{ margin: 0 }}>
+                            {batchRender
+                              ? 'Renderizando en cola, uno tras otro. Puedes dejarlo trabajando.'
+                              : 'Renderiza en cola todos los que falten; luego solo queda subir a YT.'}
+                          </span>
+                        </div>
+                      )
+                    })()}
 
                     <div className="jobs-list clip-list" style={{ maxHeight: 'unset' }}>
                   {clipCandidates.map((clip) => (
