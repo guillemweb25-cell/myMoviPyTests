@@ -91,7 +91,7 @@ export default function App() {
   const [renderingClipKey, setRenderingClipKey] = useState('')
   const [uploadingClipId, setUploadingClipId] = useState('')
   const [generatingSeoId, setGeneratingSeoId] = useState('')
-  const [uploadPrivacy, setUploadPrivacy] = useState('private')
+  const [uploadPrivacy, setUploadPrivacy] = useState('public')
   const [renderNonce, setRenderNonce] = useState<Record<string, number>>({})
   const [clipFrames, setClipFrames] = useState<Record<string, { percent: number; path: string }[]>>({})
   const [extractingFramesId, setExtractingFramesId] = useState('')
