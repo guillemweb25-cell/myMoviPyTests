@@ -48,7 +48,10 @@ CREATE TABLE IF NOT EXISTS clips (
     top_ratio       REAL DEFAULT 0.7,
     subtitles       INTEGER DEFAULT 1,
     rendered_path   TEXT DEFAULT '',
-    youtube_url     TEXT DEFAULT ''
+    youtube_url     TEXT DEFAULT '',
+    seo_title       TEXT DEFAULT '',
+    seo_description TEXT DEFAULT '',
+    seo_tags        TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_path);
 CREATE TABLE IF NOT EXISTS channels (
@@ -78,6 +81,9 @@ CLIP_MIGRATIONS = [
     "ALTER TABLE clips ADD COLUMN subtitles INTEGER DEFAULT 1",
     "ALTER TABLE clips ADD COLUMN rendered_path TEXT DEFAULT ''",
     "ALTER TABLE clips ADD COLUMN youtube_url TEXT DEFAULT ''",
+    "ALTER TABLE clips ADD COLUMN seo_title TEXT DEFAULT ''",
+    "ALTER TABLE clips ADD COLUMN seo_description TEXT DEFAULT ''",
+    "ALTER TABLE clips ADD COLUMN seo_tags TEXT DEFAULT ''",
 ]
 
 
@@ -185,6 +191,9 @@ def _clip_to_dict(row: sqlite3.Row) -> dict:
         "subtitles": bool(row["subtitles"]),
         "renderedPath": row["rendered_path"] or "",
         "youtubeUrl": row["youtube_url"] or "",
+        "seoTitle": row["seo_title"] or "",
+        "seoDescription": row["seo_description"] or "",
+        "seoTags": row["seo_tags"] or "",
     }
 
 
@@ -239,7 +248,8 @@ def get_clip(clip_id: str) -> dict | None:
 
 
 def update_clip(clip_id: str, fields: dict) -> dict | None:
-    allowed = {"focus", "zoom", "top_ratio", "subtitles", "rendered_path", "youtube_url", "channel_id"}
+    allowed = {"focus", "zoom", "top_ratio", "subtitles", "rendered_path", "youtube_url", "channel_id",
+               "seo_title", "seo_description", "seo_tags"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)

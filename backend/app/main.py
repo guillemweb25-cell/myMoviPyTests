@@ -836,6 +836,30 @@ def render_clip_endpoint(clip_id: str) -> dict:
     return {"job": job, "renderedPath": out_rel}
 
 
+@app.post("/api/clips/{clip_id}/seo")
+def generate_clip_seo_endpoint(clip_id: str) -> dict:
+    from .services.clip_seo import generate_clip_seo
+
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    channel_id = clip.get("channelId") or channel_id_from_path(clip.get("videoPath"))
+    channel = db.get_channel(channel_id) if channel_id else None
+    if not channel:
+        # Sin canal: usa reglas vacias e idioma por defecto.
+        channel = {"language": "es", "seoRules": ""}
+    try:
+        seo = generate_clip_seo(clip, channel, ROOT_DIR)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo la generacion de SEO: {exc}") from exc
+    db.update_clip(clip_id, {
+        "seo_title": seo["title"],
+        "seo_description": seo["description"],
+        "seo_tags": seo["tags"],
+    })
+    return seo
+
+
 @app.post("/api/clips/{clip_id}/upload")
 def upload_clip_endpoint(clip_id: str) -> dict:
     clip = db.get_clip(clip_id)

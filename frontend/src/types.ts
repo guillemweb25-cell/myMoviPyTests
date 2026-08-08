@@ -80,6 +80,9 @@ export type ClipCandidate = {
   youtubeUrl?: string
   rendered?: boolean
   uploaded?: boolean
+  seoTitle?: string
+  seoDescription?: string
+  seoTags?: string
 }
 
 export type DetectClipsResponse = {

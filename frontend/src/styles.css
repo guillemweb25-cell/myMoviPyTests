@@ -221,6 +221,42 @@ nav {
   border-radius: 10px;
 }
 
+.seo-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--input-bg);
+}
+
+.seo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.seo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.seo-field input,
+.seo-field textarea {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  width: 100%;
+  resize: vertical;
+}
+
 .subtabs {
   display: flex;
   gap: 6px;

@@ -78,6 +78,7 @@ export default function App() {
   const [isDetectingClips, setIsDetectingClips] = useState(false)
   const [renderingClipKey, setRenderingClipKey] = useState('')
   const [uploadingClipId, setUploadingClipId] = useState('')
+  const [generatingSeoId, setGeneratingSeoId] = useState('')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>('create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
@@ -405,6 +406,21 @@ export default function App() {
       handleApiError(e)
     } finally {
       setRenderingClipKey('')
+    }
+  }
+
+  async function handleGenerateSeo(clip: ClipCandidate) {
+    setGeneratingSeoId(clip.id)
+    setError('')
+    try {
+      const seo = await api.generateClipSeo(clip.id)
+      setClipCandidates((prev) => prev.map((c) => (c.id === clip.id
+        ? { ...c, seoTitle: seo.title, seoDescription: seo.description, seoTags: seo.tags }
+        : c)))
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setGeneratingSeoId('')
     }
   }
 
@@ -1323,7 +1339,36 @@ export default function App() {
                             {uploadingClipId === clip.id ? 'Subiendo...' : 'Subir a YouTube'}
                           </button>
                         )}
+                        <button className="panel-link panel-link-button" disabled={generatingSeoId === clip.id} onClick={() => handleGenerateSeo(clip)}>
+                          {generatingSeoId === clip.id ? 'Generando textos...' : clip.seoTitle ? 'Regenerar textos SEO' : 'Generar textos SEO'}
+                        </button>
                       </div>
+
+                      {clip.seoTitle && (
+                        <div className="seo-box">
+                          <div className="seo-field">
+                            <div className="seo-head">
+                              <span>Titulo</span>
+                              <button className="link-btn" onClick={() => handleCopyUrl(clip.seoTitle!)}>Copiar</button>
+                            </div>
+                            <input readOnly value={clip.seoTitle} />
+                          </div>
+                          <div className="seo-field">
+                            <div className="seo-head">
+                              <span>Descripcion</span>
+                              <button className="link-btn" onClick={() => handleCopyUrl(clip.seoDescription || '')}>Copiar</button>
+                            </div>
+                            <textarea readOnly rows={6} value={clip.seoDescription || ''} />
+                          </div>
+                          <div className="seo-field">
+                            <div className="seo-head">
+                              <span>Tags</span>
+                              <button className="link-btn" onClick={() => handleCopyUrl(clip.seoTags || '')}>Copiar</button>
+                            </div>
+                            <textarea readOnly rows={2} value={clip.seoTags || ''} />
+                          </div>
+                        </div>
+                      )}
 
                       {clip.youtubeUrl && (
                         <div className="actions-row" style={{ alignItems: 'center' }}>

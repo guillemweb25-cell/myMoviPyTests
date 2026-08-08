@@ -114,6 +114,8 @@ export const api = {
     patchJson<ClipCandidate>(`/api/clips/${clipId}/settings`, payload),
   renderClip: (clipId: string) => postJson<{ job: Job; renderedPath: string }>(`/api/clips/${clipId}/render`, {}),
   uploadClip: (clipId: string) => postJson<Job>(`/api/clips/${clipId}/upload`, {}),
+  generateClipSeo: (clipId: string) =>
+    postJson<{ title: string; description: string; tags: string }>(`/api/clips/${clipId}/seo`, {}),
   uploadAndTranscribe: async (
     file: File,
     folderTitle: string,
