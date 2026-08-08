@@ -107,48 +107,64 @@ Dialogue: 1,0:00:00.00,{end},EC,,0,0,0,,{{\\an5\\pos({CANVAS_W // 2},{center_y})
 
 
 def add_fade_and_endcard(video_path: Path, caption: str, percent: int,
-                         fade_secs: float = 1.5, endcard_secs: float = 3.0,
-                         ffmpeg: str = "ffmpeg") -> Path:
-    """Aplica fundido a negro + fadeout de audio y anade una tarjeta final (fotograma
-    al `percent` % del clip) con el caption grande. Devuelve video_path (sobrescrito)."""
+                         fade_secs: float = 1.2, hold_secs: float = 1.3,
+                         ffmpeg: str = "ffmpeg", clean_frame: Path | None = None) -> Path:
+    """Sin fundido a negro: corta a un fotograma final (al `percent` % del clip) con el
+    caption grande y, mientras se muestra ese fotograma, el audio hace fade out. Tras el
+    fadeout el fotograma se mantiene unos segundos (para usarlo de miniatura).
+
+    `clean_frame`: fotograma pre-extraido SIN karaoke/overlay (para una miniatura limpia).
+    Si no se pasa, se saca del propio video (arrastrara los subtitulos quemados).
+    Devuelve video_path (sobrescrito)."""
     duration = _probe_duration(video_path)
     if duration <= 0:
         return video_path
     base = video_path.with_suffix("")
     frame = base.with_name(base.name + "_ecframe.png")
-    faded = base.with_name(base.name + "_faded.mp4")
+    body = base.with_name(base.name + "_body.mp4")
     endcard = base.with_name(base.name + "_endcard.mp4")
     ass_path = base.with_name(base.name + "_endcard.ass")
     tmp_out = base.with_name(base.name + "_final.mp4")
 
-    frame_t = max(0.0, duration * max(1, min(99, percent)) / 100)
-    subprocess.run([ffmpeg, "-y", "-ss", f"{frame_t:.2f}", "-i", str(video_path), "-frames:v", "1", str(frame)],
-                   check=True, capture_output=True)
+    still_dur = fade_secs + hold_secs
+    if clean_frame and Path(clean_frame).exists():
+        frame = Path(clean_frame)
+    else:
+        frame_t = max(0.0, duration * max(1, min(99, percent)) / 100)
+        subprocess.run([ffmpeg, "-y", "-ss", f"{frame_t:.2f}", "-i", str(video_path), "-frames:v", "1", str(frame)],
+                       check=True, capture_output=True)
 
-    ass_path.write_text(_endcard_ass(caption, endcard_secs), encoding="utf-8")
+    # Cuerpo del clip: hasta `fade_secs` antes del final (esos ultimos segundos de video
+    # se sustituyen por el fotograma; su audio suena bajo el fotograma haciendo fadeout).
+    body_dur = max(0.1, duration - fade_secs)
     subprocess.run([
-        ffmpeg, "-y", "-loop", "1", "-t", f"{endcard_secs}", "-i", str(frame),
-        "-f", "lavfi", "-t", f"{endcard_secs}", "-i", "anullsrc=r=44100:cl=stereo",
-        "-vf", f"ass={ass_path},fade=t=in:st=0:d=0.4", "-r", "30",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(endcard),
+        ffmpeg, "-y", "-i", str(video_path), "-t", f"{body_dur:.2f}",
+        "-vf", "setsar=1", "-r", "30",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(body),
     ], check=True, capture_output=True)
 
-    fade_start = max(0.0, duration - fade_secs)
+    # Tarjeta final: fotograma fijo con el caption; audio = la cola del clip (los ultimos
+    # `fade_secs`) haciendo fade out, y silencio durante el `hold` restante.
+    ass_path.write_text(_endcard_ass(caption, still_dur), encoding="utf-8")
     subprocess.run([
-        ffmpeg, "-y", "-i", str(video_path),
-        "-vf", f"fade=t=out:st={fade_start:.2f}:d={fade_secs}",
-        "-af", f"afade=t=out:st={fade_start:.2f}:d={fade_secs}",
-        "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(faded),
+        ffmpeg, "-y",
+        "-loop", "1", "-t", f"{still_dur}", "-i", str(frame),
+        "-ss", f"{body_dur:.2f}", "-i", str(video_path),
+        "-filter_complex",
+        f"[0:v]ass={ass_path},fade=t=in:st=0:d=0.25,setsar=1[v];"
+        f"[1:a]atrim=0:{fade_secs},afade=t=out:st=0:d={fade_secs},apad=whole_dur={still_dur}[a]",
+        "-map", "[v]", "-map", "[a]", "-t", f"{still_dur}", "-r", "30",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(endcard),
     ], check=True, capture_output=True)
 
     subprocess.run([
-        ffmpeg, "-y", "-i", str(faded), "-i", str(endcard),
+        ffmpeg, "-y", "-i", str(body), "-i", str(endcard),
         "-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
         "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(tmp_out),
     ], check=True, capture_output=True)
 
     tmp_out.replace(video_path)
-    for extra in (frame, faded, endcard, ass_path):
+    for extra in (frame, body, endcard, ass_path):
         extra.unlink(missing_ok=True)
     return video_path
 
@@ -213,6 +229,17 @@ def main() -> None:
         top_ratio=args.top_ratio, focus=args.focus, zoom=args.zoom, ffmpeg=args.ffmpeg,
     )
 
+    # Fotograma de cierre limpio: se saca AHORA (vertical sin karaoke ni overlay) para que
+    # la miniatura no arrastre subtitulos quemados. La duracion no cambia con los pasos
+    # siguientes, asi que el % apunta al mismo instante.
+    clean_frame: Path | None = None
+    if args.endcard > 0:
+        clean_frame = out_path.with_suffix("").with_name(out_path.stem + "_ecclean.png")
+        dur = _probe_duration(out_path)
+        frame_t = max(0.0, dur * max(1, min(99, args.endcard)) / 100)
+        subprocess.run([args.ffmpeg, "-y", "-ss", f"{frame_t:.2f}", "-i", str(out_path),
+                        "-frames:v", "1", str(clean_frame)], check=True, capture_output=True)
+
     if args.subtitles:
         print("Anadiendo subtitulos karaoke...", flush=True)
         final = add_subtitles(out_path, ffmpeg=args.ffmpeg, language=args.lang)
@@ -224,8 +251,8 @@ def main() -> None:
         burn_overlay(out_path, args.overlay, round(end - start, 3), ffmpeg=args.ffmpeg)
 
     if args.endcard > 0:
-        print(f"Anadiendo fundido + tarjeta final (fotograma al {args.endcard}%)...", flush=True)
-        add_fade_and_endcard(out_path, args.overlay or "", args.endcard, ffmpeg=args.ffmpeg)
+        print(f"Anadiendo fotograma final con fadeout de audio (al {args.endcard}%)...", flush=True)
+        add_fade_and_endcard(out_path, args.overlay or "", args.endcard, ffmpeg=args.ffmpeg, clean_frame=clean_frame)
 
     print(f"Clip final: {out_path}", flush=True)
 
