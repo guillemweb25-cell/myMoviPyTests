@@ -111,6 +111,7 @@ export type ClipCandidate = {
   seoDescription?: string
   seoTags?: string
   overlayText?: string
+  youtubePrivacy?: string
 }
 
 export type DetectClipsResponse = {

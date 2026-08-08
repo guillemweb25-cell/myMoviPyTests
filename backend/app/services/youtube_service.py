@@ -118,6 +118,14 @@ class YouTubeService:
         items = response.get("items")
         return items[0] if items else None
 
+    def set_video_privacy(self, video_id: str, privacy: str) -> dict:
+        creds = self.get_credentials()
+        if not creds:
+            raise RuntimeError("El canal no esta autenticado con YouTube.")
+        youtube = build("youtube", "v3", credentials=creds)
+        body = {"id": video_id, "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}
+        return youtube.videos().update(part="status", body=body).execute()
+
     def upload_video(self, video_path: Path, metadata: dict[str, Any]) -> dict:
         creds = self.get_credentials()
         if not creds:

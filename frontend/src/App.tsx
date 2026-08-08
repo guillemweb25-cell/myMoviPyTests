@@ -79,6 +79,7 @@ export default function App() {
   const [renderingClipKey, setRenderingClipKey] = useState('')
   const [uploadingClipId, setUploadingClipId] = useState('')
   const [generatingSeoId, setGeneratingSeoId] = useState('')
+  const [uploadPrivacy, setUploadPrivacy] = useState('private')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>('create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
@@ -554,7 +555,7 @@ export default function App() {
     setUploadingClipId(clip.id)
     setError('')
     try {
-      const job = await api.uploadClip(clip.id)
+      const job = await api.uploadClip(clip.id, uploadPrivacy)
       insertOrUpdateJob(job)
       const status = await waitForJob(job.id)
       if (status !== 'completed') {
@@ -565,6 +566,15 @@ export default function App() {
       handleApiError(e)
     } finally {
       setUploadingClipId('')
+    }
+  }
+
+  async function handleSetVisibility(clip: ClipCandidate, privacy: string) {
+    setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, youtubePrivacy: privacy } : c)))
+    try {
+      await api.setClipVisibility(clip.id, privacy)
+    } catch (e) {
+      handleApiError(e)
     }
   }
 
@@ -1557,9 +1567,26 @@ export default function App() {
                           <a className="panel-link" href={api.fileUrl(clip.renderedPath)} target="_blank" rel="noreferrer">Ver / Descargar</a>
                         )}
                         {clip.rendered && !clip.uploaded && (
-                          <button className="panel-link panel-link-button" disabled={uploadingClipId === clip.id} onClick={() => handleUploadClip(clip)}>
-                            {uploadingClipId === clip.id ? 'Subiendo...' : 'Subir a YouTube'}
-                          </button>
+                          <>
+                            <select value={uploadPrivacy} onChange={(e) => setUploadPrivacy(e.target.value)} style={{ padding: '8px 10px', borderRadius: 8 }}>
+                              <option value="private">Privado</option>
+                              <option value="unlisted">Oculto (unlisted)</option>
+                              <option value="public">Público</option>
+                            </select>
+                            <button className="panel-link panel-link-button" disabled={uploadingClipId === clip.id} onClick={() => handleUploadClip(clip)}>
+                              {uploadingClipId === clip.id ? 'Subiendo...' : 'Subir a YouTube'}
+                            </button>
+                          </>
+                        )}
+                        {clip.uploaded && (
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span className="help">Visibilidad:</span>
+                            <select value={clip.youtubePrivacy || 'private'} onChange={(e) => handleSetVisibility(clip, e.target.value)} style={{ padding: '8px 10px', borderRadius: 8 }}>
+                              <option value="private">Privado</option>
+                              <option value="unlisted">Oculto</option>
+                              <option value="public">Público</option>
+                            </select>
+                          </label>
                         )}
                         <button className="panel-link panel-link-button" disabled={generatingSeoId === clip.id} onClick={() => handleGenerateSeo(clip)}>
                           {generatingSeoId === clip.id ? 'Generando textos...' : clip.seoTitle ? 'Regenerar textos SEO' : 'Generar textos SEO'}

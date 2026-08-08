@@ -71,7 +71,7 @@ def main() -> None:
     )
     video_id = response["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"
-    db.update_clip(args.clip, {"youtube_url": url})
+    db.update_clip(args.clip, {"youtube_url": url, "youtube_privacy": args.privacy})
     print(f"YOUTUBE_URL: {url}", flush=True)
     print("Subida completada.", flush=True)
 

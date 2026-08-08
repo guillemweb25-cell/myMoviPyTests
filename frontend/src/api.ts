@@ -123,7 +123,9 @@ export const api = {
   updateClipSettings: (clipId: string, payload: { focus: string; zoom: number; topRatio: number; subtitles: boolean; overlayText: string }) =>
     patchJson<ClipCandidate>(`/api/clips/${clipId}/settings`, payload),
   renderClip: (clipId: string) => postJson<{ job: Job; renderedPath: string }>(`/api/clips/${clipId}/render`, {}),
-  uploadClip: (clipId: string) => postJson<Job>(`/api/clips/${clipId}/upload`, {}),
+  uploadClip: (clipId: string, privacy: string) => postJson<Job>(`/api/clips/${clipId}/upload`, { privacy }),
+  setClipVisibility: (clipId: string, privacy: string) =>
+    postJson<{ privacy: string }>(`/api/clips/${clipId}/visibility`, { privacy }),
   generateClipSeo: (clipId: string) =>
     postJson<{ title: string; description: string; tags: string }>(`/api/clips/${clipId}/seo`, {}),
   uploadAndTranscribe: async (

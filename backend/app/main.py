@@ -1020,8 +1020,17 @@ def generate_clip_seo_endpoint(clip_id: str) -> dict:
     return seo
 
 
+class UploadClipRequest(BaseModel):
+    privacy: str = Field(default="private", pattern="^(private|unlisted|public)$")
+
+
+class ClipVisibilityRequest(BaseModel):
+    privacy: str = Field(..., pattern="^(private|unlisted|public)$")
+
+
 @app.post("/api/clips/{clip_id}/upload")
-def upload_clip_endpoint(clip_id: str) -> dict:
+def upload_clip_endpoint(clip_id: str, payload: UploadClipRequest | None = None) -> dict:
+    payload = payload or UploadClipRequest()
     clip = db.get_clip(clip_id)
     if not clip:
         raise HTTPException(status_code=404, detail="Clip no encontrado")
@@ -1036,7 +1045,31 @@ def upload_clip_endpoint(clip_id: str) -> dict:
     rendered = clip.get("renderedPath") or ""
     if not rendered or not (ROOT_DIR / rendered).exists():
         raise HTTPException(status_code=400, detail="Renderiza el clip antes de subirlo.")
-    return enqueue_job("upload_clip.py", ["--clip", clip_id])
+    return enqueue_job("upload_clip.py", ["--clip", clip_id, "--privacy", payload.privacy])
+
+
+@app.post("/api/clips/{clip_id}/visibility")
+def set_clip_visibility(clip_id: str, payload: ClipVisibilityRequest) -> dict:
+    from .services.youtube_service import YouTubeService
+
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    url = clip.get("youtubeUrl") or ""
+    match = re.search(r"[?&]v=([A-Za-z0-9_-]+)", url)
+    if not match:
+        raise HTTPException(status_code=400, detail="El clip no esta subido a YouTube.")
+    channel_id = clip.get("channelId") or channel_id_from_path(clip.get("videoPath"))
+    channel = db.get_channel(channel_id) if channel_id else None
+    if not channel:
+        raise HTTPException(status_code=400, detail="No se encontro el canal del clip.")
+    service = YouTubeService(channel_id, YOUTUBE_CREDS_DIR)
+    try:
+        service.set_video_privacy(match.group(1), payload.privacy)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"No se pudo cambiar la visibilidad: {exc}") from exc
+    db.update_clip(clip_id, {"youtube_privacy": payload.privacy})
+    return {"privacy": payload.privacy}
 
 
 @app.get("/api/files")
