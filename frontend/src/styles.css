@@ -538,6 +538,25 @@ pre {
   font: inherit;
 }
 
+.submit-flag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.submit-flag.submitted {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  font-weight: 600;
+}
+
 .file-preview {
   min-height: 60vh;
 }

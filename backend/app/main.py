@@ -1132,6 +1132,20 @@ def set_clip_visibility(clip_id: str, payload: ClipVisibilityRequest) -> dict:
     return {"privacy": payload.privacy}
 
 
+class ClipSubmittedRequest(BaseModel):
+    submitted: bool = True
+
+
+@app.post("/api/clips/{clip_id}/submitted")
+def set_clip_submitted(clip_id: str, payload: ClipSubmittedRequest) -> dict:
+    """Marca/desmarca el clip como enviado (submiteado) a la campana de Whop."""
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    db.update_clip(clip_id, {"submitted": 1 if payload.submitted else 0})
+    return {"submitted": payload.submitted}
+
+
 @app.get("/api/files")
 def list_files(path: str = "output") -> dict:
     target = (ROOT_DIR / path).resolve()

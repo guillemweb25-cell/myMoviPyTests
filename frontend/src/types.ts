@@ -113,6 +113,7 @@ export type ClipCandidate = {
   overlayText?: string
   youtubePrivacy?: string
   endcardPercent?: number
+  submitted?: boolean
 }
 
 export type DetectClipsResponse = {

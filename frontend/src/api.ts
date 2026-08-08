@@ -130,6 +130,8 @@ export const api = {
   uploadClip: (clipId: string, privacy: string) => postJson<Job>(`/api/clips/${clipId}/upload`, { privacy }),
   setClipVisibility: (clipId: string, privacy: string) =>
     postJson<{ privacy: string }>(`/api/clips/${clipId}/visibility`, { privacy }),
+  setClipSubmitted: (clipId: string, submitted: boolean) =>
+    postJson<{ submitted: boolean }>(`/api/clips/${clipId}/submitted`, { submitted }),
   generateClipSeo: (clipId: string) =>
     postJson<{ title: string; description: string; tags: string }>(`/api/clips/${clipId}/seo`, {}),
   uploadAndTranscribe: async (

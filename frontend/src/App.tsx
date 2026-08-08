@@ -631,6 +631,17 @@ export default function App() {
     }
   }
 
+  async function handleToggleSubmitted(clip: ClipCandidate) {
+    const next = !clip.submitted
+    setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, submitted: next } : c)))
+    try {
+      await api.setClipSubmitted(clip.id, next)
+    } catch (e) {
+      setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, submitted: !next } : c)))
+      handleApiError(e)
+    }
+  }
+
   async function handleCopyUrl(url: string) {
     try {
       await navigator.clipboard.writeText(url)
@@ -1737,6 +1748,13 @@ export default function App() {
                           <a className="panel-link" href={clip.youtubeUrl} target="_blank" rel="noreferrer">{clip.youtubeUrl}</a>
                           <button className="panel-link panel-link-button" onClick={() => handleCopyUrl(clip.youtubeUrl!)}>
                             {copiedUrl === clip.youtubeUrl ? '¡Copiado!' : 'Copiar enlace'}
+                          </button>
+                          <button
+                            className={clip.submitted ? 'submit-flag submitted' : 'submit-flag'}
+                            onClick={() => handleToggleSubmitted(clip)}
+                            title="Marcar si ya has enviado este clip a la campaña de Whop"
+                          >
+                            {clip.submitted ? '✅ Submiteado a Whop' : 'Marcar submiteado'}
                           </button>
                         </div>
                       )}
