@@ -23,7 +23,7 @@ class SubtitleEngine:
     
     # ─── 1. Transcription ───────────────────────────────────────────
 
-    def transcribe_words(self, audio_path: Path) -> List[Dict]:
+    def transcribe_words(self, audio_path: Path, language_code: str = "es") -> List[Dict]:
         """
         Send audio to AssemblyAI and get word-level timestamps.
         Returns list of: {"text": "word", "start": ms, "end": ms, "confidence": float}
@@ -51,7 +51,7 @@ class SubtitleEngine:
             headers=headers,
             json={
                 "audio_url": audio_url,
-                "language_code": "es",
+                "language_code": language_code,
                 "word_boost": [],
             }
         )

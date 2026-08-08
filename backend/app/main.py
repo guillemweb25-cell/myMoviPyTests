@@ -975,6 +975,9 @@ def render_clip_endpoint(clip_id: str) -> dict:
     resolve_within_root(video_rel)
 
     out_rel = str(Path(video_rel).parent / "clips" / f"clip_{clip_id}.mp4")
+    channel_id = clip.get("channelId") or channel_id_from_path(video_rel)
+    channel = db.get_channel(channel_id) if channel_id else None
+    lang = (channel or {}).get("language", "es") or "es"
     args = [
         "--video", video_rel,
         "--start", f"{clip['start']:.3f}",
@@ -983,6 +986,7 @@ def render_clip_endpoint(clip_id: str) -> dict:
         "--top-ratio", f"{clip['topRatio']:.2f}",
         "--focus", clip["focus"],
         "--zoom", f"{clip['zoom']:.2f}",
+        "--lang", lang,
     ]
     if clip["subtitles"]:
         args.append("--subtitles")

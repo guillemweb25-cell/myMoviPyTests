@@ -67,11 +67,11 @@ def extract_audio(video_path: Path, ffmpeg: str = "ffmpeg") -> Path:
     return audio_path
 
 
-def add_subtitles(vertical_path: Path, ffmpeg: str = "ffmpeg") -> Path:
+def add_subtitles(vertical_path: Path, ffmpeg: str = "ffmpeg", language: str = "es") -> Path:
     engine = SubtitleEngine()
     audio_path = extract_audio(vertical_path, ffmpeg)
     try:
-        words = engine.transcribe_words(audio_path)
+        words = engine.transcribe_words(audio_path, language_code=language)
     finally:
         audio_path.unlink(missing_ok=True)
 
@@ -98,6 +98,7 @@ def main() -> None:
     parser.add_argument("--focus", default="center", choices=["left", "center", "right"])
     parser.add_argument("--zoom", type=float, default=1.0)
     parser.add_argument("--subtitles", action="store_true", help="Quemar subtitulos karaoke")
+    parser.add_argument("--lang", default="es", help="Idioma del audio para los subtitulos (es, en...)")
     parser.add_argument("--overlay", default="", help="Texto fijo visible todo el clip (encima de los subs)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
@@ -117,7 +118,7 @@ def main() -> None:
 
     if args.subtitles:
         print("Anadiendo subtitulos karaoke...", flush=True)
-        final = add_subtitles(out_path, ffmpeg=args.ffmpeg)
+        final = add_subtitles(out_path, ffmpeg=args.ffmpeg, language=args.lang)
         if final != out_path:
             final.replace(out_path)
 

@@ -56,9 +56,9 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dic
     engine = SEOEngine()
     title = strip_markdown(engine.generate_video_title(snippet, lang=lang, custom_rules=rules))
     description = strip_markdown(engine.generate_description(snippet, lang=lang, custom_rules=rules))
-    # El modelo a veces antepone etiquetas "TITLE:" / "DESCRIPTION:"; se quitan.
-    description = re.sub(r"^\s*TITLE:.*(?:\n|$)", "", description, flags=re.IGNORECASE)
-    description = re.sub(r"^\s*DESCRIPTION:\s*", "", description, flags=re.IGNORECASE).strip()
+    # El modelo a veces antepone etiquetas "(Video) Title:" / "(Video) Description:".
+    description = re.sub(r"^\s*(video\s+)?title:.*(?:\n|$)", "", description, flags=re.IGNORECASE)
+    description = re.sub(r"^\s*(video\s+)?description:\s*", "", description, flags=re.IGNORECASE).strip()
     tags = engine.generate_video_questions_tags(snippet, lang=lang, custom_rules=rules)
 
     parts = [description]
