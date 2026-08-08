@@ -132,20 +132,23 @@ class YouTubeService:
             raise RuntimeError("El canal no esta autenticado con YouTube.")
         youtube = build("youtube", "v3", credentials=creds)
 
-        # Sanea los tags (limite 100 por tag, 500 en total).
+        # Sanea los tags. YouTube limita la suma de tags a 500 caracteres, pero los tags
+        # con espacios los envuelve entre comillas y ESAS comillas cuentan (por eso una
+        # lista que "parece" caber en 500 puede pasarse y dar invalidTags). Contamos el
+        # coste real (len + 2 comillas si es multi-palabra + separador) con margen a 480.
         clean_tags: list[str] = []
-        total_len = 0
+        used = 0
         for raw in metadata.get("tags", "").split(","):
-            tag = raw.replace("?", "").replace("¿", "").strip()
+            tag = raw.replace("?", "").replace("¿", "").replace("<", "").replace(">", "").replace('"', "").strip()
             if not tag:
                 continue
-            if len(tag) > 100:
-                tag = tag[:97] + "..."
-            if total_len + len(tag) + 1 < 500:
-                clean_tags.append(tag)
-                total_len += len(tag) + 1
-            else:
+            if len(tag) > 60:  # descarta preguntas/frases largas: no aportan como keyword
+                continue
+            cost = len(tag) + (2 if " " in tag else 0) + 1
+            if used + cost > 480:
                 break
+            clean_tags.append(tag)
+            used += cost
 
         body = {
             "snippet": {
