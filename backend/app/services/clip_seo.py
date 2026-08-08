@@ -26,6 +26,15 @@ def strip_markdown(text: str) -> str:
     return text.strip()
 
 
+def strip_wrapping_quotes(text: str) -> str:
+    """Quita las comillas que envuelven el texto (rectas o tipograficas)."""
+    text = text.strip()
+    quotes = "\"'“”‘’«»"
+    while len(text) >= 2 and text[0] in quotes and text[-1] in quotes:
+        text = text[1:-1].strip()
+    return text
+
+
 def read_source_info(video_folder: Path) -> tuple[str, str]:
     """Devuelve (titulo_original, url_original) de source.json / source_url.txt."""
     title, url = "", ""
@@ -54,7 +63,7 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dic
     snippet = clip.get("transcript") or clip.get("title") or ""
 
     engine = SEOEngine()
-    title = strip_markdown(engine.generate_video_title(snippet, lang=lang, custom_rules=rules))
+    title = strip_wrapping_quotes(strip_markdown(engine.generate_video_title(snippet, lang=lang, custom_rules=rules)))
     description = strip_markdown(engine.generate_description(snippet, lang=lang, custom_rules=rules))
     # El modelo a veces antepone etiquetas "(Video) Title:" / "(Video) Description:".
     description = re.sub(r"^\s*(video\s+)?title:.*(?:\n|$)", "", description, flags=re.IGNORECASE)

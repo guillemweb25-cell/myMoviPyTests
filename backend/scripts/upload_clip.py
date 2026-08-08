@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
 
 from app import db  # noqa: E402
-from app.services.clip_seo import generate_clip_seo  # noqa: E402
+from app.services.clip_seo import generate_clip_seo, strip_wrapping_quotes  # noqa: E402
 from app.services.youtube_service import YouTubeService  # noqa: E402
 
 
@@ -56,6 +56,7 @@ def main() -> None:
         title, description, tags = seo["title"], seo["description"], seo["tags"]
         db.update_clip(args.clip, {"seo_title": title, "seo_description": description, "seo_tags": tags})
 
+    title = strip_wrapping_quotes(title)
     print(f"Titulo: {title}", flush=True)
 
     print("Subiendo a YouTube...", flush=True)
