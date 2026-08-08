@@ -317,9 +317,22 @@ export default function App() {
           return
         }
       }
-      const ready = await api.campaign(campaign.id)
+      let ready = await api.campaign(campaign.id)
+
+      // Si se paso un brief, extrae los requisitos y aplicalos.
+      if (campBriefUrl.trim()) {
+        setClipSourceStatus('Leyendo el brief y extrayendo requisitos con IA...')
+        try {
+          const { campaign: withRules } = await api.extractBrief(ready.id, { briefUrl: campBriefUrl.trim() })
+          if (withRules.rules?.onScreenText) await api.applyCampaignRules(ready.id)
+          ready = await api.campaign(ready.id)
+        } catch (e) {
+          handleApiError(e)
+        }
+      }
+
       setCampaigns((prev) => prev.map((c) => (c.id === ready.id ? ready : c)))
-      setCampName(''); setCampSourceUrl(''); setCampCampaignUrl('')
+      setCampName(''); setCampSourceUrl(''); setCampCampaignUrl(''); setCampBriefUrl('')
       setClipSourceStatus('')
       setClipTab('manage')
       handleOpenCampaign(ready)
@@ -1306,6 +1319,9 @@ export default function App() {
                   Crea una campaña: pega el link del vídeo de YouTube a clipear y el link de la campaña (Whop).
                   El vídeo se descarga y transcribe, y luego generas los shorts.
                 </p>
+                <p className="help">
+                  ▶ Los shorts de este canal se subirán a YouTube: <strong>{ytStatus?.linked ? ytStatus.channelName : 'sin vincular — ve a YouTube ⚙'}</strong>
+                </p>
 
                 <div className="form-grid">
                   <label className="field span-2">
@@ -1319,6 +1335,10 @@ export default function App() {
                   <label className="field span-2">
                     <span>Link de la campaña (Whop)</span>
                     <input type="url" value={campCampaignUrl} onChange={(e) => setCampCampaignUrl(e.target.value)} placeholder="https://whop.com/..." />
+                  </label>
+                  <label className="field span-2">
+                    <span>Link del brief con las instrucciones (Google Docs) — la IA extrae los requisitos</span>
+                    <input type="url" value={campBriefUrl} onChange={(e) => setCampBriefUrl(e.target.value)} placeholder="https://docs.google.com/document/d/..." />
                   </label>
                   <label className="field">
                     <span>Cookies (opcional)</span>
