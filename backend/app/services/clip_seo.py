@@ -69,13 +69,16 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dic
         if required:
             parts.append(required)
 
-    # Titulo + enlace del video original.
+    # Titulo + enlace del video original (salvo si la fuente es WeTransfer:
+    # es un enlace temporal/privado que no debe ir en la descripcion publica).
     video_rel = clip.get("videoPath") or ""
     if video_rel:
         orig_title, orig_url = read_source_info((root / video_rel).parent)
-        footer = [line for line in (orig_title, orig_url) if line]
-        if footer:
-            parts.append("\n".join(footer))
+        is_wetransfer = "wetransfer.com" in orig_url or "we.tl/" in orig_url
+        if not is_wetransfer:
+            footer = [line for line in (orig_title, orig_url) if line]
+            if footer:
+                parts.append("\n".join(footer))
 
     # Hashtags obligatorios de la campana.
     if campaign_rules:
