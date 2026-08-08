@@ -569,6 +569,18 @@ pre {
   background: var(--surface-soft);
 }
 
+.batch-focus {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.batch-focus select {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
 .submit-timer {
   display: inline-flex;
   align-items: center;

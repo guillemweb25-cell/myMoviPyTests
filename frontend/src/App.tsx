@@ -97,6 +97,7 @@ export default function App() {
   const [extractingFramesId, setExtractingFramesId] = useState('')
   const [now, setNow] = useState(() => Date.now())
   const [batchRender, setBatchRender] = useState<{ total: number; done: number } | null>(null)
+  const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right'>('center')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
@@ -586,7 +587,12 @@ export default function App() {
     setBatchRender({ total: pending.length, done: 0 })
     setError('')
     for (let i = 0; i < pending.length; i++) {
-      await handleRenderClip(pending[i])
+      const clip = pending[i]
+      // Aplica el encuadre global a todos antes de renderizar.
+      if (clip.focus !== globalFocus) {
+        await handleClipSettingChange(clip, { focus: globalFocus })
+      }
+      await handleRenderClip(clip)
       setBatchRender({ total: pending.length, done: i + 1 })
     }
     setBatchRender(null)
@@ -1598,6 +1604,18 @@ export default function App() {
                       const pendientes = clipCandidates.filter((c) => !c.rendered).length
                       return (
                         <div className="batch-render-bar">
+                          <label className="batch-focus">
+                            <span>Encuadre (todos)</span>
+                            <select
+                              value={globalFocus}
+                              disabled={!!batchRender}
+                              onChange={(e) => setGlobalFocus(e.target.value as 'left' | 'center' | 'right')}
+                            >
+                              <option value="left">Izquierda</option>
+                              <option value="center">Centro</option>
+                              <option value="right">Derecha</option>
+                            </select>
+                          </label>
                           <button
                             className="primary"
                             disabled={!!batchRender || pendientes === 0}
@@ -1612,7 +1630,7 @@ export default function App() {
                           <span className="help" style={{ margin: 0 }}>
                             {batchRender
                               ? 'Renderizando en cola, uno tras otro. Puedes dejarlo trabajando.'
-                              : 'Renderiza en cola todos los que falten; luego solo queda subir a YT.'}
+                              : `Aplica el encuadre "${globalFocus === 'left' ? 'Izquierda' : globalFocus === 'right' ? 'Derecha' : 'Centro'}" a todos y los renderiza en cola; luego solo queda subir a YT.`}
                           </span>
                         </div>
                       )
