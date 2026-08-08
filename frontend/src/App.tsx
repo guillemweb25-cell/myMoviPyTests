@@ -1701,7 +1701,7 @@ export default function App() {
                       {clip.rendered && (
                         <div className="seo-box">
                           <div className="seo-head">
-                            <span>Cierre + miniatura (fundido a negro + fadeout + fotograma final con el caption grande)</span>
+                            <span>Cierre + miniatura (fadeout de audio + fotograma final con el caption grande). Por defecto el del 50%; cámbialo y regenera si quieres otro.</span>
                             <button className="link-btn" disabled={extractingFramesId === clip.id} onClick={() => handleExtractFrames(clip)}>
                               {extractingFramesId === clip.id ? 'Extrayendo...' : 'Ver 3 fotogramas'}
                             </button>
@@ -1727,7 +1727,7 @@ export default function App() {
                             </div>
                           )}
                           {clip.endcardPercent ? (
-                            <p className="help">✅ Miniatura al {clip.endcardPercent}% elegida → pulsa <strong>Regenerar</strong> para añadir el cierre al vídeo.</p>
+                            <p className="help">✅ Cierre con el fotograma del {clip.endcardPercent}%. Si eliges otro, pulsa <strong>Regenerar</strong> para aplicarlo.</p>
                           ) : null}
                         </div>
                       )}

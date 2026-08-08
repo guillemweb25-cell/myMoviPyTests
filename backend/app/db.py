@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS clips (
     seo_tags        TEXT DEFAULT '',
     overlay_text    TEXT DEFAULT '',
     youtube_privacy TEXT DEFAULT '',
-    endcard_percent INTEGER DEFAULT 0
+    endcard_percent INTEGER DEFAULT 50
 );
 CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_path);
 CREATE TABLE IF NOT EXISTS channels (
@@ -236,8 +236,8 @@ def replace_clips(transcript_path: str, video_path: str | None, channel_id: int 
         conn.executemany(
             """
             INSERT INTO clips (id, transcript_path, video_path, channel_id, start, end,
-                               title, reason, score, transcript, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               title, reason, score, transcript, created_at, endcard_percent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -252,6 +252,9 @@ def replace_clips(transcript_path: str, video_path: str | None, channel_id: int 
                     clip.get("score", 0),
                     clip.get("transcript", ""),
                     created_at,
+                    # Cierre al 50% por defecto: el primer render ya sale como short con
+                    # cierre; si no gusta, el usuario elige otro fotograma y re-renderiza.
+                    clip.get("endcardPercent", 50),
                 )
                 for clip in clips
             ],
