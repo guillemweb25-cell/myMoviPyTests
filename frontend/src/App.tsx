@@ -20,10 +20,20 @@ function formatSeconds(value: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
+type NavState = { section?: Section; channelId?: number | null; clipTab?: 'create' | 'manage' | 'youtube'; campaignId?: number | null }
+
+function loadNav(): NavState {
+  try {
+    return JSON.parse(localStorage.getItem('mediaops_nav') || '{}') as NavState
+  } catch {
+    return {}
+  }
+}
+
 export default function App() {
   const [authState, setAuthState] = useState<'checking' | 'authed' | 'login'>('checking')
   const [tokenInput, setTokenInput] = useState('')
-  const [activeSection, setActiveSection] = useState<Section>('dashboard')
+  const [activeSection, setActiveSection] = useState<Section>(() => loadNav().section || 'dashboard')
   const [scripts, setScripts] = useState<ScriptInfo[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
   const [comfyStatus, setComfyStatus] = useState<ComfyStatus | null>(null)
@@ -62,7 +72,7 @@ export default function App() {
   const [isUploadingAndTranscribing, setIsUploadingAndTranscribing] = useState(false)
 
   const [channels, setChannels] = useState<Channel[]>([])
-  const [activeChannelId, setActiveChannelId] = useState<number | null>(null)
+  const [activeChannelId, setActiveChannelId] = useState<number | null>(() => loadNav().channelId ?? null)
   const [channelDraft, setChannelDraft] = useState<{ name: string; language: string; seoRules: string }>({ name: '', language: 'es', seoRules: '' })
   const [ytStatus, setYtStatus] = useState<{ hasSecret: boolean; linked: boolean; channelName: string } | null>(null)
   const [isUploadingSecret, setIsUploadingSecret] = useState(false)
@@ -80,11 +90,11 @@ export default function App() {
   const [uploadingClipId, setUploadingClipId] = useState('')
   const [generatingSeoId, setGeneratingSeoId] = useState('')
   const [uploadPrivacy, setUploadPrivacy] = useState('private')
-  const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>('create')
+  const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [activeCampaignId, setActiveCampaignId] = useState<number | null>(null)
+  const [activeCampaignId, setActiveCampaignId] = useState<number | null>(() => loadNav().campaignId ?? null)
   const [campName, setCampName] = useState('')
   const [campSourceUrl, setCampSourceUrl] = useState('')
   const [campCampaignUrl, setCampCampaignUrl] = useState('')
@@ -196,6 +206,10 @@ export default function App() {
   }
 
   function handleSelectChannel(channel: Channel) {
+    if (channel.id !== activeChannelId) {
+      setActiveCampaignId(null)
+      setClipCandidates([])
+    }
     setActiveChannelId(channel.id)
     setActiveSection('clipping')
   }
@@ -273,7 +287,14 @@ export default function App() {
   async function refreshCampaigns(channelId: number | null = activeChannelId) {
     if (channelId === null) return
     try {
-      setCampaigns(await api.campaigns(channelId))
+      const data = await api.campaigns(channelId)
+      setCampaigns(data)
+      // Restaura los clips de la campana activa (p.ej. tras recargar la pestana).
+      const open = activeCampaignId != null ? data.find((c) => c.id === activeCampaignId) : null
+      if (open && open.transcriptPath) {
+        setSelectedClipSource(open.transcriptPath)
+        loadSavedClips(open.transcriptPath)
+      }
     } catch (e) {
       handleApiError(e)
     }
@@ -871,11 +892,16 @@ export default function App() {
       setYtStatus(null)
       refreshYoutubeStatus(activeChannel.id)
       refreshClipSources(activeChannel.id)
-      setActiveCampaignId(null)
-      setClipCandidates([])
       refreshCampaigns(activeChannel.id)
     }
-  }, [activeChannelId])
+  }, [activeChannel?.id])
+
+  // Persiste la navegacion para no perder el sitio al recargar la pestana.
+  useEffect(() => {
+    localStorage.setItem('mediaops_nav', JSON.stringify({
+      section: activeSection, channelId: activeChannelId, clipTab, campaignId: activeCampaignId,
+    }))
+  }, [activeSection, activeChannelId, clipTab, activeCampaignId])
 
   // Retorno del OAuth de YouTube: Google redirige a la raiz con ?code=&state=.
   useEffect(() => {
