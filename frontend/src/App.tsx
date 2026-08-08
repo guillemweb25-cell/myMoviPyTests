@@ -1530,9 +1530,9 @@ export default function App() {
                       <p className="description">Aún no hay clips. Pulsa “Detectar clips”.</p>
                     )}
 
-                    <div className="jobs-list" style={{ maxHeight: 'unset' }}>
+                    <div className="jobs-list clip-list" style={{ maxHeight: 'unset' }}>
                   {clipCandidates.map((clip) => (
-                    <article key={clip.id} className="card" style={{ boxShadow: 'none' }}>
+                    <article key={clip.id} className="clip-card">
                       <div className="viewer-header">
                         <div>
                           <h3 style={{ margin: 0 }}>
