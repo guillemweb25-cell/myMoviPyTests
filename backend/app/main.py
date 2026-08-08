@@ -781,6 +781,55 @@ def update_campaign_endpoint(campaign_id: int, payload: CampaignUpdateRequest) -
     return db.update_campaign(campaign_id, fields)
 
 
+class CampaignBriefRequest(BaseModel):
+    briefUrl: str = Field(default="")
+    briefText: str = Field(default="")
+
+
+@app.post("/api/campaigns/{campaign_id}/brief")
+def extract_campaign_brief(campaign_id: int, payload: CampaignBriefRequest) -> dict:
+    from .services.brief_extractor import extract_rules, fetch_brief_text
+
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+
+    text = payload.briefText.strip()
+    if not text and payload.briefUrl.strip():
+        try:
+            text = fetch_brief_text(payload.briefUrl.strip())
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=f"No se pudo leer el brief: {exc}") from exc
+    if not text:
+        raise HTTPException(status_code=400, detail="Pega el brief o un link (Google Docs).")
+
+    try:
+        rules = extract_rules(text)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo la extraccion del brief: {exc}") from exc
+
+    db.update_campaign(campaign_id, {
+        "brief_url": payload.briefUrl.strip(),
+        "rules_json": json.dumps(rules, ensure_ascii=False),
+    })
+    return {"campaign": db.get_campaign(campaign_id), "rules": rules}
+
+
+@app.post("/api/campaigns/{campaign_id}/apply-rules")
+def apply_campaign_rules(campaign_id: int) -> dict:
+    """Aplica el texto en pantalla obligatorio a todos los clips de la campana."""
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    on_screen = (campaign.get("rules") or {}).get("onScreenText", "").strip()
+    if not on_screen:
+        raise HTTPException(status_code=400, detail="El brief no define texto en pantalla obligatorio.")
+    clips = db.load_clips(campaign["transcriptPath"])
+    for clip in clips:
+        db.update_clip(clip["id"], {"overlay_text": on_screen})
+    return {"updated": len(clips), "onScreenText": on_screen}
+
+
 @app.delete("/api/campaigns/{campaign_id}")
 def delete_campaign_endpoint(campaign_id: int) -> dict:
     if not db.get_campaign(campaign_id):
@@ -957,8 +1006,10 @@ def generate_clip_seo_endpoint(clip_id: str) -> dict:
     if not channel:
         # Sin canal: usa reglas vacias e idioma por defecto.
         channel = {"language": "es", "seoRules": ""}
+    campaign = db.get_campaign_by_transcript(clip.get("transcriptPath") or "")
+    campaign_rules = (campaign or {}).get("rules") or None
     try:
-        seo = generate_clip_seo(clip, channel, ROOT_DIR)
+        seo = generate_clip_seo(clip, channel, ROOT_DIR, campaign_rules=campaign_rules)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Fallo la generacion de SEO: {exc}") from exc
     db.update_clip(clip_id, {

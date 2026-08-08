@@ -73,9 +73,16 @@ CREATE TABLE IF NOT EXISTS campaigns (
     transcript_path TEXT DEFAULT '',
     video_path      TEXT DEFAULT '',
     status          TEXT DEFAULT 'preparing',
-    created_at      TEXT
+    created_at      TEXT,
+    brief_url       TEXT DEFAULT '',
+    rules_json      TEXT DEFAULT ''
 );
 """
+
+CAMPAIGN_MIGRATIONS = [
+    "ALTER TABLE campaigns ADD COLUMN brief_url TEXT DEFAULT ''",
+    "ALTER TABLE campaigns ADD COLUMN rules_json TEXT DEFAULT ''",
+]
 
 
 def _connect() -> sqlite3.Connection:
@@ -108,7 +115,7 @@ def init(db_path: Path) -> None:
     with _db_lock, _connect() as conn:
         conn.executescript(SCHEMA)
         # Migraciones para BD antiguas: anade columnas nuevas si faltan.
-        for statement in CLIP_MIGRATIONS:
+        for statement in CLIP_MIGRATIONS + CAMPAIGN_MIGRATIONS:
             try:
                 conn.execute(statement)
             except sqlite3.OperationalError:
@@ -329,6 +336,11 @@ def delete_channel(channel_id: int) -> None:
 
 
 def _campaign_to_dict(row: sqlite3.Row) -> dict:
+    raw_rules = row["rules_json"] if "rules_json" in row.keys() else ""
+    try:
+        rules = json.loads(raw_rules) if raw_rules else {}
+    except Exception:
+        rules = {}
     return {
         "id": row["id"],
         "channelId": row["channel_id"],
@@ -339,6 +351,8 @@ def _campaign_to_dict(row: sqlite3.Row) -> dict:
         "videoPath": row["video_path"] or "",
         "status": row["status"] or "preparing",
         "createdAt": row["created_at"],
+        "briefUrl": (row["brief_url"] if "brief_url" in row.keys() else "") or "",
+        "rules": rules,
     }
 
 
@@ -369,8 +383,17 @@ def get_campaign(campaign_id: int) -> dict | None:
     return _campaign_to_dict(row) if row else None
 
 
+def get_campaign_by_transcript(transcript_path: str) -> dict | None:
+    with _db_lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM campaigns WHERE transcript_path = ? ORDER BY id DESC LIMIT 1",
+            (transcript_path,),
+        ).fetchone()
+    return _campaign_to_dict(row) if row else None
+
+
 def update_campaign(campaign_id: int, fields: dict) -> dict | None:
-    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status"}
+    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status", "brief_url", "rules_json"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)

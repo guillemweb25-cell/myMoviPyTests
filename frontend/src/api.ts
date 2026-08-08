@@ -109,6 +109,9 @@ export const api = {
   updateCampaign: (id: number, payload: { name?: string; campaignUrl?: string }) =>
     patchJson<Campaign>(`/api/campaigns/${id}`, payload),
   deleteCampaign: (id: number) => del<{ deleted: number }>(`/api/campaigns/${id}`),
+  extractBrief: (id: number, payload: { briefUrl?: string; briefText?: string }) =>
+    postJson<{ campaign: Campaign; rules: Record<string, unknown> }>(`/api/campaigns/${id}/brief`, payload),
+  applyCampaignRules: (id: number) => postJson<{ updated: number; onScreenText: string }>(`/api/campaigns/${id}/apply-rules`, {}),
   clipSources: (channelId?: number | null) =>
     getJson<ClipSource[]>(channelId != null ? `/api/clips/sources?channelId=${channelId}` : '/api/clips/sources'),
   clipSourceFromUrl: (payload: { url: string; channelId?: number | null; browser?: string; cookiesFile?: string; lang?: string; subtitleFormat?: string }) =>

@@ -21,7 +21,7 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r"__(.*?)__", r"\1", text)
     text = re.sub(r"\*(.*?)\*", r"\1", text)
     text = re.sub(r"`([^`]*)`", r"\1", text)
-    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s{0,3}#{1,6}\s+", "", text, flags=re.MULTILINE)  # cabeceras "# " (no hashtags)
     text = re.sub(r"^\s{0,3}[-*]\s+", "- ", text, flags=re.MULTILINE)
     return text.strip()
 
@@ -44,10 +44,10 @@ def read_source_info(video_folder: Path) -> tuple[str, str]:
     return title, url
 
 
-def generate_clip_seo(clip: dict, channel: dict, root: Path) -> dict:
-    """Genera {title, description, tags} para un clip segun las reglas del canal.
-
-    La descripcion incluye el titulo y el enlace del video original, en texto plano.
+def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dict | None = None) -> dict:
+    """Genera {title, description, tags} para un clip segun las reglas del canal
+    y, si se pasan, las reglas de compliance de la campana (caption obligatorio,
+    hashtags). La descripcion incluye el titulo y enlace del video original.
     """
     lang = LANG_HINT.get(channel.get("language", ""), None)
     rules = channel.get("seoRules") or None
@@ -61,11 +61,26 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path) -> dict:
     description = re.sub(r"^\s*DESCRIPTION:\s*", "", description, flags=re.IGNORECASE).strip()
     tags = engine.generate_video_questions_tags(snippet, lang=lang, custom_rules=rules)
 
+    parts = [description]
+
+    # Caption obligatorio de la campana (compliance).
+    if campaign_rules:
+        required = (campaign_rules.get("captionRequired") or "").strip()
+        if required:
+            parts.append(required)
+
+    # Titulo + enlace del video original.
     video_rel = clip.get("videoPath") or ""
     if video_rel:
         orig_title, orig_url = read_source_info((root / video_rel).parent)
         footer = [line for line in (orig_title, orig_url) if line]
         if footer:
-            description = f"{description}\n\n---\n" + "\n".join(footer)
+            parts.append("\n".join(footer))
 
-    return {"title": title, "description": description, "tags": tags}
+    # Hashtags obligatorios de la campana.
+    if campaign_rules:
+        hashtags = campaign_rules.get("hashtags") or []
+        if hashtags:
+            parts.append(" ".join(hashtags))
+
+    return {"title": title, "description": "\n\n".join(parts), "tags": tags}

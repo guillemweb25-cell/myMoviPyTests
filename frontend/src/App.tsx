@@ -89,6 +89,8 @@ export default function App() {
   const [campCampaignUrl, setCampCampaignUrl] = useState('')
   const [campCookies, setCampCookies] = useState('')
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false)
+  const [campBriefUrl, setCampBriefUrl] = useState('')
+  const [isExtractingBrief, setIsExtractingBrief] = useState(false)
 
   function handleApiError(e: unknown) {
     if (e instanceof UnauthorizedError) {
@@ -284,6 +286,7 @@ export default function App() {
   function handleOpenCampaign(campaign: Campaign) {
     setActiveCampaignId(campaign.id)
     setClipCandidates([])
+    setCampBriefUrl(campaign.briefUrl || '')
     if (campaign.transcriptPath) {
       setSelectedClipSource(campaign.transcriptPath)
       loadSavedClips(campaign.transcriptPath)
@@ -335,6 +338,25 @@ export default function App() {
       setCampaigns((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
     } catch (e) {
       handleApiError(e)
+    }
+  }
+
+  async function handleExtractBrief(campaign: Campaign) {
+    if (!campBriefUrl.trim()) { setError('Pega el link del brief (Google Docs).'); return }
+    setIsExtractingBrief(true)
+    setError('')
+    try {
+      const { campaign: updated } = await api.extractBrief(campaign.id, { briefUrl: campBriefUrl.trim() })
+      setCampaigns((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      // Aplica el texto en pantalla obligatorio a los clips existentes.
+      if (updated.rules?.onScreenText) {
+        await api.applyCampaignRules(campaign.id)
+        if (selectedClipSource) await loadSavedClips(selectedClipSource)
+      }
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setIsExtractingBrief(false)
     }
   }
 
@@ -1385,6 +1407,46 @@ export default function App() {
                         />
                       </label>
                     </div>
+
+                    <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
+                    <h3 style={{ margin: '4px 0' }}>Reglas de la campaña (brief)</h3>
+                    <div className="form-grid">
+                      <label className="field span-2">
+                        <span>Link del brief (Google Docs) — la IA extrae los requisitos</span>
+                        <input type="url" value={campBriefUrl} onChange={(e) => setCampBriefUrl(e.target.value)} placeholder="https://docs.google.com/document/d/..." />
+                      </label>
+                      <div className="field" style={{ justifyContent: 'flex-end' }}>
+                        <button className="primary" disabled={isExtractingBrief} onClick={() => handleExtractBrief(activeCampaign)}>
+                          {isExtractingBrief ? 'Extrayendo...' : 'Extraer requisitos con IA'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {activeCampaign.rules?.captionRequired && (
+                      <div className="seo-box">
+                        <p className="help">✅ Requisitos aplicados (texto en pantalla + añadidos a la descripción al subir):</p>
+                        <div className="seo-field">
+                          <div className="seo-head">
+                            <span>Caption obligatorio</span>
+                            <button className="link-btn" onClick={() => handleCopyUrl(activeCampaign.rules!.captionRequired!)}>Copiar</button>
+                          </div>
+                          <input readOnly value={activeCampaign.rules.captionRequired} />
+                        </div>
+                        <div className="seo-field">
+                          <div className="seo-head"><span>Texto en pantalla (overlay)</span></div>
+                          <input readOnly value={activeCampaign.rules.onScreenText || ''} />
+                        </div>
+                        <p className="help">
+                          Tags → YouTube: {activeCampaign.rules.handles?.youtube || '—'} · TikTok: {activeCampaign.rules.handles?.tiktok || '—'} · IG: {activeCampaign.rules.handles?.instagram || '—'}
+                          {activeCampaign.rules.keepWatermark ? ' · ⚠️ mantener marca de agua (no recortar)' : ''}
+                        </p>
+                        {activeCampaign.rules.sourceUrl && (
+                          <p className="help">Metraje oficial: <a className="panel-link" href={activeCampaign.rules.sourceUrl} target="_blank" rel="noreferrer">{activeCampaign.rules.sourceUrl}</a></p>
+                        )}
+                      </div>
+                    )}
+
+                    <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
 
                     <div className="actions-row" style={{ alignItems: 'flex-end' }}>
                       <label className="field" style={{ maxWidth: 130 }}>

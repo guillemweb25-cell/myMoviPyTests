@@ -50,7 +50,9 @@ def main() -> None:
         tags = clip.get("seoTags", "")
     else:
         print("Generando SEO (titulo, descripcion, tags)...", flush=True)
-        seo = generate_clip_seo(clip, channel, root)
+        campaign = db.get_campaign_by_transcript(clip.get("transcriptPath") or "")
+        campaign_rules = (campaign or {}).get("rules") or None
+        seo = generate_clip_seo(clip, channel, root, campaign_rules=campaign_rules)
         title, description, tags = seo["title"], seo["description"], seo["tags"]
         db.update_clip(args.clip, {"seo_title": title, "seo_description": description, "seo_tags": tags})
 

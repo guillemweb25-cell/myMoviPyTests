@@ -52,6 +52,19 @@ export type Channel = {
   createdAt: string
 }
 
+export type CampaignRules = {
+  onScreenText?: string
+  captionRequired?: string
+  handles?: { youtube?: string; tiktok?: string; instagram?: string }
+  hashtags?: string[]
+  mentions?: string[]
+  keepWatermark?: boolean
+  audience?: string
+  payout?: string
+  sourceUrl?: string
+  notes?: string
+}
+
 export type Campaign = {
   id: number
   channelId: number
@@ -62,6 +75,8 @@ export type Campaign = {
   videoPath: string
   status: string
   createdAt: string
+  briefUrl?: string
+  rules?: CampaignRules
 }
 
 export type ClipSource = {
