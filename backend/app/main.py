@@ -84,9 +84,9 @@ class RunScriptRequest(BaseModel):
 class DetectClipsRequest(BaseModel):
     transcriptPath: str = Field(..., description="Ruta al .vtt/.srt dentro del workspace")
     channelId: int | None = None
-    count: int = Field(default=5, ge=1, le=12)
-    minDuration: int = Field(default=15, ge=5, le=120)
-    maxDuration: int = Field(default=60, ge=10, le=180)
+    parts: int = Field(default=4, ge=0, le=20, description="Partes en que dividir la transcripcion (0 = auto por duracion)")
+    clipsPerPart: int = Field(default=5, ge=1, le=10)
+    targetDuration: int = Field(default=25, ge=10, le=90)
 
 
 class ChannelCreateRequest(BaseModel):
@@ -921,9 +921,9 @@ def detect_clips_endpoint(payload: DetectClipsRequest) -> dict:
     try:
         clips = detect_clips(
             transcript,
-            count=payload.count,
-            min_dur=payload.minDuration,
-            max_dur=payload.maxDuration,
+            parts=payload.parts,
+            clips_per_part=payload.clipsPerPart,
+            target_dur=payload.targetDuration,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Fallo la deteccion de clips: {exc}") from exc

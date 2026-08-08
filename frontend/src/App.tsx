@@ -80,7 +80,9 @@ export default function App() {
   const [clipSources, setClipSources] = useState<ClipSource[]>([])
   const [selectedClipSource, setSelectedClipSource] = useState('')
   const [clipCandidates, setClipCandidates] = useState<ClipCandidate[]>([])
-  const [clipCount, setClipCount] = useState(5)
+  const [clipParts, setClipParts] = useState(4)
+  const [clipsPerPart, setClipsPerPart] = useState(5)
+  const [clipTargetDur, setClipTargetDur] = useState(25)
   const [clipUrl, setClipUrl] = useState('')
   const [clipUrlCookies, setClipUrlCookies] = useState('')
   const [isPreparingSource, setIsPreparingSource] = useState(false)
@@ -443,7 +445,7 @@ export default function App() {
     setError('')
     setClipCandidates([])
     try {
-      const data = await api.detectClips(transcriptPath, clipCount, 15, 60, activeChannelId)
+      const data = await api.detectClips(transcriptPath, clipParts, clipsPerPart, clipTargetDur, activeChannelId)
       setClipCandidates(data.clips)
       if (data.clips.length === 0) {
         setError('No se detectaron clips. Prueba con otra transcripcion.')
@@ -1518,15 +1520,26 @@ export default function App() {
 
                     <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
 
-                    <div className="actions-row" style={{ alignItems: 'flex-end' }}>
-                      <label className="field" style={{ maxWidth: 130 }}>
-                        <span>Nº de clips</span>
-                        <input type="number" min={1} max={12} value={clipCount} onChange={(e) => setClipCount(Number(e.target.value) || 5)} />
+                    <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                      <label className="field" style={{ maxWidth: 150 }}>
+                        <span>Partes (0 = auto)</span>
+                        <input type="number" min={0} max={20} value={clipParts} onChange={(e) => setClipParts(Number(e.target.value))} />
+                      </label>
+                      <label className="field" style={{ maxWidth: 150 }}>
+                        <span>Clips por parte</span>
+                        <input type="number" min={1} max={10} value={clipsPerPart} onChange={(e) => setClipsPerPart(Number(e.target.value) || 5)} />
+                      </label>
+                      <label className="field" style={{ maxWidth: 150 }}>
+                        <span>Duración (s)</span>
+                        <input type="number" min={10} max={90} value={clipTargetDur} onChange={(e) => setClipTargetDur(Number(e.target.value) || 25)} />
                       </label>
                       <button className="primary" disabled={isDetectingClips || !selectedClipSource} onClick={() => runDetect(selectedClipSource)}>
                         {isDetectingClips ? 'Analizando...' : clipCandidates.length ? 'Re-detectar clips' : 'Detectar clips'}
                       </button>
                     </div>
+                    <p className="help">
+                      Divide la transcripción en partes y saca varios clips de cada una (más cobertura, peticiones más pequeñas). Auto ≈ 1 parte por cada 15 min.
+                    </p>
 
                     {clipCandidates.length === 0 && (
                       <p className="description">Aún no hay clips. Pulsa “Detectar clips”.</p>
