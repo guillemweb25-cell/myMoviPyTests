@@ -101,6 +101,19 @@ class ChannelUpdateRequest(BaseModel):
     seoRules: str | None = None
 
 
+class CampaignCreateRequest(BaseModel):
+    channelId: int
+    name: str = Field(default="", max_length=200)
+    sourceUrl: str = Field(..., description="URL del video de YouTube a clipear")
+    campaignUrl: str = Field(default="", description="URL de la campana (Whop)")
+    cookiesFile: str | None = None
+
+
+class CampaignUpdateRequest(BaseModel):
+    name: str | None = None
+    campaignUrl: str | None = None
+
+
 class ClipSourceFromUrlRequest(BaseModel):
     url: str = Field(..., description="URL del video a descargar")
     channelId: int | None = None
@@ -682,6 +695,65 @@ def youtube_finish(payload: YoutubeFinishRequest) -> dict:
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"No se pudo finalizar OAuth: {exc}") from exc
     return {"linked": True, "channelName": yt_name}
+
+
+@app.get("/api/campaigns")
+def list_campaigns_endpoint(channelId: int | None = None) -> list[dict]:
+    return db.list_campaigns(channelId)
+
+
+@app.get("/api/campaigns/{campaign_id}")
+def get_campaign_endpoint(campaign_id: int) -> dict:
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    return campaign
+
+
+@app.post("/api/campaigns")
+def create_campaign_endpoint(payload: CampaignCreateRequest) -> dict:
+    channel = db.get_channel(payload.channelId)
+    if not channel:
+        raise HTTPException(status_code=404, detail="Canal no encontrado")
+    if not payload.sourceUrl.strip():
+        raise HTTPException(status_code=400, detail="La URL del video es obligatoria")
+
+    name = payload.name.strip() or payload.sourceUrl.strip()
+    campaign = db.create_campaign(
+        payload.channelId, name, payload.sourceUrl.strip(), payload.campaignUrl.strip(), now_iso()
+    )
+
+    args = [
+        "--url", payload.sourceUrl.strip(),
+        "--lang", "auto",
+        "--format", "vtt",
+        "--outbase", channel_output_rel(channel),
+        "--campaign", str(campaign["id"]),
+    ]
+    if payload.cookiesFile:
+        args.extend(["--cookies", payload.cookiesFile])
+    job = enqueue_job("download_and_transcribe_video.py", args)
+    return {"campaign": campaign, "job": job}
+
+
+@app.patch("/api/campaigns/{campaign_id}")
+def update_campaign_endpoint(campaign_id: int, payload: CampaignUpdateRequest) -> dict:
+    if not db.get_campaign(campaign_id):
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    fields: dict = {}
+    if payload.name is not None:
+        fields["name"] = payload.name.strip()
+    if payload.campaignUrl is not None:
+        fields["campaign_url"] = payload.campaignUrl.strip()
+    return db.update_campaign(campaign_id, fields)
+
+
+@app.delete("/api/campaigns/{campaign_id}")
+def delete_campaign_endpoint(campaign_id: int) -> dict:
+    if not db.get_campaign(campaign_id):
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    db.delete_campaign(campaign_id)
+    return {"deleted": campaign_id}
 
 
 @app.post("/api/clips/source-from-url")

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, clearToken, getToken, setToken, UnauthorizedError } from './api'
-import type { Channel, ClipCandidate, ClipSource, ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
+import type { Campaign, Channel, ClipCandidate, ClipSource, ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
 
 type Section = 'dashboard' | 'content' | 'clipping' | 'channel' | 'execute' | 'jobs' | 'files'
 
@@ -81,6 +81,14 @@ export default function App() {
   const [generatingSeoId, setGeneratingSeoId] = useState('')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>('create')
   const [copiedUrl, setCopiedUrl] = useState('')
+
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [activeCampaignId, setActiveCampaignId] = useState<number | null>(null)
+  const [campName, setCampName] = useState('')
+  const [campSourceUrl, setCampSourceUrl] = useState('')
+  const [campCampaignUrl, setCampCampaignUrl] = useState('')
+  const [campCookies, setCampCookies] = useState('')
+  const [isCreatingCampaign, setIsCreatingCampaign] = useState(false)
 
   function handleApiError(e: unknown) {
     if (e instanceof UnauthorizedError) {
@@ -254,6 +262,77 @@ export default function App() {
       setChannels(remaining)
       setActiveChannelId(remaining.length > 0 ? remaining[0].id : null)
       setActiveSection('clipping')
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  async function refreshCampaigns(channelId: number | null = activeChannelId) {
+    if (channelId === null) return
+    try {
+      setCampaigns(await api.campaigns(channelId))
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  const activeCampaign = useMemo(
+    () => campaigns.find((c) => c.id === activeCampaignId) ?? null,
+    [campaigns, activeCampaignId],
+  )
+
+  function handleOpenCampaign(campaign: Campaign) {
+    setActiveCampaignId(campaign.id)
+    setClipCandidates([])
+    if (campaign.transcriptPath) {
+      setSelectedClipSource(campaign.transcriptPath)
+      loadSavedClips(campaign.transcriptPath)
+    }
+  }
+
+  async function handleCreateCampaign() {
+    if (activeChannelId === null) { setError('Selecciona un canal.'); return }
+    if (!campSourceUrl.trim()) { setError('Pega la URL del video de YouTube a clipear.'); return }
+    setIsCreatingCampaign(true)
+    setError('')
+    setClipSourceStatus('Creando campana: descargando y transcribiendo el video...')
+    try {
+      const { campaign, job } = await api.createCampaign({
+        channelId: activeChannelId,
+        name: campName.trim(),
+        sourceUrl: campSourceUrl.trim(),
+        campaignUrl: campCampaignUrl.trim(),
+        cookiesFile: campCookies.trim() || undefined,
+      })
+      insertOrUpdateJob(job)
+      setCampaigns((prev) => [campaign, ...prev])
+      const status = await waitForJob(job.id)
+      if (status !== 'completed') {
+        setError('Fallo la preparacion de la campana. Revisa el Historial.')
+        setClipSourceStatus('')
+        return
+      }
+      const ready = await api.campaign(campaign.id)
+      setCampaigns((prev) => prev.map((c) => (c.id === ready.id ? ready : c)))
+      setCampName(''); setCampSourceUrl(''); setCampCampaignUrl('')
+      setClipSourceStatus('')
+      setClipTab('manage')
+      handleOpenCampaign(ready)
+      if (ready.transcriptPath) await runDetect(ready.transcriptPath)
+    } catch (e) {
+      setClipSourceStatus('')
+      handleApiError(e)
+    } finally {
+      setIsCreatingCampaign(false)
+    }
+  }
+
+  async function handleDeleteCampaign(campaign: Campaign) {
+    if (!window.confirm(`¿Eliminar la campana "${campaign.name}"? (no borra el video ni YouTube)`)) return
+    try {
+      await api.deleteCampaign(campaign.id)
+      setCampaigns((prev) => prev.filter((c) => c.id !== campaign.id))
+      if (activeCampaignId === campaign.id) setActiveCampaignId(null)
     } catch (e) {
       handleApiError(e)
     }
@@ -724,6 +803,9 @@ export default function App() {
       setYtStatus(null)
       refreshYoutubeStatus(activeChannel.id)
       refreshClipSources(activeChannel.id)
+      setActiveCampaignId(null)
+      setClipCandidates([])
+      refreshCampaigns(activeChannel.id)
     }
   }, [activeChannelId])
 
@@ -1180,99 +1262,113 @@ export default function App() {
             </div>
 
             <div className="subtabs">
-              <button className={clipTab === 'create' ? 'subtab active' : 'subtab'} onClick={() => setClipTab('create')}>Crear clipping</button>
-              <button className={clipTab === 'manage' ? 'subtab active' : 'subtab'} onClick={() => setClipTab('manage')}>Mis clippings</button>
+              <button className={clipTab === 'create' ? 'subtab active' : 'subtab'} onClick={() => setClipTab('create')}>Crear campaña</button>
+              <button className={clipTab === 'manage' ? 'subtab active' : 'subtab'} onClick={() => { setClipTab('manage'); setActiveCampaignId(null) }}>Mis campañas</button>
               <button className="subtab" onClick={() => setActiveSection('channel')}>YouTube ⚙</button>
             </div>
 
             {clipTab === 'create' && (
               <>
                 <p className="description">
-                  Descarga un video desde una URL (se transcribe solo) o elige uno ya preparado, y detecta
-                  los mejores momentos. Luego los gestionas en “Mis clippings”.
+                  Crea una campaña: pega el link del vídeo de YouTube a clipear y el link de la campaña (Whop).
+                  El vídeo se descarga y transcribe, y luego generas los shorts.
                 </p>
 
                 <div className="form-grid">
                   <label className="field span-2">
-                    <span>Descargar y preparar desde URL</span>
-                    <input
-                      type="url"
-                      placeholder="https://... (descarga el video y lo transcribe)"
-                      value={clipUrl}
-                      onChange={(e) => setClipUrl(e.target.value)}
-                    />
+                    <span>Nombre de la campaña (opcional)</span>
+                    <input value={campName} onChange={(e) => setCampName(e.target.value)} placeholder="Ej: Trailblazers Kate McAndrew" />
                   </label>
-
+                  <label className="field span-2">
+                    <span>Link del vídeo de YouTube a clipear</span>
+                    <input type="url" value={campSourceUrl} onChange={(e) => setCampSourceUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+                  </label>
+                  <label className="field span-2">
+                    <span>Link de la campaña (Whop)</span>
+                    <input type="url" value={campCampaignUrl} onChange={(e) => setCampCampaignUrl(e.target.value)} placeholder="https://whop.com/..." />
+                  </label>
                   <label className="field">
                     <span>Cookies (opcional)</span>
-                    <select value={clipUrlCookies} onChange={(e) => setClipUrlCookies(e.target.value)}>
+                    <select value={campCookies} onChange={(e) => setCampCookies(e.target.value)}>
                       <option value="">sin cookies</option>
                       {cookieEntries.map((item) => (
                         <option key={item.path} value={item.path}>{item.name}</option>
                       ))}
                     </select>
                   </label>
-
-                  <div className="field" style={{ justifyContent: 'flex-end' }}>
-                    <button className="primary" disabled={isPreparingSource || !clipUrl.trim()} onClick={handlePrepareClipSource}>
-                      {isPreparingSource ? 'Procesando...' : 'Descargar y transcribir'}
-                    </button>
-                  </div>
-                </div>
-
-                {clipSourceStatus && <p className="help">⏳ {clipSourceStatus}</p>}
-
-                <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
-
-                <div className="form-grid">
-                  <label className="field span-2">
-                    <span>Video (con transcripcion)</span>
-                    <select value={selectedClipSource} onChange={(e) => handleSelectClipSource(e.target.value)}>
-                      {clipSources.length === 0 && <option value="">No hay videos con transcripcion</option>}
-                      {clipSources.map((item) => (
-                        <option key={item.transcriptPath} value={item.transcriptPath}>{item.name}</option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="field">
-                    <span>Nº de clips</span>
-                    <input type="number" min={1} max={12} value={clipCount} onChange={(e) => setClipCount(Number(e.target.value) || 5)} />
-                  </label>
                 </div>
 
                 <div className="actions-row">
-                  <button
-                    className="primary"
-                    disabled={isDetectingClips || !selectedClipSource}
-                    onClick={async () => { await handleDetectClips(); setClipTab('manage') }}
-                  >
-                    {isDetectingClips ? 'Analizando transcripcion...' : 'Detectar clips virales'}
+                  <button className="primary" disabled={isCreatingCampaign || !campSourceUrl.trim()} onClick={handleCreateCampaign}>
+                    {isCreatingCampaign ? 'Preparando...' : 'Crear campaña'}
                   </button>
-                  <button onClick={() => refreshClipSources()}>Recargar videos</button>
                 </div>
+
+                {clipSourceStatus && <p className="help">⏳ {clipSourceStatus}</p>}
               </>
             )}
 
             {clipTab === 'manage' && (
               <>
-                <div className="form-grid">
-                  <label className="field span-2">
-                    <span>Clipping (video)</span>
-                    <select value={selectedClipSource} onChange={(e) => handleSelectClipSource(e.target.value)}>
-                      {clipSources.length === 0 && <option value="">No hay clippings todavia</option>}
-                      {clipSources.map((item) => (
-                        <option key={item.transcriptPath} value={item.transcriptPath}>{item.name}</option>
+                {!activeCampaign ? (
+                  <>
+                    <p className="description">Tus campañas de este canal. Abre una para ver y gestionar sus shorts.</p>
+                    {campaigns.length === 0 && <p className="help">Aún no hay campañas. Crea una en “Crear campaña”.</p>}
+                    <div className="jobs-list" style={{ maxHeight: 'unset' }}>
+                      {campaigns.map((camp) => (
+                        <article key={camp.id} className="card" style={{ boxShadow: 'none' }}>
+                          <div className="viewer-header">
+                            <div>
+                              <h3 style={{ margin: 0 }}>{camp.name}</h3>
+                              <p className="help">
+                                {camp.status === 'ready' ? '✅ Listo' : camp.status === 'preparing' ? '⏳ Preparando…' : camp.status}
+                                {camp.campaignUrl ? ' · con link de campaña' : ''}
+                              </p>
+                            </div>
+                            <div className="actions-row">
+                              <button className="primary" disabled={camp.status !== 'ready'} onClick={() => handleOpenCampaign(camp)}>
+                                {camp.status === 'ready' ? 'Abrir' : 'Preparando…'}
+                              </button>
+                              <button onClick={() => handleDeleteCampaign(camp)}>Eliminar</button>
+                            </div>
+                          </div>
+                        </article>
                       ))}
-                    </select>
-                  </label>
-                </div>
+                    </div>
+                    <div className="actions-row">
+                      <button onClick={() => refreshCampaigns()}>Recargar campañas</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="viewer-header">
+                      <div>
+                        <h3 style={{ margin: 0 }}>{activeCampaign.name}</h3>
+                        <div className="actions-row" style={{ marginTop: 6 }}>
+                          {activeCampaign.campaignUrl && (
+                            <a className="panel-link" href={activeCampaign.campaignUrl} target="_blank" rel="noreferrer">Campaña (Whop)</a>
+                          )}
+                          <a className="panel-link" href={activeCampaign.sourceUrl} target="_blank" rel="noreferrer">Vídeo original</a>
+                        </div>
+                      </div>
+                      <button onClick={() => setActiveCampaignId(null)}>← Campañas</button>
+                    </div>
 
-                {clipCandidates.length === 0 && (
-                  <p className="description">Este clipping no tiene clips. Ve a “Crear clipping” y detecta.</p>
-                )}
+                    <div className="actions-row" style={{ alignItems: 'flex-end' }}>
+                      <label className="field" style={{ maxWidth: 130 }}>
+                        <span>Nº de clips</span>
+                        <input type="number" min={1} max={12} value={clipCount} onChange={(e) => setClipCount(Number(e.target.value) || 5)} />
+                      </label>
+                      <button className="primary" disabled={isDetectingClips || !selectedClipSource} onClick={() => runDetect(selectedClipSource)}>
+                        {isDetectingClips ? 'Analizando...' : clipCandidates.length ? 'Re-detectar clips' : 'Detectar clips'}
+                      </button>
+                    </div>
 
-                <div className="jobs-list" style={{ maxHeight: 'unset' }}>
+                    {clipCandidates.length === 0 && (
+                      <p className="description">Aún no hay clips. Pulsa “Detectar clips”.</p>
+                    )}
+
+                    <div className="jobs-list" style={{ maxHeight: 'unset' }}>
                   {clipCandidates.map((clip) => (
                     <article key={clip.id} className="card" style={{ boxShadow: 'none' }}>
                       <div className="viewer-header">
@@ -1396,7 +1492,9 @@ export default function App() {
                       )}
                     </article>
                   ))}
-                </div>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </section>

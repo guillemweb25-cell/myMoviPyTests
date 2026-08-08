@@ -1,4 +1,4 @@
-import type { Channel, ClipCandidate, ClipSource, ComfyStatus, ContentJobRequest, DetectClipsResponse, FileEntry, Job, ScriptInfo, UploadTranscriptionResponse } from './types'
+import type { Campaign, Channel, ClipCandidate, ClipSource, ComfyStatus, ContentJobRequest, DetectClipsResponse, FileEntry, Job, ScriptInfo, UploadTranscriptionResponse } from './types'
 
 async function patchJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -102,6 +102,13 @@ export const api = {
     })
     return handle<{ hasSecret: boolean }>(response)
   },
+  campaigns: (channelId: number) => getJson<Campaign[]>(`/api/campaigns?channelId=${channelId}`),
+  campaign: (id: number) => getJson<Campaign>(`/api/campaigns/${id}`),
+  createCampaign: (payload: { channelId: number; name: string; sourceUrl: string; campaignUrl: string; cookiesFile?: string }) =>
+    postJson<{ campaign: Campaign; job: Job }>('/api/campaigns', payload),
+  updateCampaign: (id: number, payload: { name?: string; campaignUrl?: string }) =>
+    patchJson<Campaign>(`/api/campaigns/${id}`, payload),
+  deleteCampaign: (id: number) => del<{ deleted: number }>(`/api/campaigns/${id}`),
   clipSources: (channelId?: number | null) =>
     getJson<ClipSource[]>(channelId != null ? `/api/clips/sources?channelId=${channelId}` : '/api/clips/sources'),
   clipSourceFromUrl: (payload: { url: string; channelId?: number | null; browser?: string; cookiesFile?: string; lang?: string; subtitleFormat?: string }) =>

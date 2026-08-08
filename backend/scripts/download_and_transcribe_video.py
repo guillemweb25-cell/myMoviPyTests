@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from download_video import download_video  # noqa: E402  (script hermano)
+from app import db  # noqa: E402
 from app.services.transcription import AssemblyAiTranscriptionService  # noqa: E402
 
 
@@ -39,6 +40,7 @@ def main() -> None:
     parser.add_argument("--lang", default="auto")
     parser.add_argument("--format", default="vtt")
     parser.add_argument("--outbase", default="output", help="Carpeta base (p.ej. output/0002-canal)")
+    parser.add_argument("--campaign", default=None, help="Id de campana a actualizar al terminar")
     args = parser.parse_args()
 
     print("Paso 1/2: descargando video...", flush=True)
@@ -53,6 +55,19 @@ def main() -> None:
     service = AssemblyAiTranscriptionService()
     artifacts = service.transcribe(mp3, lang=args.lang, subtitle_format=args.format)
     print(f"Transcripcion generada: {artifacts.subtitles_file}", flush=True)
+
+    if args.campaign:
+        root = Path.cwd()
+        db.init(root / "backend" / "runs" / "jobs.db")
+        transcript_rel = str(artifacts.subtitles_file.resolve().relative_to(root))
+        video_rel = str(Path(video_path).resolve().relative_to(root))
+        db.update_campaign(int(args.campaign), {
+            "transcript_path": transcript_rel,
+            "video_path": video_rel,
+            "status": "ready",
+        })
+        print(f"Campana {args.campaign} marcada como lista.", flush=True)
+
     print(f"✅ Video listo para clipping en: {out_dir}", flush=True)
 
 

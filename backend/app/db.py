@@ -64,6 +64,17 @@ CREATE TABLE IF NOT EXISTS channels (
     youtube_name   TEXT DEFAULT '',
     created_at     TEXT
 );
+CREATE TABLE IF NOT EXISTS campaigns (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_id      INTEGER,
+    name            TEXT,
+    source_url      TEXT,
+    campaign_url    TEXT DEFAULT '',
+    transcript_path TEXT DEFAULT '',
+    video_path      TEXT DEFAULT '',
+    status          TEXT DEFAULT 'preparing',
+    created_at      TEXT
+);
 """
 
 
@@ -315,3 +326,62 @@ def update_channel(channel_id: int, fields: dict) -> dict | None:
 def delete_channel(channel_id: int) -> None:
     with _db_lock, _connect() as conn:
         conn.execute("DELETE FROM channels WHERE id = ?", (channel_id,))
+
+
+def _campaign_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "channelId": row["channel_id"],
+        "name": row["name"],
+        "sourceUrl": row["source_url"],
+        "campaignUrl": row["campaign_url"] or "",
+        "transcriptPath": row["transcript_path"] or "",
+        "videoPath": row["video_path"] or "",
+        "status": row["status"] or "preparing",
+        "createdAt": row["created_at"],
+    }
+
+
+def create_campaign(channel_id: int, name: str, source_url: str, campaign_url: str, created_at: str) -> dict:
+    with _db_lock, _connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO campaigns (channel_id, name, source_url, campaign_url, created_at) VALUES (?, ?, ?, ?, ?)",
+            (channel_id, name, source_url, campaign_url, created_at),
+        )
+        row = conn.execute("SELECT * FROM campaigns WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    return _campaign_to_dict(row)
+
+
+def list_campaigns(channel_id: int | None = None) -> list[dict]:
+    with _db_lock, _connect() as conn:
+        if channel_id is not None:
+            rows = conn.execute(
+                "SELECT * FROM campaigns WHERE channel_id = ? ORDER BY id DESC", (channel_id,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM campaigns ORDER BY id DESC").fetchall()
+    return [_campaign_to_dict(row) for row in rows]
+
+
+def get_campaign(campaign_id: int) -> dict | None:
+    with _db_lock, _connect() as conn:
+        row = conn.execute("SELECT * FROM campaigns WHERE id = ?", (campaign_id,)).fetchone()
+    return _campaign_to_dict(row) if row else None
+
+
+def update_campaign(campaign_id: int, fields: dict) -> dict | None:
+    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status"}
+    updates = {key: value for key, value in fields.items() if key in allowed}
+    if updates:
+        assignments = ", ".join(f"{key} = ?" for key in updates)
+        with _db_lock, _connect() as conn:
+            conn.execute(
+                f"UPDATE campaigns SET {assignments} WHERE id = ?",
+                (*updates.values(), campaign_id),
+            )
+    return get_campaign(campaign_id)
+
+
+def delete_campaign(campaign_id: int) -> None:
+    with _db_lock, _connect() as conn:
+        conn.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))

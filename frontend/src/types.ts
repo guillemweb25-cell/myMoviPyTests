@@ -52,6 +52,18 @@ export type Channel = {
   createdAt: string
 }
 
+export type Campaign = {
+  id: number
+  channelId: number
+  name: string
+  sourceUrl: string
+  campaignUrl: string
+  transcriptPath: string
+  videoPath: string
+  status: string
+  createdAt: string
+}
+
 export type ClipSource = {
   folder: string
   name: string
