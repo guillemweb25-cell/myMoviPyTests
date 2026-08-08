@@ -304,13 +304,15 @@ export default function App() {
         campaignUrl: campCampaignUrl.trim(),
         cookiesFile: campCookies.trim() || undefined,
       })
-      insertOrUpdateJob(job)
       setCampaigns((prev) => [campaign, ...prev])
-      const status = await waitForJob(job.id)
-      if (status !== 'completed') {
-        setError('Fallo la preparacion de la campana. Revisa el Historial.')
-        setClipSourceStatus('')
-        return
+      if (job) {
+        insertOrUpdateJob(job)
+        const status = await waitForJob(job.id)
+        if (status !== 'completed') {
+          setError('Fallo la preparacion de la campana. Revisa el Historial.')
+          setClipSourceStatus('')
+          return
+        }
       }
       const ready = await api.campaign(campaign.id)
       setCampaigns((prev) => prev.map((c) => (c.id === ready.id ? ready : c)))
@@ -324,6 +326,15 @@ export default function App() {
       handleApiError(e)
     } finally {
       setIsCreatingCampaign(false)
+    }
+  }
+
+  async function handleUpdateCampaign(campaignId: number, fields: { name?: string; campaignUrl?: string }) {
+    try {
+      const updated = await api.updateCampaign(campaignId, fields)
+      setCampaigns((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+    } catch (e) {
+      handleApiError(e)
     }
   }
 
@@ -1352,6 +1363,27 @@ export default function App() {
                         </div>
                       </div>
                       <button onClick={() => setActiveCampaignId(null)}>← Campañas</button>
+                    </div>
+
+                    <div className="form-grid">
+                      <label className="field">
+                        <span>Nombre de la campaña</span>
+                        <input
+                          value={activeCampaign.name}
+                          onChange={(e) => setCampaigns((prev) => prev.map((c) => (c.id === activeCampaign.id ? { ...c, name: e.target.value } : c)))}
+                          onBlur={() => handleUpdateCampaign(activeCampaign.id, { name: activeCampaign.name })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Link de la campaña (Whop)</span>
+                        <input
+                          type="url"
+                          placeholder="https://whop.com/..."
+                          value={activeCampaign.campaignUrl}
+                          onChange={(e) => setCampaigns((prev) => prev.map((c) => (c.id === activeCampaign.id ? { ...c, campaignUrl: e.target.value } : c)))}
+                          onBlur={() => handleUpdateCampaign(activeCampaign.id, { campaignUrl: activeCampaign.campaignUrl })}
+                        />
+                      </label>
                     </div>
 
                     <div className="actions-row" style={{ alignItems: 'flex-end' }}>

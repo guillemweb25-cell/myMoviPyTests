@@ -105,7 +105,7 @@ export const api = {
   campaigns: (channelId: number) => getJson<Campaign[]>(`/api/campaigns?channelId=${channelId}`),
   campaign: (id: number) => getJson<Campaign>(`/api/campaigns/${id}`),
   createCampaign: (payload: { channelId: number; name: string; sourceUrl: string; campaignUrl: string; cookiesFile?: string }) =>
-    postJson<{ campaign: Campaign; job: Job }>('/api/campaigns', payload),
+    postJson<{ campaign: Campaign; job: Job | null }>('/api/campaigns', payload),
   updateCampaign: (id: number, payload: { name?: string; campaignUrl?: string }) =>
     patchJson<Campaign>(`/api/campaigns/${id}`, payload),
   deleteCampaign: (id: number) => del<{ deleted: number }>(`/api/campaigns/${id}`),

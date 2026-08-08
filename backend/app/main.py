@@ -710,6 +710,28 @@ def get_campaign_endpoint(campaign_id: int) -> dict:
     return campaign
 
 
+def find_existing_download(channel: dict, source_url: str) -> tuple[str, str] | None:
+    """Si el video ya se descargo en la carpeta del canal, devuelve
+    (transcript_rel, video_rel) para reutilizarlo en vez de re-descargar."""
+    channel_dir = ROOT_DIR / channel_output_rel(channel)
+    if not channel_dir.exists():
+        return None
+    target = normalize_content_url(source_url)
+    for source_file in channel_dir.rglob("source_url.txt"):
+        raw = source_file.read_text(encoding="utf-8", errors="ignore").strip()
+        if not raw or normalize_content_url(raw) != target:
+            continue
+        folder = source_file.parent
+        vtts = sorted(folder.glob("*.vtt"))
+        videos = sorted(folder.glob("*.mp4"))
+        if vtts and videos:
+            return (
+                str(vtts[0].relative_to(ROOT_DIR)),
+                str(videos[0].relative_to(ROOT_DIR)),
+            )
+    return None
+
+
 @app.post("/api/campaigns")
 def create_campaign_endpoint(payload: CampaignCreateRequest) -> dict:
     channel = db.get_channel(payload.channelId)
@@ -722,6 +744,17 @@ def create_campaign_endpoint(payload: CampaignCreateRequest) -> dict:
     campaign = db.create_campaign(
         payload.channelId, name, payload.sourceUrl.strip(), payload.campaignUrl.strip(), now_iso()
     )
+
+    # Si el video ya se descargo antes, se reutiliza (conserva clips, no re-descarga).
+    existing = find_existing_download(channel, payload.sourceUrl.strip())
+    if existing:
+        transcript_rel, video_rel = existing
+        db.update_campaign(campaign["id"], {
+            "transcript_path": transcript_rel,
+            "video_path": video_rel,
+            "status": "ready",
+        })
+        return {"campaign": db.get_campaign(campaign["id"]), "job": None}
 
     args = [
         "--url", payload.sourceUrl.strip(),
