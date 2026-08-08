@@ -225,6 +225,27 @@ nav {
   gap: 18px;
 }
 
+.clip-preview {
+  position: relative;
+  display: inline-block;
+}
+
+.clip-preview-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 17, 32, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 1px;
+  border-radius: 12px;
+}
+
 .clip-card {
   background: var(--surface-soft);
   border: 1px solid rgba(255, 255, 255, 0.12);

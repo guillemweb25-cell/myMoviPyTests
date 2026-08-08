@@ -90,6 +90,7 @@ export default function App() {
   const [uploadingClipId, setUploadingClipId] = useState('')
   const [generatingSeoId, setGeneratingSeoId] = useState('')
   const [uploadPrivacy, setUploadPrivacy] = useState('private')
+  const [renderNonce, setRenderNonce] = useState<Record<string, number>>({})
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
@@ -562,6 +563,7 @@ export default function App() {
       insertOrUpdateJob(job)
       await waitForJob(job.id)
       await loadSavedClips(selectedClipSource)
+      setRenderNonce((prev) => ({ ...prev, [clip.id]: Date.now() }))
     } catch (e) {
       handleApiError(e)
     } finally {
@@ -1677,7 +1679,18 @@ export default function App() {
                       )}
 
                       {clip.rendered && clip.renderedPath && (
-                        <video className="media-preview" style={{ maxHeight: '46vh', width: 'auto' }} controls src={api.fileUrl(clip.renderedPath)} />
+                        <div className="clip-preview">
+                          <video
+                            key={renderNonce[clip.id] || 0}
+                            className="media-preview"
+                            style={{ maxHeight: '46vh', width: 'auto' }}
+                            controls
+                            src={`${api.fileUrl(clip.renderedPath)}&_=${renderNonce[clip.id] || 0}`}
+                          />
+                          {renderingClipKey === clip.id && (
+                            <div className="clip-preview-overlay">…regenerando…</div>
+                          )}
+                        </div>
                       )}
                     </article>
                   ))}
