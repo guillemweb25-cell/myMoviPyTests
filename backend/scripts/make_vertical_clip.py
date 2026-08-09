@@ -40,7 +40,22 @@ FOCUS_X = {
 }
 
 
-def build_filter(top_ratio: float, focus: str = "center", zoom: float = 1.0, duration: float = 0.0) -> str:
+def _follow_x_expr(segments: list[tuple[float, float, float]]) -> str:
+    """Expresion de x (recorte superior) que SIGUE al hablante activo.
+
+    `segments`: lista de (t_inicio, t_fin, center_x_norm) en tiempo LOCAL del clip.
+    En cada tramo centra el recorte en la cara del hablante (center_x_norm de 0..1).
+    Las comas se escapan (\\,) porque va inline en -filter_complex.
+    """
+    expr = "(iw-ow)/2"  # por defecto: centro (tramos sin hablante claro)
+    for t0, t1, cx in reversed(segments):
+        expr = f"if(between(t,{t0:.3f},{t1:.3f}),{cx:.4f}*iw-ow/2,{expr})"
+    expr = f"max(0,min(iw-ow,{expr}))"
+    return expr.replace(",", "\\,")
+
+
+def build_filter(top_ratio: float, focus: str = "center", zoom: float = 1.0, duration: float = 0.0,
+                 follow_segments: list[tuple[float, float, float]] | None = None) -> str:
     top_h = int(CANVAS_H * top_ratio)
     top_h -= top_h % 2  # alto par para el codec
     bottom_h = CANVAS_H - top_h
@@ -48,7 +63,10 @@ def build_filter(top_ratio: float, focus: str = "center", zoom: float = 1.0, dur
     zoom = max(1.0, float(zoom))
     scaled_w = int(CANVAS_W * zoom)
     scaled_h = int(top_h * zoom)
-    x_expr = FOCUS_X.get(focus, FOCUS_X["center"])
+    if focus == "follow" and follow_segments:
+        x_expr = _follow_x_expr(follow_segments)
+    else:
+        x_expr = FOCUS_X.get(focus, FOCUS_X["center"])
 
     return (
         # Arriba: recorte enfocado (encuadre + zoom). Abajo: la escena completa
@@ -71,6 +89,7 @@ def make_clip(
     focus: str = "center",
     zoom: float = 1.0,
     ffmpeg: str = "ffmpeg",
+    follow_segments: list[tuple[float, float, float]] | None = None,
 ) -> Path:
     duration = round(end - start, 3)
     if duration <= 0:
@@ -82,7 +101,7 @@ def make_clip(
         "-ss", f"{start:.3f}",
         "-i", str(video),
         "-t", f"{duration:.3f}",
-        "-filter_complex", build_filter(top_ratio, focus, zoom, duration),
+        "-filter_complex", build_filter(top_ratio, focus, zoom, duration, follow_segments),
         "-map", "[v]",
         "-map", "0:a?",
         "-c:v", "libx264",

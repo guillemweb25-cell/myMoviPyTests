@@ -100,7 +100,7 @@ export type ClipCandidate = {
   score: number
   transcript: string
   channelId?: number | null
-  focus: 'left' | 'center' | 'right'
+  focus: 'left' | 'center' | 'right' | 'follow'
   zoom: number
   topRatio: number
   subtitles: boolean

@@ -149,7 +149,7 @@ def channel_id_from_path(rel_path: str | None) -> int | None:
 
 
 class ClipSettingsRequest(BaseModel):
-    focus: str = Field(default="center", pattern="^(left|center|right)$")
+    focus: str = Field(default="center", pattern="^(left|center|right|follow)$")
     zoom: float = Field(default=1.0, ge=1.0, le=2.5)
     topRatio: float = Field(default=0.7, ge=0.3, le=0.85)
     subtitles: bool = True
@@ -1032,7 +1032,7 @@ def render_all_endpoint(payload: RenderAllRequest) -> dict:
     if not clips:
         raise HTTPException(status_code=400, detail="No hay clips para esta transcripcion.")
     args = ["--transcript", payload.transcriptPath]
-    if payload.focus in ("left", "center", "right"):
+    if payload.focus in ("left", "center", "right", "follow"):
         args += ["--focus", payload.focus]
     job = enqueue_job("render_all.py", args)
     return {"job": job}

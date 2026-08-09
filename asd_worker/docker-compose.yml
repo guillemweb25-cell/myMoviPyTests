@@ -1,0 +1,23 @@
+services:
+  asd_worker:
+    build: .
+    container_name: asd-worker
+    environment:
+      # Evita el choque MKL/OpenMP (MKL_THREADING_LAYER=INTEL vs libgomp) al lanzar
+      # demoTalkNet como subproceso junto a ffmpeg/opencv.
+      - MKL_THREADING_LAYER=GNU
+    ports:
+      - "8900:8900"
+    volumes:
+      - asd_data:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]      # 0 = RTX 4060 Ti (la de 16GB). nvidia-smi -L para verificar.
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  asd_data:

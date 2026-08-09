@@ -96,7 +96,7 @@ export default function App() {
   const [clipFrames, setClipFrames] = useState<Record<string, { percent: number; path: string }[]>>({})
   const [extractingFramesId, setExtractingFramesId] = useState('')
   const [now, setNow] = useState(() => Date.now())
-  const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right'>('center')
+  const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow'>('center')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
@@ -1653,11 +1653,12 @@ export default function App() {
                             <select
                               value={globalFocus}
                               disabled={enCola}
-                              onChange={(e) => setGlobalFocus(e.target.value as 'left' | 'center' | 'right')}
+                              onChange={(e) => setGlobalFocus(e.target.value as 'left' | 'center' | 'right' | 'follow')}
                             >
                               <option value="left">Izquierda</option>
                               <option value="center">Centro</option>
                               <option value="right">Derecha</option>
+                              <option value="follow">🎙 Seguir al hablante</option>
                             </select>
                           </label>
                           <button
@@ -1674,7 +1675,7 @@ export default function App() {
                           <span className="help" style={{ margin: 0 }}>
                             {enCola
                               ? '⚙ Corre en el servidor: puedes cerrar la pestaña o cambiar de sección; sigue renderizando.'
-                              : `Aplica el encuadre "${globalFocus === 'left' ? 'Izquierda' : globalFocus === 'right' ? 'Derecha' : 'Centro'}" a todos y los renderiza en cola en el servidor; luego solo queda subir a YT.`}
+                              : `Aplica el encuadre "${globalFocus === 'left' ? 'Izquierda' : globalFocus === 'right' ? 'Derecha' : globalFocus === 'follow' ? '🎙 Seguir al hablante' : 'Centro'}" a todos y los renderiza en cola en el servidor; luego solo queda subir a YT.`}
                           </span>
                         </div>
                       )
@@ -1713,10 +1714,11 @@ export default function App() {
                       <div className="form-grid">
                         <label className="field">
                           <span>Encuadre</span>
-                          <select value={clip.focus} onChange={(e) => handleClipSettingChange(clip, { focus: e.target.value as 'left' | 'center' | 'right' })}>
+                          <select value={clip.focus} onChange={(e) => handleClipSettingChange(clip, { focus: e.target.value as 'left' | 'center' | 'right' | 'follow' })}>
                             <option value="left">Izquierda</option>
                             <option value="center">Centro</option>
                             <option value="right">Derecha</option>
+                            <option value="follow">🎙 Seguir al hablante</option>
                           </select>
                         </label>
                         <label className="field">

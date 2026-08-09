@@ -63,11 +63,32 @@ track_shot → crop_video → evaluate_network`. Produce `tracks.pckl` y `scores
   recorte vertical horizontalmente sobre el hablante activo.
 - `speaker = -1`: nadie claro (silencio); el render mantiene el último o encuadra ancho.
 
-## Estado / pendiente
+## Estado
 
 - [x] Worker (`asd_worker/`) + contrato + cliente backend + caché + fallback.
-- [ ] **Modo de encuadre "Seguir al hablante"** en el render (`make_vertical_clip` /
-  `render_clip`): consume los segmentos del tramo del clip y mueve el recorte superior
-  al `center_norm` del hablante activo, con suavizado e histéresis. Se implementa
-  cuando el worker esté desplegado y tengamos un `asd.json` real que mirar.
-- [ ] Opción "Seguir al hablante" en el selector de encuadre (individual y global).
+- [x] **Modo de encuadre "Seguir al hablante"** en el render: `render_clip.py` corta el
+  tramo del clip, lo manda al worker (`asd_client.fetch_segments`, cache
+  `asd_<clip>_<start>_<end>.json`) y pasa los segmentos a `make_vertical_clip`, que
+  construye una `x` de recorte por tiempo (`_follow_x_expr`) que centra el recorte
+  superior en la cara del hablante activo. Fallback a centro si el worker no responde.
+- [x] Opción "🎙 Seguir al hablante" en el selector de encuadre (individual y global).
+
+Validado con el podcast WATO (plano fijo de 2 personas): detecta las 2 caras
+(x≈0.17 izq / x≈0.86 der) y el recorte sigue al que habla en cada tramo.
+
+## Despliegue real (Windows, RTX 4060 Ti)
+
+Montado en `D:\media-ops-asd` (WSL2 + Docker Desktop, `--gpus`). `docker compose up`.
+`ASD_WORKER_URL=http://192.168.1.46:8900` en el `.env` del backend (recrear el
+contenedor backend tras añadirlo: `docker compose up -d --force-recreate backend`).
+
+**El build DEBE ser interactivo** en la máquina (una terminal normal), no por SSH:
+Docker Desktop usa el credential helper `wincred`, que falla en sesión SSH no
+interactiva al resolver el manifest de la imagen base en el registry.
+
+**Pines que hacen funcionar el TalkNet antiguo** (en `asd_worker/Dockerfile`):
+base `pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime`; `DEBIAN_FRONTEND=noninteractive`
+(tzdata); TODO el pip en UN comando con `numpy==1.23.5` (alias `np.int` que usa el
+repo, quitado en 1.24), `scipy==1.10.1`, `scikit-learn==1.2.2`, `pandas==1.5.3`,
+`scenedetect==0.6.0.3`, `gdown<5` (aún soporta `--id`); y `MKL_THREADING_LAYER=GNU`
+(en `docker-compose.yml`) para el choque MKL/OpenMP al lanzar demoTalkNet.

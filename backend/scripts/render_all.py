@@ -21,7 +21,7 @@ from app import db  # noqa: E402
 def main() -> None:
     parser = argparse.ArgumentParser(description="Renderiza en cola todos los clips pendientes de una transcripcion")
     parser.add_argument("--transcript", required=True)
-    parser.add_argument("--focus", default=None, choices=["left", "center", "right"],
+    parser.add_argument("--focus", default=None, choices=["left", "center", "right", "follow"],
                         help="Encuadre global a aplicar a todos antes de renderizar")
     args = parser.parse_args()
 

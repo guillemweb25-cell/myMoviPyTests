@@ -202,6 +202,39 @@ def add_subtitles(vertical_path: Path, ffmpeg: str = "ffmpeg", language: str = "
     return subtitled_path
 
 
+def get_follow_segments(video: Path, start: float, end: float, out_path: Path, ffmpeg: str):
+    """Para el encuadre 'follow': corta el tramo del clip, lo manda al worker de ASD
+    y devuelve [(t0, t1, center_x_norm), ...] en tiempo LOCAL del clip. None si no se
+    puede (el render cae entonces a encuadre centro)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
+    try:
+        from app.services import asd_client  # noqa: E402
+    except Exception:
+        return None
+
+    duration = round(end - start, 3)
+    tmp = out_path.parent / f"_asd_{out_path.stem}.mp4"
+    cache = out_path.parent / f"asd_{out_path.stem}_{int(start)}_{int(end)}.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if not cache.exists():
+        # Corta el tramo CON audio (TalkNet es audio-visual) para el análisis.
+        subprocess.run([
+            ffmpeg, "-y", "-ss", f"{start:.3f}", "-i", str(video), "-t", f"{duration:.3f}",
+            "-r", "25", "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-c:a", "aac", str(tmp),
+        ], capture_output=True)
+    data = asd_client.fetch_segments(tmp if tmp.exists() else out_path, cache_path=cache)
+    tmp.unlink(missing_ok=True)
+    if not data:
+        return None
+    spk = {s["id"]: s["center_norm"][0] for s in data.get("speakers", [])}
+    segs = []
+    for seg in data.get("segments", []):
+        cx = spk.get(seg.get("speaker"))
+        if cx is not None:
+            segs.append((float(seg["start"]), float(seg["end"]), float(cx)))
+    return segs or None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Render de clip vertical con subtitulos opcionales")
     parser.add_argument("--video", required=True)
@@ -209,7 +242,7 @@ def main() -> None:
     parser.add_argument("--end", required=True)
     parser.add_argument("--out", default=None)
     parser.add_argument("--top-ratio", type=float, default=0.5)
-    parser.add_argument("--focus", default="center", choices=["left", "center", "right"])
+    parser.add_argument("--focus", default="center", choices=["left", "center", "right", "follow"])
     parser.add_argument("--zoom", type=float, default=1.0)
     parser.add_argument("--subtitles", action="store_true", help="Quemar subtitulos karaoke")
     parser.add_argument("--lang", default="es", help="Idioma del audio para los subtitulos (es, en...)")
@@ -226,9 +259,21 @@ def main() -> None:
     end = parse_timecode(args.end)
     out_path = Path(args.out) if args.out else default_output(video, start, end)
 
+    follow_segments = None
+    focus = args.focus
+    if focus == "follow":
+        print("Encuadre 'Seguir al hablante': analizando quién habla (ASD)...", flush=True)
+        follow_segments = get_follow_segments(video, start, end, out_path, args.ffmpeg)
+        if follow_segments:
+            print(f"ASD: {len(follow_segments)} tramos de hablante detectados.", flush=True)
+        else:
+            print("ASD no disponible (worker apagado o sin caras); uso encuadre centro.", flush=True)
+            focus = "center"
+
     make_clip(
         video, start, end, out_path,
-        top_ratio=args.top_ratio, focus=args.focus, zoom=args.zoom, ffmpeg=args.ffmpeg,
+        top_ratio=args.top_ratio, focus=focus, zoom=args.zoom, ffmpeg=args.ffmpeg,
+        follow_segments=follow_segments,
     )
 
     # Fotograma de cierre limpio: se saca AHORA (vertical sin karaoke ni overlay) para que

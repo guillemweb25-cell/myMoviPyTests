@@ -166,7 +166,8 @@ desacoplado del Docker de la app. Ver [`07-asd-active-speaker.md`](07-asd-active
 
 - [x] `asd_worker/` (FastAPI + TalkNet) + contrato `asd.json`.
 - [x] `asd_client.py` (sube vídeo, cachea, fallback si no hay GPU) + `ASD_WORKER_URL`.
-- [ ] Modo de encuadre "Seguir al hablante" en el render (recorte dinámico).
+- [x] Modo de encuadre "Seguir al hablante" en el render (recorte dinámico que sigue
+  al hablante activo). Validado con el podcast WATO. Ver [`07-asd-active-speaker.md`](07-asd-active-speaker.md).
 
 ## Ideas futuras (no implementadas)
 
