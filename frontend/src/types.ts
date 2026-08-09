@@ -77,6 +77,7 @@ export type Campaign = {
   createdAt: string
   briefUrl?: string
   rules?: CampaignRules
+  clipStats?: { total: number; rendered: number; uploaded: number; submitted: number }
 }
 
 export type ClipSource = {

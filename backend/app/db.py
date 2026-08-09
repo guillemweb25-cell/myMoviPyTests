@@ -372,6 +372,26 @@ def _campaign_to_dict(row: sqlite3.Row) -> dict:
     }
 
 
+def _clip_stats(conn: sqlite3.Connection, transcript_path: str) -> dict:
+    """Contadores de clips de una campaña (por su transcript_path)."""
+    if not transcript_path:
+        return {"total": 0, "rendered": 0, "uploaded": 0, "submitted": 0}
+    row = conn.execute(
+        """SELECT COUNT(*) AS total,
+                  SUM(CASE WHEN rendered_path != '' THEN 1 ELSE 0 END) AS rendered,
+                  SUM(CASE WHEN youtube_url != '' THEN 1 ELSE 0 END) AS uploaded,
+                  SUM(CASE WHEN submitted = 1 THEN 1 ELSE 0 END) AS submitted
+           FROM clips WHERE transcript_path = ?""",
+        (transcript_path,),
+    ).fetchone()
+    return {
+        "total": row["total"] or 0,
+        "rendered": row["rendered"] or 0,
+        "uploaded": row["uploaded"] or 0,
+        "submitted": row["submitted"] or 0,
+    }
+
+
 def create_campaign(channel_id: int, name: str, source_url: str, campaign_url: str, created_at: str) -> dict:
     with _db_lock, _connect() as conn:
         cursor = conn.execute(
@@ -390,13 +410,22 @@ def list_campaigns(channel_id: int | None = None) -> list[dict]:
             ).fetchall()
         else:
             rows = conn.execute("SELECT * FROM campaigns ORDER BY id DESC").fetchall()
-    return [_campaign_to_dict(row) for row in rows]
+        result = []
+        for row in rows:
+            camp = _campaign_to_dict(row)
+            camp["clipStats"] = _clip_stats(conn, camp["transcriptPath"])
+            result.append(camp)
+    return result
 
 
 def get_campaign(campaign_id: int) -> dict | None:
     with _db_lock, _connect() as conn:
         row = conn.execute("SELECT * FROM campaigns WHERE id = ?", (campaign_id,)).fetchone()
-    return _campaign_to_dict(row) if row else None
+        if not row:
+            return None
+        camp = _campaign_to_dict(row)
+        camp["clipStats"] = _clip_stats(conn, camp["transcriptPath"])
+    return camp
 
 
 def get_campaign_by_transcript(transcript_path: str) -> dict | None:

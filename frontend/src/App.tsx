@@ -1501,6 +1501,17 @@ export default function App() {
                                 {camp.status === 'ready' ? '✅ Listo' : camp.status === 'preparing' ? '⏳ Preparando…' : camp.status}
                                 {camp.campaignUrl ? ' · con link de campaña' : ''}
                               </p>
+                              {camp.clipStats && camp.clipStats.total > 0 && (() => {
+                                const s = camp.clipStats!
+                                const completa = s.uploaded === s.total && s.submitted === s.total
+                                return (
+                                  <p className={completa ? 'campaign-status complete' : 'campaign-status'} style={{ margin: '6px 0 0', display: 'inline-block' }}>
+                                    {completa
+                                      ? '✅ Completada — todo subido y submiteado'
+                                      : `${s.rendered}/${s.total} renderizados · ${s.uploaded}/${s.total} subidos · ${s.submitted}/${s.total} submiteados`}
+                                  </p>
+                                )
+                              })()}
                             </div>
                             <div className="actions-row">
                               <button className="primary" disabled={camp.status !== 'ready'} onClick={() => handleOpenCampaign(camp)}>
