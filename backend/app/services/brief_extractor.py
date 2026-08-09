@@ -32,17 +32,20 @@ def fetch_brief_text(url: str) -> str:
 
 SYSTEM = (
     "Eres un asistente que lee briefs de campanas de clipping (ClipFarm, Whop) y "
-    "extrae los requisitos de cumplimiento en JSON. No inventes; si algo no esta, "
-    "dejalo vacio."
+    "extrae los requisitos de cumplimiento en JSON. No inventes: si algo no esta en "
+    "el brief, dejalo VACIO. Nunca uses el nombre del programa/podcast como "
+    "captionRequired ni como onScreenText."
 )
 
 SCHEMA_HINT = (
     '{'
-    '"captionRequired": "la FRASE EXACTA y literal que debe ir en el caption de cada post '
-    '(extrae SOLO el texto entrecomillado obligatorio, SIN el envoltorio tipo \'every post must contain\' '
-    'y SIN comillas). Ej: Subscribe to @thetrailblazerspod on YouTube for the full episode",'
-    '"onScreenText": "la frase exacta que debe verse en pantalla/quemada en el clip. Si el brief solo dice '
-    '\'debe tener subtitulos\' sin una frase concreta, copia aqui el mismo captionRequired",'
+    '"captionRequired": "SOLO una frase literal OBLIGATORIA que deba ir en el caption/texto '
+    'del post (sin el envoltorio tipo \'every post must contain\' y sin comillas). '
+    'Si el requisito del caption son solo hashtags o menciones (no una frase fija), dejalo VACIO. '
+    'Ej: Subscribe to @thetrailblazerspod on YouTube for the full episode",'
+    '"onScreenText": "SOLO si el brief exige una frase, handle o marca FIJA quemada en pantalla '
+    'en todos los clips. Si solo pide subtitulos que coincidan con el dialogo (karaoke normal), '
+    'dejalo VACIO. No copies el captionRequired ni el nombre del programa.",'
     '"handles": {"youtube": "@...", "tiktok": "@...", "instagram": "@..."},'
     '"hashtags": ["#..."],'
     '"mentions": ["marcas o nombres que hay que mencionar/taggear"],'
@@ -50,7 +53,8 @@ SCHEMA_HINT = (
     '"audience": "resumen de la audiencia requerida",'
     '"payout": "resumen del pago (CPM, min, max)",'
     '"sourceUrl": "link del metraje oficial o episodio si aparece",'
-    '"notes": "otras reglas importantes en una frase"'
+    '"notes": "otras reglas importantes; incluye SIEMPRE los tramos o segmentos que NO se '
+    'pueden clipear si el brief los menciona (ej: no clipear 14:32-14:43, nada de anuncios/outro)"'
     '}'
 )
 

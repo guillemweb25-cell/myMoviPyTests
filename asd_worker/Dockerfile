@@ -27,6 +27,10 @@ RUN pip install --no-cache-dir \
         fastapi "uvicorn[standard]" python-multipart && \
     python -c "import numpy; assert numpy.__version__=='1.23.5', numpy.__version__; print('numpy', numpy.__version__, 'OK')"
 
+# Desactiva el render de visualización de TalkNet (no lo usamos; los pickles
+# tracks/scores ya están guardados antes). Es el paso más lento del pase.
+RUN sed -i 's/visualization(vidTracks, scores, args)/pass  # viz desactivada (no usada)/' demoTalkNet.py
+
 # Modelo preentrenado de TalkNet (si el build no puede con gdown, se baja al 1er uso).
 RUN gdown --id 1AbN9fCf9IexMxEKXLQY2KYBlb-IhSEea -O pretrain_TalkSet.model || \
     echo "Aviso: baja pretrain_TalkSet.model en el primer /asd si falla aqui."

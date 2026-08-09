@@ -98,6 +98,10 @@ a recargas del navegador. Args: `--transcript --focus`.
 - `extract_rules`: OpenAI devuelve JSON con las reglas (caption obligatorio, handles
   por plataforma, hashtags, watermark, fuente…). Se guardan en `campaigns.rules_json`
   y se auto-aplican (texto en pantalla + añadidos a la descripción al subir).
+  - `onScreenText` se deja VACÍO si el brief solo pide subtítulos que coincidan con el
+    diálogo (eso ya es el karaoke); solo se rellena si exige una frase/handle FIJA quemada.
+  - `captionRequired` vacío si el requisito del caption son solo hashtags/menciones.
+  - `notes` recoge tramos/segmentos prohibidos de clipear (ej: "no clipear 14:32-14:43").
 
 ## Utilidades
 
