@@ -137,6 +137,7 @@ export const api = {
   renderClip: (clipId: string) => postJson<{ job: Job; renderedPath: string }>(`/api/clips/${clipId}/render`, {}),
   renderAll: (transcriptPath: string, focus: string) =>
     postJson<{ job: Job }>('/api/clips/render-all', { transcriptPath, focus }),
+  stopRenderAll: () => postJson<{ stopped: string[] }>('/api/clips/render-all/stop', {}),
   uploadClip: (clipId: string, privacy: string) => postJson<Job>(`/api/clips/${clipId}/upload`, { privacy }),
   setClipVisibility: (clipId: string, privacy: string) =>
     postJson<{ privacy: string }>(`/api/clips/${clipId}/visibility`, { privacy }),

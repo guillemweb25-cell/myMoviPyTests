@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
 import re
 import shlex
 import shutil
@@ -73,6 +74,7 @@ class Job:
 
 jobs: dict[str, Job] = {}
 jobs_lock = threading.Lock()
+running_procs: dict[str, "subprocess.Popen"] = {}  # job_id -> proceso (para poder pararlo)
 
 
 class RunScriptRequest(BaseModel):
@@ -335,7 +337,10 @@ def run_job(job_id: str) -> None:
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
+                start_new_session=True,  # grupo propio: permite matar todo el árbol (hijos incl.)
             )
+            with jobs_lock:
+                running_procs[job_id] = process
 
             assert process.stdout is not None
             for line in process.stdout:
@@ -355,6 +360,9 @@ def run_job(job_id: str) -> None:
             job.return_code = -1
             job.ended_at = now_iso()
         db.save_job(job)
+    finally:
+        with jobs_lock:
+            running_procs.pop(job_id, None)
 
 
 @app.get("/api/health")
@@ -1067,6 +1075,34 @@ def render_all_endpoint(payload: RenderAllRequest) -> dict:
         args += ["--focus", payload.focus]
     job = enqueue_job("render_all.py", args)
     return {"job": job}
+
+
+@app.post("/api/clips/render-all/stop")
+def stop_render_all() -> dict:
+    """Para la cola: mata el/los job(s) render_all en marcha y todo su árbol de
+    procesos (render_clip + ffmpeg). Los clips a medias quedan sin generar."""
+    with jobs_lock:
+        targets = [(jid, p) for jid, p in list(running_procs.items())
+                   if jid in jobs and jobs[jid].script == "render_all.py"]
+    stopped = []
+    for jid, proc in targets:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)  # grupo entero
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        with jobs_lock:
+            j = jobs.get(jid)
+            if j and j.status in ("running", "queued"):
+                j.status = "failed"
+                j.return_code = -1
+                j.ended_at = now_iso()
+                db.save_job(j)
+            running_procs.pop(jid, None)
+        stopped.append(jid)
+    return {"stopped": stopped}
 
 
 @app.post("/api/clips/{clip_id}/frames")

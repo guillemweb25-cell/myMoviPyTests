@@ -581,6 +581,16 @@ export default function App() {
     }
   }
 
+  async function handleStopQueue() {
+    setError('')
+    try {
+      await api.stopRenderAll()
+      if (selectedClipSource) await loadSavedClips(selectedClipSource)
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
   async function handleRenderAllClips() {
     // Encola el render en el BACKEND (un solo job). Corre en el servidor, así que
     // sobrevive a recargas de la página o cambios de pestaña del navegador.
@@ -1734,6 +1744,11 @@ export default function App() {
                                 ? 'Todos los verticales renderizados ✓'
                                 : `Generar todos los verticales (${pendientes})`}
                           </button>
+                          {enCola && (
+                            <button className="stop-queue" onClick={handleStopQueue} title="Matar la cola de render en marcha">
+                              ⏹ Parar cola
+                            </button>
+                          )}
                           <span className="help" style={{ margin: 0 }}>
                             {enCola
                               ? '⚙ Corre en el servidor: puedes cerrar la pestaña o cambiar de sección; sigue renderizando.'
