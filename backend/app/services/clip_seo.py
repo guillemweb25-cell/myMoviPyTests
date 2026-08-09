@@ -70,13 +70,23 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dic
     description = re.sub(r"^\s*(video\s+)?description:\s*", "", description, flags=re.IGNORECASE).strip()
     tags = engine.generate_video_questions_tags(snippet, lang=lang, custom_rules=rules)
 
-    parts = [description]
-
-    # Caption obligatorio de la campana (compliance).
+    # Bloque de compliance PRIMERO (arriba del todo), para que el revisor lo vea sin
+    # bajar: caption obligatorio + handle de YouTube. (Un rejection típico es "tag
+    # properly: @handle" cuando el handle iba enterrado al final de la descripcion.)
+    header: list[str] = []
     if campaign_rules:
         required = (campaign_rules.get("captionRequired") or "").strip()
         if required:
-            parts.append(required)
+            header.append(required)
+        yt_handle = ((campaign_rules.get("handles") or {}).get("youtube") or "").strip()
+        blob = (" ".join(header) + " " + description).lower()
+        if yt_handle and yt_handle.lower() not in blob:
+            header.append(yt_handle)
+
+    parts = []
+    if header:
+        parts.append("\n".join(header))
+    parts.append(description)
 
     # Titulo + enlace del video original (salvo si la fuente es WeTransfer:
     # es un enlace temporal/privado que no debe ir en la descripcion publica).
