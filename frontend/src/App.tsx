@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, clearToken, getToken, setToken, UnauthorizedError } from './api'
 import type { Campaign, Channel, ClipCandidate, ClipSource, ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
 
@@ -96,7 +96,6 @@ export default function App() {
   const [clipFrames, setClipFrames] = useState<Record<string, { percent: number; path: string }[]>>({})
   const [extractingFramesId, setExtractingFramesId] = useState('')
   const [now, setNow] = useState(() => Date.now())
-  const [batchRender, setBatchRender] = useState<{ total: number; done: number } | null>(null)
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right'>('center')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
   const [copiedUrl, setCopiedUrl] = useState('')
@@ -580,22 +579,18 @@ export default function App() {
   }
 
   async function handleRenderAllClips() {
-    // Renderiza en cola (uno tras otro) todos los clips que aún no están
-    // renderizados, para dejarlo trabajando e ir a subir luego.
+    // Encola el render en el BACKEND (un solo job). Corre en el servidor, así que
+    // sobrevive a recargas de la página o cambios de pestaña del navegador.
+    if (!selectedClipSource) return
     const pending = clipCandidates.filter((c) => !c.rendered)
     if (!pending.length) return
-    setBatchRender({ total: pending.length, done: 0 })
     setError('')
-    for (let i = 0; i < pending.length; i++) {
-      const clip = pending[i]
-      // Aplica el encuadre global a todos antes de renderizar.
-      if (clip.focus !== globalFocus) {
-        await handleClipSettingChange(clip, { focus: globalFocus })
-      }
-      await handleRenderClip(clip)
-      setBatchRender({ total: pending.length, done: i + 1 })
+    try {
+      const { job } = await api.renderAll(selectedClipSource, globalFocus)
+      insertOrUpdateJob(job)
+    } catch (e) {
+      handleApiError(e)
     }
-    setBatchRender(null)
   }
 
   async function handleExtractFrames(clip: ClipCandidate) {
@@ -944,6 +939,28 @@ export default function App() {
     () => channels.find((c) => c.id === activeChannelId) ?? null,
     [channels, activeChannelId],
   )
+
+  // Render en cola del backend: se deriva de la lista de jobs, así se detecta
+  // aunque recargues la página (el job sigue vivo en el servidor).
+  const runningBatchJob = useMemo(
+    () => jobs.find((j) => j.script === 'render_all.py' && (j.status === 'running' || j.status === 'queued')),
+    [jobs],
+  )
+
+  // Mientras hay render en cola, refresca los clips para ver el progreso; al
+  // terminar, un refresco final.
+  const wasBatchRunning = useRef(false)
+  useEffect(() => {
+    if (runningBatchJob && selectedClipSource) {
+      wasBatchRunning.current = true
+      const t = setInterval(() => loadSavedClips(selectedClipSource), 4000)
+      return () => clearInterval(t)
+    }
+    if (wasBatchRunning.current && selectedClipSource) {
+      wasBatchRunning.current = false
+      loadSavedClips(selectedClipSource)
+    }
+  }, [runningBatchJob?.id, selectedClipSource])
 
   useEffect(() => {
     if (activeChannel) {
@@ -1602,13 +1619,15 @@ export default function App() {
 
                     {clipCandidates.length > 0 && (() => {
                       const pendientes = clipCandidates.filter((c) => !c.rendered).length
+                      const renderizados = clipCandidates.filter((c) => c.rendered).length
+                      const enCola = !!runningBatchJob
                       return (
                         <div className="batch-render-bar">
                           <label className="batch-focus">
                             <span>Encuadre (todos)</span>
                             <select
                               value={globalFocus}
-                              disabled={!!batchRender}
+                              disabled={enCola}
                               onChange={(e) => setGlobalFocus(e.target.value as 'left' | 'center' | 'right')}
                             >
                               <option value="left">Izquierda</option>
@@ -1618,19 +1637,19 @@ export default function App() {
                           </label>
                           <button
                             className="primary"
-                            disabled={!!batchRender || pendientes === 0}
+                            disabled={enCola || pendientes === 0}
                             onClick={handleRenderAllClips}
                           >
-                            {batchRender
-                              ? `Renderizando ${batchRender.done}/${batchRender.total}...`
+                            {enCola
+                              ? `Renderizando en cola... (${renderizados}/${clipCandidates.length})`
                               : pendientes === 0
                                 ? 'Todos los verticales renderizados ✓'
                                 : `Generar todos los verticales (${pendientes})`}
                           </button>
                           <span className="help" style={{ margin: 0 }}>
-                            {batchRender
-                              ? 'Renderizando en cola, uno tras otro. Puedes dejarlo trabajando.'
-                              : `Aplica el encuadre "${globalFocus === 'left' ? 'Izquierda' : globalFocus === 'right' ? 'Derecha' : 'Centro'}" a todos y los renderiza en cola; luego solo queda subir a YT.`}
+                            {enCola
+                              ? '⚙ Corre en el servidor: puedes cerrar la pestaña o cambiar de sección; sigue renderizando.'
+                              : `Aplica el encuadre "${globalFocus === 'left' ? 'Izquierda' : globalFocus === 'right' ? 'Derecha' : 'Centro'}" a todos y los renderiza en cola en el servidor; luego solo queda subir a YT.`}
                           </span>
                         </div>
                       )

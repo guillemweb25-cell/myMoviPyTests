@@ -1019,6 +1019,25 @@ def render_clip_endpoint(clip_id: str) -> dict:
     return {"job": job, "renderedPath": out_rel}
 
 
+class RenderAllRequest(BaseModel):
+    transcriptPath: str
+    focus: str | None = None
+
+
+@app.post("/api/clips/render-all")
+def render_all_endpoint(payload: RenderAllRequest) -> dict:
+    """Encola en el BACKEND el render de todos los clips pendientes de la
+    transcripcion (un solo job). Sobrevive a recargas del navegador."""
+    clips = db.load_clips(payload.transcriptPath)
+    if not clips:
+        raise HTTPException(status_code=400, detail="No hay clips para esta transcripcion.")
+    args = ["--transcript", payload.transcriptPath]
+    if payload.focus in ("left", "center", "right"):
+        args += ["--focus", payload.focus]
+    job = enqueue_job("render_all.py", args)
+    return {"job": job}
+
+
 @app.post("/api/clips/{clip_id}/frames")
 def extract_clip_frames(clip_id: str) -> dict:
     """Extrae 3 fotogramas (25/50/75%) del clip renderizado para elegir la miniatura."""
