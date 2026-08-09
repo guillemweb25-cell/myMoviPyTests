@@ -125,7 +125,7 @@ export const api = {
   extractFrames: (clipId: string) =>
     postJson<{ frames: { percent: number; path: string }[] }>(`/api/clips/${clipId}/frames`, {}),
   detectPersons: (clipId: string) =>
-    postJson<{ persons: { id: number; thumb: string; frames: number }[]; segments: { start: number; end: number; present: number[]; autoPersonId: number }[] }>(`/api/clips/${clipId}/persons`, {}),
+    postJson<{ persons: { id: number; thumb: string; frames: number }[]; segments: { start: number; end: number; autoPersonId: number; persons: { id: number; thumb: string }[] }[] }>(`/api/clips/${clipId}/persons`, {}),
   setBlurPersons: (clipId: string, personIds: number[]) =>
     postJson<{ blurPersons: number[] }>(`/api/clips/${clipId}/blur-persons`, { personIds }),
   setFocusPerson: (clipId: string, personId: number) =>

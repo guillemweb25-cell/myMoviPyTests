@@ -384,8 +384,8 @@ nav {
 
 .fs-p {
   position: relative;
-  width: 46px;
-  height: 46px;
+  width: 58px;
+  height: 58px;
   padding: 0;
   border: 2px solid var(--border);
   border-radius: 6px;
@@ -405,7 +405,7 @@ nav {
 
 .fs-p.ctr {
   width: auto;
-  height: 46px;
+  height: 58px;
   padding: 0 8px;
 }
 

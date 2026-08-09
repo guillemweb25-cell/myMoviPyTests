@@ -1146,9 +1146,28 @@ def detect_clip_persons(clip_id: str) -> dict:
     segments = _scene_segments(video_abs, start, end)
     fps = float(detection.get("fps", 25.0)) or 25.0
     seg_out = []
-    for t0, t1 in segments:
-        present, auto = _segment_persons(detection, t0, t1, fps)
-        seg_out.append({"start": round(t0, 2), "end": round(t1, 2), "present": present, "autoPersonId": auto})
+    for si, (t0, t1) in enumerate(segments):
+        seg_persons = []
+        auto_id, auto_area = -1, -1.0
+        for p in detection.get("persons", []):
+            boxes = [b for b in p.get("boxes", []) if t0 <= b[0] / fps < t1]
+            if not boxes:
+                continue
+            best = max(boxes, key=lambda b: b[3] * b[4])  # frame donde sale más grande
+            area = best[3] * best[4]
+            # thumbnail de ESA persona en ESE plano (no la global).
+            x, y, w, h = best[1], best[2], best[3], best[4]
+            st = thumbs_dir / f"seg{si}_person_{p['id']}.jpg"
+            tt = start + best[0] / fps
+            vf = (f"crop='min(iw-2,iw*{max(w, 0.02):.4f})':'min(ih-2,ih*{max(h, 0.02):.4f})'"
+                  f":'iw*{max(x, 0):.4f}':'ih*{max(y, 0):.4f}',scale=120:-1")
+            subprocess.run(["ffmpeg", "-y", "-ss", f"{tt:.2f}", "-i", str(video_abs),
+                            "-vf", vf, "-frames:v", "1", "-q:v", "3", str(st)], capture_output=True)
+            seg_persons.append({"id": p["id"], "thumb": str(st.relative_to(ROOT_DIR)) if st.exists() else ""})
+            if area > auto_area:
+                auto_area, auto_id = area, p["id"]
+        seg_out.append({"start": round(t0, 2), "end": round(t1, 2),
+                        "autoPersonId": auto_id, "persons": seg_persons})
     return {"persons": persons, "segments": seg_out}
 
 
