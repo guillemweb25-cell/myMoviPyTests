@@ -77,9 +77,16 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dic
     # primero, ese paso manual es de 2 segundos por clip.
     header: list[str] = []
     if campaign_rules:
-        yt_handle = ((campaign_rules.get("handles") or {}).get("youtube") or "").strip()
+        handles = campaign_rules.get("handles") or {}
+        yt_handle = (handles.get("youtube") or "").strip()
+        ig_handle = (handles.get("instagram") or "").strip()
         if yt_handle:
+            # @handle de YouTube: hay que convertirlo a "chip" a mano en Studio
+            # (la API sube texto plano y YouTube no lo enlaza al canal).
             header.append(yt_handle)
+        if ig_handle:
+            # Los @ de Instagram NO enlazan desde YouTube → URL clicable de verdad.
+            header.append(f"https://www.instagram.com/{ig_handle.lstrip('@')}")
         required = (campaign_rules.get("captionRequired") or "").strip()
         if required:
             header.append(required)

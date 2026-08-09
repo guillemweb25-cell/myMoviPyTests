@@ -88,9 +88,10 @@ a recargas del navegador. Args: `--transcript --focus`.
 `generate_clip_seo(clip, channel, root, campaign_rules)`:
 - Título y descripción con OpenAI (gpt-4o-mini) según idioma y `seo_rules` del canal.
 - `strip_markdown` (respeta hashtags `#shorts`), `strip_wrapping_quotes` en el título.
-- Pone el `captionRequired` + el handle de YouTube (`handles.youtube`) AL PRINCIPIO de
-  la descripción (compliance visible; un rejection típico es "tag properly" cuando el
-  handle iba enterrado al final). Añade los `hashtags` de la campaña al final.
+- Pone el bloque de compliance AL PRINCIPIO de la descripción: `handles.youtube` como
+  `@handle` (hay que convertirlo a chip a mano en Studio; la API no lo enlaza),
+  `handles.instagram` como URL clicable `instagram.com/...` (los @ de IG no enlazan en
+  YouTube), y el `captionRequired`. Añade los `hashtags` de la campaña al final.
 - Añade título + link del vídeo original en la descripción, **salvo** si la fuente es
   WeTransfer (no se expone ese link).
 
