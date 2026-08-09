@@ -66,11 +66,17 @@ track_shot → crop_video → evaluate_network`. Produce `tracks.pckl` y `scores
 ## Estado
 
 - [x] Worker (`asd_worker/`) + contrato + cliente backend + caché + fallback.
-- [x] **Modo de encuadre "Seguir al hablante"** en el render: `render_clip.py` corta el
-  tramo del clip, lo manda al worker (`asd_client.fetch_segments`, cache
+- [x] **Modo de encuadre "Seguir al hablante"** en el render: `render_clip.py` corta
+  SOLO el tramo del clip, lo manda al worker (`asd_client.fetch_segments`, cache
   `asd_<clip>_<start>_<end>.json`) y pasa los segmentos a `make_vertical_clip`, que
   construye una `x` de recorte por tiempo (`_follow_x_expr`) que centra el recorte
   superior en la cara del hablante activo. Fallback a centro si el worker no responde.
+
+  **Per-clip, NO vídeo entero (decisión):** el coste del ASD escala con la duración de
+  lo que se analiza. Analizar el vídeo entero escala con la fuente (una fuente de 3 h =
+  ~270k frames = inviable). Analizar por clip está ACOTADO por nº de clips × ~30s
+  (~15k frames) sea cual sea la duración de la fuente. Se probó el vídeo entero y se
+  descartó por esto. El worker tiene la visualización desactivada (paso más lento).
 - [x] Opción "🎙 Seguir al hablante" en el selector de encuadre (individual y global).
 
 Validado con el podcast WATO (plano fijo de 2 personas): detecta las 2 caras

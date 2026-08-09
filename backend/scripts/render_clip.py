@@ -203,35 +203,41 @@ def add_subtitles(vertical_path: Path, ffmpeg: str = "ffmpeg", language: str = "
 
 
 def get_follow_segments(video: Path, start: float, end: float, out_path: Path, ffmpeg: str):
-    """Para el encuadre 'follow': analiza el VÍDEO ENTERO con el worker de ASD (una vez,
-    cacheado en `<carpeta_video>/asd.json`) y devuelve los tramos de quién habla que
-    solapan con [start, end], en tiempo LOCAL del clip: [(t0, t1, center_x_norm), ...].
-    None si no se puede (el render cae entonces a encuadre centro).
+    """Para el encuadre 'follow': analiza SOLO el tramo del clip con el worker de ASD y
+    devuelve [(t0, t1, center_x_norm), ...] en tiempo LOCAL del clip. None si no se puede
+    (el render cae entonces a encuadre centro).
 
-    Analizar el vídeo entero una vez y reutilizarlo compensa cuando se sacan muchos
-    clips del mismo vídeo (~20). El worker tiene la visualización desactivada, así que
-    el pase es solo detección + ASD."""
+    Se analiza por clip (no el vídeo entero) a propósito: el coste queda ACOTADO por
+    nº de clips × duración (~30s), independiente de si la fuente son 15 min o 3 horas.
+    Cacheado por clip+tramo, así que re-renderizar es instantáneo. El worker tiene la
+    visualización desactivada, así que el pase es solo detección + ASD."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
     try:
         from app.services import asd_client  # noqa: E402
     except Exception:
         return None
 
-    cache = video.parent / "asd.json"
-    data = asd_client.fetch_segments(video, cache_path=cache)
+    duration = round(end - start, 3)
+    tmp = out_path.parent / f"_asd_{out_path.stem}.mp4"
+    cache = out_path.parent / f"asd_{out_path.stem}_{int(start)}_{int(end)}.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if not cache.exists():
+        # Corta el tramo CON audio (TalkNet es audio-visual) para el análisis.
+        subprocess.run([
+            ffmpeg, "-y", "-ss", f"{start:.3f}", "-i", str(video), "-t", f"{duration:.3f}",
+            "-r", "25", "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-c:a", "aac", str(tmp),
+        ], capture_output=True)
+    data = asd_client.fetch_segments(tmp if tmp.exists() else out_path, cache_path=cache)
+    tmp.unlink(missing_ok=True)
     if not data:
         return None
 
     spk = {s["id"]: s["center_norm"][0] for s in data.get("speakers", [])}
     segs = []
-    for seg in data.get("segments", []):
+    for seg in data.get("segments", []):  # ya en tiempo local (analizamos el tramo cortado)
         cx = spk.get(seg.get("speaker"))
-        if cx is None:
-            continue
-        o0 = max(float(seg["start"]), start)
-        o1 = min(float(seg["end"]), end)
-        if o1 > o0:  # solapa con el clip → a tiempo local
-            segs.append((round(o0 - start, 3), round(o1 - start, 3), float(cx)))
+        if cx is not None:
+            segs.append((float(seg["start"]), float(seg["end"]), float(cx)))
     return segs or None
 
 
