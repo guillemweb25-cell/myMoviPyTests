@@ -1752,21 +1752,27 @@ export default function App() {
                           <div className="seo-field">
                             <div className="seo-head">
                               <span>Titulo</span>
-                              <button className="link-btn" onClick={() => handleCopyUrl(clip.seoTitle!)}>Copiar</button>
+                              <button className="link-btn" onClick={() => handleCopyUrl(clip.seoTitle!)}>
+                                {copiedUrl && copiedUrl === clip.seoTitle ? '¡Copiado!' : 'Copiar'}
+                              </button>
                             </div>
                             <input readOnly value={clip.seoTitle} />
                           </div>
                           <div className="seo-field">
                             <div className="seo-head">
                               <span>Descripcion</span>
-                              <button className="link-btn" onClick={() => handleCopyUrl(clip.seoDescription || '')}>Copiar</button>
+                              <button className="link-btn" onClick={() => handleCopyUrl(clip.seoDescription || '')}>
+                                {copiedUrl && copiedUrl === (clip.seoDescription || '') ? '¡Copiado!' : 'Copiar'}
+                              </button>
                             </div>
                             <textarea readOnly rows={6} value={clip.seoDescription || ''} />
                           </div>
                           <div className="seo-field">
                             <div className="seo-head">
                               <span>Tags</span>
-                              <button className="link-btn" onClick={() => handleCopyUrl(clip.seoTags || '')}>Copiar</button>
+                              <button className="link-btn" onClick={() => handleCopyUrl(clip.seoTags || '')}>
+                                {copiedUrl && copiedUrl === (clip.seoTags || '') ? '¡Copiado!' : 'Copiar'}
+                              </button>
                             </div>
                             <textarea readOnly rows={2} value={clip.seoTags || ''} />
                           </div>
