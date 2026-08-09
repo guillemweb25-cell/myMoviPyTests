@@ -40,8 +40,8 @@ el frontend detecta esos params y hace `POST /api/youtube/finish`.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/api/campaigns?channelId=` | lista del canal |
-| GET | `/api/campaigns/{id}` | una campaña |
+| GET | `/api/campaigns?channelId=` | lista del canal (incluye `clipStats` por campaña) |
+| GET | `/api/campaigns/{id}` | una campaña (incluye `clipStats`) |
 | POST | `/api/campaigns` | crear `{channelId, name, sourceUrl, campaignUrl, cookiesFile?}` → descarga+transcribe (job) |
 | PATCH | `/api/campaigns/{id}` | actualizar `{name?, campaignUrl?}` |
 | POST | `/api/campaigns/{id}/brief` | extraer reglas del brief `{briefUrl? | briefText?}` |
@@ -77,3 +77,6 @@ el frontend detecta esos params y hace `POST /api/youtube/finish`.
 |--------|------|-------------|
 | GET | `/api/files?path=` | listar directorio (dentro de `output/`) |
 | GET | `/api/file?path=` | servir/descargar un fichero (acepta `?token=`) |
+
+> **`clipStats`** (en las respuestas de campañas): `{total, rendered, uploaded, submitted}`,
+> agregado de los clips por `transcript_path`. Se usa para el progreso en "Mis campañas".

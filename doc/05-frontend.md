@@ -19,8 +19,10 @@ Formulario: nombre, link del vídeo (YouTube/WeTransfer), link de campaña (Whop
 link del brief (Google Docs), cookies opcional. Al crear → descarga+transcribe (job).
 
 ### Mis campañas
-Lista de campañas del canal. Al abrir una:
+Lista de campañas del canal. Cada tarjeta muestra el **progreso** (`clipStats`: N/total renderizados · subidos · submiteados, o "✅ Completada"). Al abrir una:
 - Cabecera con links (Whop, vídeo original), edición de nombre y campaignUrl.
+- **Banner de estado:** "N/total subidos · N/total submiteados", que pasa a verde
+  "✅ Campaña totalmente subida y submiteada" cuando todo está subido y submiteado.
 - **Reglas de la campaña (brief):** input del Google Doc + "Extraer requisitos con IA".
   Muestra caption obligatorio (copiable), texto en pantalla, handles por plataforma.
 - **Parámetros de detección:** partes (0=auto), clips por parte, duración (s) +

@@ -144,6 +144,12 @@ cumpliendo el caption/handles/hashtags.
 - **Endcard 50% por defecto** para que el primer render ya sea un short con cierre.
 - **Botón "Submiteado a Whop"** (`submitted`) + **cuenta atrás de 30 min** (`uploaded_at`),
   por la regla de la campaña (los vídeos con > 30 min desde la subida se rechazan).
+- **Indicadores de progreso de campaña:**
+  - En la campaña abierta: banner "N/total subidos · N/total submiteados" que pasa a
+    verde "✅ Campaña totalmente subida y submiteada" cuando todo está subido y submiteado.
+  - En el listado "Mis campañas": cada campaña muestra "N/total renderizados · subidos ·
+    submiteados" (o "✅ Completada"). El API adjunta `clipStats` (agregado por
+    `transcript_path`) a cada campaña — ver [`04-api.md`](04-api.md).
 - `privatize_pending.py` para privatizar contenido antiguo sin tocar campañas.
 - Persistencia de navegación en `localStorage`.
 
@@ -154,7 +160,6 @@ todos renderizados; subes y marcas submiteado con la cuenta atrás visible.
 
 ## Ideas futuras (no implementadas)
 
-- Contador "X/Y submiteados" por campaña en la lista de "Mis campañas".
 - Subida a **TikTok e Instagram** (cada plataforma con su enlace y su botón de submiteado).
 - Caption listo por plataforma (handle correcto + copiar).
 - Encuadre que preserve automáticamente la marca de agua.
