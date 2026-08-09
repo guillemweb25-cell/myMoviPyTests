@@ -70,18 +70,19 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dic
     description = re.sub(r"^\s*(video\s+)?description:\s*", "", description, flags=re.IGNORECASE).strip()
     tags = engine.generate_video_questions_tags(snippet, lang=lang, custom_rules=rules)
 
-    # Bloque de compliance PRIMERO (arriba del todo), para que el revisor lo vea sin
-    # bajar: caption obligatorio + handle de YouTube. (Un rejection típico es "tag
-    # properly: @handle" cuando el handle iba enterrado al final de la descripcion.)
+    # Bloque de compliance PRIMERO (arriba del todo). El handle de YouTube va en su
+    # PROPIA primera linea, solo, para poder convertirlo a mano en un "tag" real
+    # (chip enlazado al canal) rapido: la API sube texto plano y YouTube NO lo pilla
+    # como tag; hay que re-teclear la @ en Studio y elegir el canal. Poniendolo el
+    # primero, ese paso manual es de 2 segundos por clip.
     header: list[str] = []
     if campaign_rules:
+        yt_handle = ((campaign_rules.get("handles") or {}).get("youtube") or "").strip()
+        if yt_handle:
+            header.append(yt_handle)
         required = (campaign_rules.get("captionRequired") or "").strip()
         if required:
             header.append(required)
-        yt_handle = ((campaign_rules.get("handles") or {}).get("youtube") or "").strip()
-        blob = (" ".join(header) + " " + description).lower()
-        if yt_handle and yt_handle.lower() not in blob:
-            header.append(yt_handle)
 
     parts = []
     if header:
