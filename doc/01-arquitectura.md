@@ -36,6 +36,7 @@ Dos contenedores:
 | `MEDIA_OPS_TOKEN` | Token de acceso (auth). Si está vacío, la API es abierta. |
 | `OPENAI_API_KEY`  | Detección de clips, SEO, extracción de brief. |
 | `AAI_API_KEY`     | AssemblyAI, subtítulos karaoke por palabra. |
+| `ASD_WORKER_URL`  | (opcional) URL del worker de ASD en la GPU, p.ej. `http://192.168.1.46:8900`. Vacío = "Seguir al hablante" desactivado. |
 
 `.env` contiene secretos reales → **gitignored, nunca commitear**. Igual que
 `youtube_creds/` y los ficheros `cookies*.txt`.

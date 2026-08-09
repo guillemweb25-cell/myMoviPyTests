@@ -158,6 +158,16 @@ todos renderizados; subes y marcas submiteado con la cuenta atrás visible.
 
 ---
 
+## Fase 10 — Encuadre "Seguir al hablante" (ASD, en progreso)
+
+Recorte dinámico al hablante activo (estilo Opus Clip) para planos fijos de 2+
+personas. Worker de GPU (TalkNet-ASD) en el Windows (WSL2 + Docker `--gpus`),
+desacoplado del Docker de la app. Ver [`07-asd-active-speaker.md`](07-asd-active-speaker.md).
+
+- [x] `asd_worker/` (FastAPI + TalkNet) + contrato `asd.json`.
+- [x] `asd_client.py` (sube vídeo, cachea, fallback si no hay GPU) + `ASD_WORKER_URL`.
+- [ ] Modo de encuadre "Seguir al hablante" en el render (recorte dinámico).
+
 ## Ideas futuras (no implementadas)
 
 - Subida a **TikTok e Instagram** (cada plataforma con su enlace y su botón de submiteado).

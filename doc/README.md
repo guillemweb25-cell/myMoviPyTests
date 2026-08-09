@@ -49,6 +49,7 @@ Subida a YouTube (SEO + compliance) → marcar "submiteado a Whop"
 4. [`04-api.md`](04-api.md) — referencia de endpoints.
 5. [`05-frontend.md`](05-frontend.md) — estructura de la UI de clipping.
 6. [`06-fases.md`](06-fases.md) — **hoja de ruta por fases para reconstruirlo** (empieza aquí si vas a rehacerlo).
+7. [`07-asd-active-speaker.md`](07-asd-active-speaker.md) — encuadre "Seguir al hablante" (worker de GPU + TalkNet-ASD).
 
 ## Cómo se ejecuta (estado actual)
 
