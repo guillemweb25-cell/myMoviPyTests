@@ -1531,6 +1531,20 @@ export default function App() {
                       <button onClick={() => setActiveCampaignId(null)}>← Campañas</button>
                     </div>
 
+                    {clipCandidates.length > 0 && (() => {
+                      const total = clipCandidates.length
+                      const subidos = clipCandidates.filter((c) => c.uploaded).length
+                      const submiteados = clipCandidates.filter((c) => c.submitted).length
+                      const completa = subidos === total && submiteados === total
+                      return (
+                        <div className={completa ? 'campaign-status complete' : 'campaign-status'}>
+                          {completa
+                            ? '✅ Campaña totalmente subida y submiteada'
+                            : `Progreso — ${subidos}/${total} subidos · ${submiteados}/${total} submiteados a Whop`}
+                        </div>
+                      )
+                    })()}
+
                     <div className="form-grid">
                       <label className="field">
                         <span>Nombre de la campaña</span>
