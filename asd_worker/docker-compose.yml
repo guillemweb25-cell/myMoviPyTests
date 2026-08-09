@@ -19,5 +19,22 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
 
+  person_worker:
+    build: ./person
+    container_name: person-worker
+    ports:
+      - "8901:8901"
+    volumes:
+      - person_data:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]      # misma 4060 Ti; YOLO es ligero, convive con TalkNet
+              capabilities: [gpu]
+    restart: unless-stopped
+
 volumes:
   asd_data:
+  person_data:
