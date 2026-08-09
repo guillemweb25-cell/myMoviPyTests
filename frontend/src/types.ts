@@ -116,6 +116,7 @@ export type ClipCandidate = {
   endcardPercent?: number
   submitted?: boolean
   uploadedAt?: string
+  blurPersons?: string
 }
 
 export type DetectClipsResponse = {

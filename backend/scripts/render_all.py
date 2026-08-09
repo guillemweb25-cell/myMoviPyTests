@@ -9,6 +9,7 @@ Reutiliza render_clip.py por clip (mismo pipeline que el render individual).
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -67,6 +68,16 @@ def main() -> None:
             cmd += ["--overlay", clip["overlayText"]]
         if clip.get("endcardPercent"):
             cmd += ["--endcard", str(clip["endcardPercent"])]
+        try:
+            blur_ids = [int(x) for x in json.loads(clip.get("blurPersons") or "[]")]
+        except Exception:
+            blur_ids = []
+        if blur_ids:
+            tag = f"{cid}_{int(clip['start'])}_{int(clip['end'])}"
+            pj = Path(video_rel).parent / "clips" / f"persons_{tag}.json"
+            if (root / pj).exists():
+                cmd += ["--blur-persons", ",".join(str(x) for x in blur_ids),
+                        "--persons-json", str(root / pj)]
 
         title = (clip.get("title") or "")[:50]
         print(f"\n[{i}/{len(pending)}] Renderizando {cid} — {title}", flush=True)

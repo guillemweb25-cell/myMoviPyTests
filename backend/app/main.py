@@ -939,6 +939,13 @@ def detect_clips_endpoint(payload: DetectClipsRequest) -> dict:
     return {"videoPath": video_path, "clips": db.load_clips(payload.transcriptPath)}
 
 
+def _clip_blur_ids(clip: dict) -> list[int]:
+    try:
+        return [int(i) for i in json.loads(clip.get("blurPersons") or "[]")]
+    except Exception:
+        return []
+
+
 def _annotate_clip(clip: dict) -> dict:
     rendered_path = clip.get("renderedPath") or ""
     clip["rendered"] = bool(rendered_path) and (ROOT_DIR / rendered_path).exists()
@@ -1013,6 +1020,13 @@ def render_clip_endpoint(clip_id: str) -> dict:
         args.extend(["--overlay", clip["overlayText"]])
     if clip.get("endcardPercent"):
         args.extend(["--endcard", str(clip["endcardPercent"])])
+    blur_ids = _clip_blur_ids(clip)
+    if blur_ids:
+        tag = f"{clip_id}_{int(clip['start'])}_{int(clip['end'])}"
+        persons_json = (ROOT_DIR / video_rel).parent / "clips" / f"persons_{tag}.json"
+        if persons_json.exists():
+            args.extend(["--blur-persons", ",".join(str(i) for i in blur_ids),
+                         "--persons-json", str(persons_json)])
 
     db.update_clip(clip_id, {"rendered_path": out_rel})
     job = enqueue_job("render_clip.py", args)
@@ -1071,6 +1085,60 @@ def extract_clip_frames(clip_id: str) -> dict:
         if out.exists():
             result.append({"percent": percent, "path": str(out.relative_to(ROOT_DIR))})
     return {"frames": result}
+
+
+@app.post("/api/clips/{clip_id}/persons")
+def detect_clip_persons(clip_id: str) -> dict:
+    """Detecta personas en el tramo del clip (worker YOLO) y devuelve cada una con
+    su miniatura (para el panel de blur/enfoque). Cachea la detección."""
+    from .services import person_client
+
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    video_rel = clip.get("videoPath") or ""
+    if not video_rel:
+        raise HTTPException(status_code=400, detail="El clip no tiene vídeo asociado.")
+    video_abs = resolve_within_root(video_rel)
+    start, end = float(clip["start"]), float(clip["end"])
+
+    clips_dir = video_abs.parent / "clips"
+    tag = f"{clip_id}_{int(start)}_{int(end)}"
+    cache_json = clips_dir / f"persons_{tag}.json"
+    detection = person_client.detect(video_abs, start, end, cache_json)
+    if not detection:
+        raise HTTPException(status_code=502, detail="Worker de personas no disponible (¿encendido el Windows?).")
+
+    thumbs_dir = clips_dir / f"pthumbs_{tag}"
+    thumbs_dir.mkdir(parents=True, exist_ok=True)
+    persons = []
+    for p in detection.get("persons", []):
+        x, y, w, h = p["repr_bbox_norm"]
+        t = start + float(p.get("repr_time", 0))
+        out = thumbs_dir / f"person_{p['id']}.jpg"
+        vf = (f"crop='min(iw-2,iw*{max(w,0.02):.4f})':'min(ih-2,ih*{max(h,0.02):.4f})'"
+              f":'iw*{max(x,0):.4f}':'ih*{max(y,0):.4f}',scale=200:-1")
+        subprocess.run(["ffmpeg", "-y", "-ss", f"{t:.2f}", "-i", str(video_abs),
+                        "-vf", vf, "-frames:v", "1", "-q:v", "3", str(out)], capture_output=True)
+        persons.append({
+            "id": p["id"],
+            "thumb": str(out.relative_to(ROOT_DIR)) if out.exists() else "",
+            "frames": p.get("frames", 0),
+        })
+    return {"persons": persons}
+
+
+class BlurPersonsRequest(BaseModel):
+    personIds: list[int] = []
+
+
+@app.post("/api/clips/{clip_id}/blur-persons")
+def set_clip_blur_persons(clip_id: str, payload: BlurPersonsRequest) -> dict:
+    """Guarda qué personas (ids del panel) hay que blurear en este clip."""
+    if not db.get_clip(clip_id):
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    db.update_clip(clip_id, {"blur_persons": json.dumps(payload.personIds)})
+    return {"blurPersons": payload.personIds}
 
 
 @app.post("/api/clips/{clip_id}/seo")

@@ -95,6 +95,8 @@ export default function App() {
   const [renderNonce, setRenderNonce] = useState<Record<string, number>>({})
   const [clipFrames, setClipFrames] = useState<Record<string, { percent: number; path: string }[]>>({})
   const [extractingFramesId, setExtractingFramesId] = useState('')
+  const [clipPersons, setClipPersons] = useState<Record<string, { id: number; thumb: string; frames: number }[]>>({})
+  const [detectingPersonsId, setDetectingPersonsId] = useState('')
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow'>('center')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
@@ -588,6 +590,32 @@ export default function App() {
     try {
       const { job } = await api.renderAll(selectedClipSource, globalFocus)
       insertOrUpdateJob(job)
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  async function handleDetectPersons(clip: ClipCandidate) {
+    setDetectingPersonsId(clip.id)
+    setError('')
+    try {
+      const { persons } = await api.detectPersons(clip.id)
+      setClipPersons((prev) => ({ ...prev, [clip.id]: persons }))
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setDetectingPersonsId('')
+    }
+  }
+
+  async function handleToggleBlurPerson(clip: ClipCandidate, personId: number) {
+    let ids: number[] = []
+    try { ids = JSON.parse(clip.blurPersons || '[]') } catch { ids = [] }
+    const next = ids.includes(personId) ? ids.filter((i) => i !== personId) : [...ids, personId]
+    const nextStr = JSON.stringify(next)
+    setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, blurPersons: nextStr } : c)))
+    try {
+      await api.setBlurPersons(clip.id, next)
     } catch (e) {
       handleApiError(e)
     }
@@ -1885,20 +1913,55 @@ export default function App() {
                         </div>
                       )}
 
-                      {clip.rendered && clip.renderedPath && (
-                        <div className="clip-preview">
-                          <video
-                            key={renderNonce[clip.id] || 0}
-                            className="media-preview"
-                            style={{ maxHeight: '46vh', width: 'auto' }}
-                            controls
-                            src={`${api.fileUrl(clip.renderedPath)}&_=${renderNonce[clip.id] || 0}`}
-                          />
-                          {renderingClipKey === clip.id && (
-                            <div className="clip-preview-overlay">…regenerando…</div>
-                          )}
+                      <div className="clip-media-row">
+                        {clip.rendered && clip.renderedPath && (
+                          <div className="clip-preview">
+                            <video
+                              key={renderNonce[clip.id] || 0}
+                              className="media-preview"
+                              style={{ maxHeight: '46vh', width: 'auto' }}
+                              controls
+                              src={`${api.fileUrl(clip.renderedPath)}&_=${renderNonce[clip.id] || 0}`}
+                            />
+                            {renderingClipKey === clip.id && (
+                              <div className="clip-preview-overlay">…regenerando…</div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="blur-panel">
+                          <div className="seo-head">
+                            <span>Blur de personas (marca a quién difuminar)</span>
+                            <button className="link-btn" disabled={detectingPersonsId === clip.id} onClick={() => handleDetectPersons(clip)}>
+                              {detectingPersonsId === clip.id ? 'Detectando...' : (clipPersons[clip.id] ? 'Re-detectar' : 'Detectar personas')}
+                            </button>
+                          </div>
+                          {clipPersons[clip.id] && (() => {
+                            let selected: number[] = []
+                            try { selected = JSON.parse(clip.blurPersons || '[]') } catch { selected = [] }
+                            return (
+                              <>
+                                <div className="person-grid">
+                                  {clipPersons[clip.id].map((p) => (
+                                    <button
+                                      key={p.id}
+                                      className={selected.includes(p.id) ? 'person-thumb selected' : 'person-thumb'}
+                                      onClick={() => handleToggleBlurPerson(clip, p.id)}
+                                      title={selected.includes(p.id) ? 'Se difuminará' : 'Clic para difuminar'}
+                                    >
+                                      {p.thumb ? <img src={api.fileUrl(p.thumb)} alt={`#${p.id}`} /> : <span className="person-noimg">#{p.id}</span>}
+                                      <span className="person-tag">{selected.includes(p.id) ? '🌫' : `#${p.id}`}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                                <p className="help" style={{ margin: '6px 0 0' }}>
+                                  Marca a las mujeres → se difuminan al <strong>Regenerar</strong>. Ante la duda, marca de más (mejor pasarse).
+                                </p>
+                              </>
+                            )
+                          })()}
                         </div>
-                      )}
+                      </div>
                     </article>
                   ))}
                     </div>

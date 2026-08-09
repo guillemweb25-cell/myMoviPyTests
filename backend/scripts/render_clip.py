@@ -241,6 +241,48 @@ def get_follow_segments(video: Path, start: float, end: float, out_path: Path, f
     return segs or None
 
 
+def apply_person_blur(video: Path, start: float, end: float, out_path: Path,
+                      blur_ids: list[int], persons_json: Path, ffmpeg: str) -> Path | None:
+    """Difumina las personas `blur_ids` en el tramo [start,end] y devuelve un segmento
+    difuminado CON audio (para componer encima). None si falla (se sigue sin blur)."""
+    import json as _json
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
+    try:
+        from app.services import person_client  # noqa: E402
+        detection = _json.loads(persons_json.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    dur = round(end - start, 3)
+    base = out_path.with_suffix("")
+    seg = base.with_name(base.name + "_blurseg.mp4")     # tramo con audio
+    blurred = base.with_name(base.name + "_blurvid.mp4")  # difuminado (sin audio)
+    final = base.with_name(base.name + "_blurfinal.mp4")  # difuminado + audio
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    subprocess.run([ffmpeg, "-y", "-ss", f"{start:.3f}", "-i", str(video), "-t", f"{dur:.3f}",
+                    "-r", "25", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                    "-c:a", "aac", str(seg)], capture_output=True)
+    if not seg.exists():
+        return None
+
+    print(f"Blur de personas {blur_ids} (siguiéndolas frame a frame)...", flush=True)
+    ok = person_client.blur(seg, detection, blur_ids, blurred)
+    if not ok:
+        print("Worker de personas no disponible o sin cajas; se sigue SIN blur.", flush=True)
+        seg.unlink(missing_ok=True)
+        blurred.unlink(missing_ok=True)
+        return None
+
+    # remuxea el audio original sobre el vídeo difuminado.
+    subprocess.run([ffmpeg, "-y", "-i", str(blurred), "-i", str(seg),
+                    "-map", "0:v:0", "-map", "1:a:0?", "-c:v", "libx264", "-preset", "veryfast",
+                    "-crf", "20", "-c:a", "aac", "-shortest", str(final)], capture_output=True)
+    seg.unlink(missing_ok=True)
+    blurred.unlink(missing_ok=True)
+    return final if final.exists() else None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Render de clip vertical con subtitulos opcionales")
     parser.add_argument("--video", required=True)
@@ -254,6 +296,8 @@ def main() -> None:
     parser.add_argument("--lang", default="es", help="Idioma del audio para los subtitulos (es, en...)")
     parser.add_argument("--overlay", default="", help="Texto fijo visible todo el clip (encima de los subs)")
     parser.add_argument("--endcard", type=int, default=0, help="%% del clip para el fotograma de cierre/miniatura (0 = sin tarjeta)")
+    parser.add_argument("--blur-persons", default="", help="ids de personas a difuminar, separados por comas")
+    parser.add_argument("--persons-json", default="", help="ruta al JSON de detección (cajas por persona)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
 
@@ -264,6 +308,15 @@ def main() -> None:
     start = parse_timecode(args.start)
     end = parse_timecode(args.end)
     out_path = Path(args.out) if args.out else default_output(video, start, end)
+
+    # Blur de personas: difumina el tramo ANTES de componer. A partir de aquí todo
+    # opera sobre el segmento difuminado (video local [0, dur]).
+    blur_ids = [int(x) for x in args.blur_persons.split(",") if x.strip().isdigit()]
+    if blur_ids and args.persons_json and Path(args.persons_json).exists():
+        blurred = apply_person_blur(video, start, end, out_path, blur_ids,
+                                    Path(args.persons_json), args.ffmpeg)
+        if blurred:
+            video, start, end = blurred, 0.0, round(end - start, 3)
 
     follow_segments = None
     focus = args.focus

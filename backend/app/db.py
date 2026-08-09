@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS clips (
     youtube_privacy TEXT DEFAULT '',
     endcard_percent INTEGER DEFAULT 50,
     submitted       INTEGER DEFAULT 0,
-    uploaded_at     TEXT DEFAULT ''
+    uploaded_at     TEXT DEFAULT '',
+    blur_persons    TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_path);
 CREATE TABLE IF NOT EXISTS channels (
@@ -112,6 +113,7 @@ CLIP_MIGRATIONS = [
     "ALTER TABLE clips ADD COLUMN endcard_percent INTEGER DEFAULT 0",
     "ALTER TABLE clips ADD COLUMN submitted INTEGER DEFAULT 0",
     "ALTER TABLE clips ADD COLUMN uploaded_at TEXT DEFAULT ''",
+    "ALTER TABLE clips ADD COLUMN blur_persons TEXT DEFAULT ''",
 ]
 
 
@@ -227,6 +229,7 @@ def _clip_to_dict(row: sqlite3.Row) -> dict:
         "endcardPercent": (row["endcard_percent"] if "endcard_percent" in row.keys() else 0) or 0,
         "submitted": bool(row["submitted"]) if "submitted" in row.keys() else False,
         "uploadedAt": (row["uploaded_at"] if "uploaded_at" in row.keys() else "") or "",
+        "blurPersons": (row["blur_persons"] if "blur_persons" in row.keys() else "") or "",
     }
 
 
@@ -286,7 +289,7 @@ def get_clip(clip_id: str) -> dict | None:
 def update_clip(clip_id: str, fields: dict) -> dict | None:
     allowed = {"focus", "zoom", "top_ratio", "subtitles", "rendered_path", "youtube_url", "channel_id",
                "seo_title", "seo_description", "seo_tags", "overlay_text", "youtube_privacy", "start", "end",
-               "endcard_percent", "submitted", "uploaded_at"}
+               "endcard_percent", "submitted", "uploaded_at", "blur_persons"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)
