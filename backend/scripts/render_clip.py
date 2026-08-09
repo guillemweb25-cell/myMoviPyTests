@@ -241,6 +241,49 @@ def get_follow_segments(video: Path, start: float, end: float, out_path: Path, f
     return segs or None
 
 
+def person_focus_segments(persons_json: Path, person_id: int, duration: float, fps: float = 25.0):
+    """Construye los tramos (t0,t1,cx) que siguen a la persona `person_id` (de la
+    detección), para que el recorte superior la centre. Rellena huecos manteniendo la
+    última posición y agrupa en ventanas de ~0.4s (expresión ffmpeg manejable)."""
+    import json as _json
+    try:
+        det = _json.loads(persons_json.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    person = next((p for p in det.get("persons", []) if p.get("id") == person_id), None)
+    if not person or not person.get("boxes"):
+        return None
+
+    total = max(1, int(round(duration * fps)))
+    by_frame = {}
+    for f, x, y, w, h in person["boxes"]:
+        by_frame[int(f)] = x + w / 2.0  # centro x normalizado
+    cx = [None] * total
+    last = None
+    for i in range(total):
+        if i in by_frame:
+            last = by_frame[i]
+        cx[i] = last
+    # rellena el principio (si empezó sin detección) con el primer valor conocido
+    first = next((v for v in cx if v is not None), 0.5)
+    cx = [v if v is not None else first for v in cx]
+
+    win = max(1, int(round(0.4 * fps)))
+    raw = []
+    for s in range(0, total, win):
+        e = min(s + win, total)
+        seg = sorted(cx[s:e])
+        raw.append([s / fps, e / fps, float(seg[len(seg) // 2])])
+    # Fusiona ventanas consecutivas con posición similar → expresión ffmpeg corta.
+    merged: list[list[float]] = []
+    for s, e, c in raw:
+        if merged and abs(merged[-1][2] - c) < 0.03:
+            merged[-1][1] = e
+        else:
+            merged.append([s, e, c])
+    return [(round(s, 3), round(e, 3), round(c, 4)) for s, e, c in merged] or None
+
+
 def apply_person_blur(video: Path, start: float, end: float, out_path: Path,
                       blur_ids: list[int], persons_json: Path, ffmpeg: str) -> Path | None:
     """Difumina las personas `blur_ids` en el tramo [start,end] y devuelve un segmento
@@ -298,6 +341,7 @@ def main() -> None:
     parser.add_argument("--endcard", type=int, default=0, help="%% del clip para el fotograma de cierre/miniatura (0 = sin tarjeta)")
     parser.add_argument("--blur-persons", default="", help="ids de personas a difuminar, separados por comas")
     parser.add_argument("--persons-json", default="", help="ruta al JSON de detección (cajas por persona)")
+    parser.add_argument("--focus-person", type=int, default=-1, help="id de persona a la que centra el recorte de arriba (-1 = no)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
 
@@ -320,7 +364,16 @@ def main() -> None:
 
     follow_segments = None
     focus = args.focus
-    if focus == "follow":
+    if args.focus_person >= 0 and args.persons_json and Path(args.persons_json).exists():
+        # Enfoque manual: el recorte de arriba centra en la persona elegida (Fase 3).
+        follow_segments = person_focus_segments(Path(args.persons_json), args.focus_person,
+                                                round(end - start, 3))
+        if follow_segments:
+            print(f"Enfoque manual en persona {args.focus_person} ({len(follow_segments)} tramos).", flush=True)
+            focus = "follow"
+        else:
+            print("No hay cajas para esa persona; uso el encuadre normal.", flush=True)
+    elif focus == "follow":
         print("Encuadre 'Seguir al hablante': analizando quién habla (ASD)...", flush=True)
         follow_segments = get_follow_segments(video, start, end, out_path, args.ffmpeg)
         if follow_segments:

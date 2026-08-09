@@ -72,12 +72,16 @@ def main() -> None:
             blur_ids = [int(x) for x in json.loads(clip.get("blurPersons") or "[]")]
         except Exception:
             blur_ids = []
-        if blur_ids:
+        focus_person = int(clip.get("focusPerson", -1) or -1)
+        if blur_ids or focus_person >= 0:
             tag = f"{cid}_{int(clip['start'])}_{int(clip['end'])}"
             pj = Path(video_rel).parent / "clips" / f"persons_{tag}.json"
             if (root / pj).exists():
-                cmd += ["--blur-persons", ",".join(str(x) for x in blur_ids),
-                        "--persons-json", str(root / pj)]
+                cmd += ["--persons-json", str(root / pj)]
+                if blur_ids:
+                    cmd += ["--blur-persons", ",".join(str(x) for x in blur_ids)]
+                if focus_person >= 0:
+                    cmd += ["--focus-person", str(focus_person)]
 
         title = (clip.get("title") or "")[:50]
         print(f"\n[{i}/{len(pending)}] Renderizando {cid} — {title}", flush=True)

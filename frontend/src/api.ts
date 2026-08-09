@@ -128,6 +128,8 @@ export const api = {
     postJson<{ persons: { id: number; thumb: string; frames: number }[] }>(`/api/clips/${clipId}/persons`, {}),
   setBlurPersons: (clipId: string, personIds: number[]) =>
     postJson<{ blurPersons: number[] }>(`/api/clips/${clipId}/blur-persons`, { personIds }),
+  setFocusPerson: (clipId: string, personId: number) =>
+    postJson<{ focusPerson: number }>(`/api/clips/${clipId}/focus-person`, { personId }),
   trimClip: (clipId: string, start: number, end: number) =>
     patchJson<ClipCandidate>(`/api/clips/${clipId}/trim`, { start, end }),
   renderClip: (clipId: string) => postJson<{ job: Job; renderedPath: string }>(`/api/clips/${clipId}/render`, {}),

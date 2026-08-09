@@ -1021,12 +1021,16 @@ def render_clip_endpoint(clip_id: str) -> dict:
     if clip.get("endcardPercent"):
         args.extend(["--endcard", str(clip["endcardPercent"])])
     blur_ids = _clip_blur_ids(clip)
-    if blur_ids:
+    focus_person = int(clip.get("focusPerson", -1) or -1)
+    if blur_ids or focus_person >= 0:
         tag = f"{clip_id}_{int(clip['start'])}_{int(clip['end'])}"
         persons_json = (ROOT_DIR / video_rel).parent / "clips" / f"persons_{tag}.json"
         if persons_json.exists():
-            args.extend(["--blur-persons", ",".join(str(i) for i in blur_ids),
-                         "--persons-json", str(persons_json)])
+            args.extend(["--persons-json", str(persons_json)])
+            if blur_ids:
+                args.extend(["--blur-persons", ",".join(str(i) for i in blur_ids)])
+            if focus_person >= 0:
+                args.extend(["--focus-person", str(focus_person)])
 
     db.update_clip(clip_id, {"rendered_path": out_rel})
     job = enqueue_job("render_clip.py", args)
@@ -1139,6 +1143,19 @@ def set_clip_blur_persons(clip_id: str, payload: BlurPersonsRequest) -> dict:
         raise HTTPException(status_code=404, detail="Clip no encontrado")
     db.update_clip(clip_id, {"blur_persons": json.dumps(payload.personIds)})
     return {"blurPersons": payload.personIds}
+
+
+class FocusPersonRequest(BaseModel):
+    personId: int = -1
+
+
+@app.post("/api/clips/{clip_id}/focus-person")
+def set_clip_focus_person(clip_id: str, payload: FocusPersonRequest) -> dict:
+    """Guarda sobre qué persona centra el recorte de arriba (-1 = automático/normal)."""
+    if not db.get_clip(clip_id):
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    db.update_clip(clip_id, {"focus_person": payload.personId})
+    return {"focusPerson": payload.personId}
 
 
 @app.post("/api/clips/{clip_id}/seo")

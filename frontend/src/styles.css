@@ -352,6 +352,41 @@ nav {
   background: #ef4444;
 }
 
+.person-thumb.focused {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px #3b82f6;
+}
+
+.person-actions {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  right: 2px;
+  display: flex;
+  gap: 3px;
+  justify-content: center;
+}
+
+.person-actions .pa {
+  flex: 1;
+  border: 0;
+  border-radius: 5px;
+  padding: 2px 0;
+  font-size: 13px;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.55);
+  filter: grayscale(0.6) opacity(0.7);
+}
+
+.person-actions .pa.on {
+  background: #ef4444;
+  filter: none;
+}
+
+.person-actions .pa.foc.on {
+  background: #3b82f6;
+}
+
 .frame-choice {
   display: flex;
   flex-direction: column;

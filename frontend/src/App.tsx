@@ -608,6 +608,16 @@ export default function App() {
     }
   }
 
+  async function handleSetFocusPerson(clip: ClipCandidate, personId: number) {
+    const next = clip.focusPerson === personId ? -1 : personId  // toggle
+    setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, focusPerson: next } : c)))
+    try {
+      await api.setFocusPerson(clip.id, next)
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
   async function handleToggleBlurPerson(clip: ClipCandidate, personId: number) {
     let ids: number[] = []
     try { ids = JSON.parse(clip.blurPersons || '[]') } catch { ids = [] }
@@ -1942,20 +1952,23 @@ export default function App() {
                             return (
                               <>
                                 <div className="person-grid">
-                                  {clipPersons[clip.id].map((p) => (
-                                    <button
-                                      key={p.id}
-                                      className={selected.includes(p.id) ? 'person-thumb selected' : 'person-thumb'}
-                                      onClick={() => handleToggleBlurPerson(clip, p.id)}
-                                      title={selected.includes(p.id) ? 'Se difuminará' : 'Clic para difuminar'}
-                                    >
-                                      {p.thumb ? <img src={api.fileUrl(p.thumb)} alt={`#${p.id}`} /> : <span className="person-noimg">#{p.id}</span>}
-                                      <span className="person-tag">{selected.includes(p.id) ? '🌫' : `#${p.id}`}</span>
-                                    </button>
-                                  ))}
+                                  {clipPersons[clip.id].map((p) => {
+                                    const isBlur = selected.includes(p.id)
+                                    const isFocus = clip.focusPerson === p.id
+                                    return (
+                                      <div key={p.id} className={`person-thumb${isBlur ? ' selected' : ''}${isFocus ? ' focused' : ''}`}>
+                                        {p.thumb ? <img src={api.fileUrl(p.thumb)} alt={`#${p.id}`} /> : <span className="person-noimg">#{p.id}</span>}
+                                        <span className="person-tag">#{p.id}</span>
+                                        <div className="person-actions">
+                                          <button className={isBlur ? 'pa on' : 'pa'} title="Difuminar a esta persona" onClick={() => handleToggleBlurPerson(clip, p.id)}>🌫</button>
+                                          <button className={isFocus ? 'pa foc on' : 'pa foc'} title="Centrar el recorte de arriba en esta persona" onClick={() => handleSetFocusPerson(clip, p.id)}>🎯</button>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
                                 </div>
                                 <p className="help" style={{ margin: '6px 0 0' }}>
-                                  Marca a las mujeres → se difuminan al <strong>Regenerar</strong>. Ante la duda, marca de más (mejor pasarse).
+                                  🌫 marca a las mujeres → se difuminan. 🎯 centra el recorte de arriba en una persona. Se aplica al <strong>Regenerar</strong>.
                                 </p>
                               </>
                             )
