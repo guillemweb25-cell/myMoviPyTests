@@ -284,6 +284,28 @@ def person_focus_segments(persons_json: Path, person_id: int, duration: float, f
     return [(round(s, 3), round(e, 3), round(c, 4)) for s, e, c in merged] or None
 
 
+def focus_plan_segments(persons_json: Path, plan: list, fps: float = 25.0):
+    """Enfoque POR TRAMO. `plan` = [(t0, t1, person_id), ...] (person_id=-1 => centro).
+    Por cada tramo centra el recorte en la posición MEDIANA de esa persona durante el
+    tramo. Devuelve los (t0,t1,cx) para el render 'follow'."""
+    import json as _json
+    try:
+        det = _json.loads(persons_json.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    persons = {p["id"]: p for p in det.get("persons", [])}
+    segs = []
+    for (t0, t1, pid) in plan:
+        cx = 0.5
+        p = persons.get(pid)
+        if p:
+            cxs = sorted(b[1] + b[3] / 2.0 for b in p["boxes"] if t0 <= b[0] / fps < t1)
+            if cxs:
+                cx = cxs[len(cxs) // 2]
+        segs.append((round(t0, 3), round(t1, 3), round(float(cx), 4)))
+    return segs or None
+
+
 def apply_person_blur(video: Path, start: float, end: float, out_path: Path,
                       blur_ids: list[int], persons_json: Path, ffmpeg: str) -> Path | None:
     """Difumina las personas `blur_ids` en el tramo [start,end] y devuelve un segmento
@@ -342,6 +364,7 @@ def main() -> None:
     parser.add_argument("--blur-persons", default="", help="ids de personas a difuminar, separados por comas")
     parser.add_argument("--persons-json", default="", help="ruta al JSON de detección (cajas por persona)")
     parser.add_argument("--focus-person", type=int, default=-1, help="id de persona a la que centra el recorte de arriba (-1 = no)")
+    parser.add_argument("--focus-plan", default="", help="enfoque por tramo: 't0:t1:personId,...' (personId=-1=centro)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
 
@@ -364,7 +387,18 @@ def main() -> None:
 
     follow_segments = None
     focus = args.focus
-    if args.focus_person >= 0 and args.persons_json and Path(args.persons_json).exists():
+    if args.focus_plan and args.persons_json and Path(args.persons_json).exists():
+        # Enfoque POR TRAMO (Fase 3): 't0:t1:pid,...'
+        plan = []
+        for chunk in args.focus_plan.split(","):
+            parts = chunk.split(":")
+            if len(parts) == 3:
+                plan.append((float(parts[0]), float(parts[1]), int(parts[2])))
+        follow_segments = focus_plan_segments(Path(args.persons_json), plan) if plan else None
+        if follow_segments:
+            print(f"Enfoque por tramo: {len(follow_segments)} tramos.", flush=True)
+            focus = "follow"
+    elif args.focus_person >= 0 and args.persons_json and Path(args.persons_json).exists():
         # Enfoque manual: el recorte de arriba centra en la persona elegida (Fase 3).
         follow_segments = person_focus_segments(Path(args.persons_json), args.focus_person,
                                                 round(end - start, 3))

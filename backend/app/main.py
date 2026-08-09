@@ -946,6 +946,16 @@ def _clip_blur_ids(clip: dict) -> list[int]:
         return []
 
 
+def _clip_focus_plan(clip: dict) -> str:
+    """Convierte focusSegments (JSON) al formato compacto 't0:t1:pid,...' del render."""
+    try:
+        segs = json.loads(clip.get("focusSegments") or "[]")
+    except Exception:
+        return ""
+    parts = [f"{s['start']}:{s['end']}:{int(s.get('personId', -1))}" for s in segs]
+    return ",".join(parts)
+
+
 def _annotate_clip(clip: dict) -> dict:
     rendered_path = clip.get("renderedPath") or ""
     clip["rendered"] = bool(rendered_path) and (ROOT_DIR / rendered_path).exists()
@@ -1022,14 +1032,17 @@ def render_clip_endpoint(clip_id: str) -> dict:
         args.extend(["--endcard", str(clip["endcardPercent"])])
     blur_ids = _clip_blur_ids(clip)
     focus_person = int(clip.get("focusPerson", -1) or -1)
-    if blur_ids or focus_person >= 0:
+    focus_plan = _clip_focus_plan(clip)
+    if blur_ids or focus_person >= 0 or focus_plan:
         tag = f"{clip_id}_{int(clip['start'])}_{int(clip['end'])}"
         persons_json = (ROOT_DIR / video_rel).parent / "clips" / f"persons_{tag}.json"
         if persons_json.exists():
             args.extend(["--persons-json", str(persons_json)])
             if blur_ids:
                 args.extend(["--blur-persons", ",".join(str(i) for i in blur_ids)])
-            if focus_person >= 0:
+            if focus_plan:
+                args.extend(["--focus-plan", focus_plan])
+            elif focus_person >= 0:
                 args.extend(["--focus-person", str(focus_person)])
 
     db.update_clip(clip_id, {"rendered_path": out_rel})
@@ -1129,7 +1142,50 @@ def detect_clip_persons(clip_id: str) -> dict:
             "thumb": str(out.relative_to(ROOT_DIR)) if out.exists() else "",
             "frames": p.get("frames", 0),
         })
-    return {"persons": persons}
+
+    segments = _scene_segments(video_abs, start, end)
+    fps = float(detection.get("fps", 25.0)) or 25.0
+    seg_out = []
+    for t0, t1 in segments:
+        present, auto = _segment_persons(detection, t0, t1, fps)
+        seg_out.append({"start": round(t0, 2), "end": round(t1, 2), "present": present, "autoPersonId": auto})
+    return {"persons": persons, "segments": seg_out}
+
+
+def _scene_segments(video_abs: Path, start: float, end: float, min_len: float = 1.2) -> list[tuple[float, float]]:
+    """Divide el tramo [start,end] en 'movimientos' por cortes de cámara (ffmpeg scene).
+    Devuelve segmentos en tiempo LOCAL del clip. Fusiona los muy cortos."""
+    dur = round(end - start, 3)
+    proc = subprocess.run(
+        ["ffmpeg", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(video_abs),
+         "-vf", "select='gt(scene,0.35)',showinfo", "-an", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    cuts = sorted({round(float(m), 2) for m in re.findall(r"pts_time:([0-9.]+)", proc.stderr)
+                   if 0.3 < float(m) < dur - 0.3})
+    bounds = [0.0] + cuts + [dur]
+    raw = [(bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1)]
+    merged: list[list[float]] = []
+    for s, e in raw:
+        if merged and (e - s) < min_len:
+            merged[-1][1] = e
+        else:
+            merged.append([s, e])
+    return [(round(s, 2), round(e, 2)) for s, e in merged] or [(0.0, dur)]
+
+
+def _segment_persons(detection: dict, t0: float, t1: float, fps: float):
+    """Personas presentes en un tramo + la 'auto' (la de mayor área media = la que la
+    cámara enmarca más prominente, normalmente quien habla)."""
+    avg_area = {}
+    for p in detection.get("persons", []):
+        areas = [b[3] * b[4] for b in p.get("boxes", []) if t0 <= b[0] / fps < t1]
+        if areas:
+            avg_area[p["id"]] = sum(areas) / len(areas)
+    if not avg_area:
+        return [], -1
+    auto = max(avg_area, key=avg_area.get)
+    return sorted(avg_area.keys()), auto
 
 
 class BlurPersonsRequest(BaseModel):
@@ -1156,6 +1212,26 @@ def set_clip_focus_person(clip_id: str, payload: FocusPersonRequest) -> dict:
         raise HTTPException(status_code=404, detail="Clip no encontrado")
     db.update_clip(clip_id, {"focus_person": payload.personId})
     return {"focusPerson": payload.personId}
+
+
+class FocusSegment(BaseModel):
+    start: float
+    end: float
+    personId: int = -1
+
+
+class FocusPlanRequest(BaseModel):
+    segments: list[FocusSegment] = []
+
+
+@app.post("/api/clips/{clip_id}/focus-plan")
+def set_clip_focus_plan(clip_id: str, payload: FocusPlanRequest) -> dict:
+    """Guarda el enfoque POR TRAMO: por cada movimiento, qué persona centrar."""
+    if not db.get_clip(clip_id):
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    plan = [{"start": s.start, "end": s.end, "personId": s.personId} for s in payload.segments]
+    db.update_clip(clip_id, {"focus_segments": json.dumps(plan)})
+    return {"focusSegments": plan}
 
 
 @app.post("/api/clips/{clip_id}/seo")

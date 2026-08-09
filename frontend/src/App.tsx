@@ -96,6 +96,7 @@ export default function App() {
   const [clipFrames, setClipFrames] = useState<Record<string, { percent: number; path: string }[]>>({})
   const [extractingFramesId, setExtractingFramesId] = useState('')
   const [clipPersons, setClipPersons] = useState<Record<string, { id: number; thumb: string; frames: number }[]>>({})
+  const [clipSegments, setClipSegments] = useState<Record<string, { start: number; end: number; present: number[]; autoPersonId: number }[]>>({})
   const [detectingPersonsId, setDetectingPersonsId] = useState('')
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow'>('center')
@@ -599,12 +600,35 @@ export default function App() {
     setDetectingPersonsId(clip.id)
     setError('')
     try {
-      const { persons } = await api.detectPersons(clip.id)
+      const { persons, segments } = await api.detectPersons(clip.id)
       setClipPersons((prev) => ({ ...prev, [clip.id]: persons }))
+      setClipSegments((prev) => ({ ...prev, [clip.id]: segments }))
     } catch (e) {
       handleApiError(e)
     } finally {
       setDetectingPersonsId('')
+    }
+  }
+
+  async function handleSetSegmentFocus(
+    clip: ClipCandidate,
+    segments: { start: number; end: number; present: number[]; autoPersonId: number }[],
+    idx: number,
+    personId: number,
+  ) {
+    let existing: { start: number; end: number; personId: number }[] = []
+    try { existing = JSON.parse(clip.focusSegments || '[]') } catch { existing = [] }
+    const plan = segments.map((seg, i) => ({
+      start: seg.start,
+      end: seg.end,
+      personId: i === idx ? personId : (existing[i]?.personId ?? seg.autoPersonId),
+    }))
+    const planStr = JSON.stringify(plan)
+    setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, focusSegments: planStr } : c)))
+    try {
+      await api.setFocusPlan(clip.id, plan)
+    } catch (e) {
+      handleApiError(e)
     }
   }
 
@@ -1954,22 +1978,58 @@ export default function App() {
                                 <div className="person-grid">
                                   {clipPersons[clip.id].map((p) => {
                                     const isBlur = selected.includes(p.id)
-                                    const isFocus = clip.focusPerson === p.id
                                     return (
-                                      <div key={p.id} className={`person-thumb${isBlur ? ' selected' : ''}${isFocus ? ' focused' : ''}`}>
+                                      <button
+                                        key={p.id}
+                                        className={`person-thumb${isBlur ? ' selected' : ''}`}
+                                        title={isBlur ? 'Se difuminará' : 'Clic para difuminar (las mujeres)'}
+                                        onClick={() => handleToggleBlurPerson(clip, p.id)}
+                                      >
                                         {p.thumb ? <img src={api.fileUrl(p.thumb)} alt={`#${p.id}`} /> : <span className="person-noimg">#{p.id}</span>}
-                                        <span className="person-tag">#{p.id}</span>
-                                        <div className="person-actions">
-                                          <button className={isBlur ? 'pa on' : 'pa'} title="Difuminar a esta persona" onClick={() => handleToggleBlurPerson(clip, p.id)}>🌫</button>
-                                          <button className={isFocus ? 'pa foc on' : 'pa foc'} title="Centrar el recorte de arriba en esta persona" onClick={() => handleSetFocusPerson(clip, p.id)}>🎯</button>
-                                        </div>
-                                      </div>
+                                        <span className="person-tag">{isBlur ? '🌫' : `#${p.id}`}</span>
+                                      </button>
                                     )
                                   })}
                                 </div>
                                 <p className="help" style={{ margin: '6px 0 0' }}>
-                                  🌫 marca a las mujeres → se difuminan. 🎯 centra el recorte de arriba en una persona. Se aplica al <strong>Regenerar</strong>.
+                                  🌫 marca a las mujeres → se difuminan al <strong>Regenerar</strong>. Ante la duda, marca de más.
                                 </p>
+
+                                {clipSegments[clip.id] && clipSegments[clip.id].length > 0 && (() => {
+                                  const thumbOf: Record<number, string> = {}
+                                  for (const p of clipPersons[clip.id]) thumbOf[p.id] = p.thumb
+                                  let plan: { start: number; end: number; personId: number }[] = []
+                                  try { plan = JSON.parse(clip.focusSegments || '[]') } catch { plan = [] }
+                                  return (
+                                    <div className="focus-plan">
+                                      <div className="seo-head" style={{ marginTop: 10 }}>
+                                        <span>🎯 Enfoque por tramo (elige a quién centra el recorte de arriba en cada movimiento)</span>
+                                      </div>
+                                      {clipSegments[clip.id].map((seg, i) => {
+                                        const cur = plan[i]?.personId ?? seg.autoPersonId
+                                        return (
+                                          <div key={i} className="focus-seg">
+                                            <span className="focus-seg-time">{seg.start.toFixed(0)}–{seg.end.toFixed(0)}s</span>
+                                            <div className="focus-seg-choices">
+                                              {seg.present.map((pid) => (
+                                                <button
+                                                  key={pid}
+                                                  className={cur === pid ? 'fs-p sel' : 'fs-p'}
+                                                  title={pid === seg.autoPersonId ? `#${pid} (auto)` : `#${pid}`}
+                                                  onClick={() => handleSetSegmentFocus(clip, clipSegments[clip.id], i, pid)}
+                                                >
+                                                  {thumbOf[pid] ? <img src={api.fileUrl(thumbOf[pid])} alt={`#${pid}`} /> : <span>#{pid}</span>}
+                                                  {pid === seg.autoPersonId && <span className="fs-auto">auto</span>}
+                                                </button>
+                                              ))}
+                                              <button className={cur === -1 ? 'fs-p ctr sel' : 'fs-p ctr'} title="Centro" onClick={() => handleSetSegmentFocus(clip, clipSegments[clip.id], i, -1)}>centro</button>
+                                            </div>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )
+                                })()}
                               </>
                             )
                           })()}

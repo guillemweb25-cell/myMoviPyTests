@@ -118,6 +118,7 @@ export type ClipCandidate = {
   uploadedAt?: string
   blurPersons?: string
   focusPerson?: number
+  focusSegments?: string
 }
 
 export type DetectClipsResponse = {
