@@ -22,10 +22,12 @@ services:
   person_worker:
     build: ./person
     container_name: person-worker
+    command: uvicorn app:app --host 0.0.0.0 --port 8901 --reload
     ports:
       - "8901:8901"
     volumes:
       - person_data:/data
+      - ./person:/app          # código montado: cambios sin rebuild (uvicorn --reload)
     deploy:
       resources:
         reservations:
