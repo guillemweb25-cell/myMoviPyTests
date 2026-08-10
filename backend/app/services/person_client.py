@@ -34,10 +34,14 @@ def detect(source_video: Path, start: float, end: float, cache_json: Path,
     cache_json.parent.mkdir(parents=True, exist_ok=True)
     tmp = cache_json.parent / f"_pdet_{cache_json.stem}.mp4"
     # Segmento solo-vídeo a 25 fps (MISMO fps que el segmento de blur, para que los
-    # índices de frame de las cajas coincidan al difuminar).
+    # índices de frame de las cajas coincidan al difuminar). Se reescala a máx 1280
+    # de ancho para acelerar YOLO y la subida en clips largos: las cajas van
+    # normalizadas [0,1], así que el blur (que corta su propio segmento a resolución
+    # completa) sigue cuadrando.
     subprocess.run([
         ffmpeg, "-y", "-ss", f"{start:.3f}", "-i", str(source_video), "-t", f"{end - start:.3f}",
-        "-an", "-r", "25", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", str(tmp),
+        "-an", "-r", "25", "-vf", "scale='min(1280,iw)':-2",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", str(tmp),
     ], capture_output=True)
     if not tmp.exists():
         return None

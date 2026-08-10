@@ -2160,6 +2160,11 @@ export default function App() {
                               </button>
                             </span>
                           </div>
+                          {detectingPersonsId === clip.id && !clipPersons[clip.id] && (
+                            <p className="help" style={{ margin: '8px 0 0' }}>
+                              ⏳ Detectando personas… en clips largos puede tardar 1–2 min (corta y analiza todo el tramo). No cierres la página.
+                            </p>
+                          )}
                           {clipPersons[clip.id] && (() => {
                             let selected: number[] = []
                             try { selected = JSON.parse(clip.blurPersons || '[]') } catch { selected = [] }
