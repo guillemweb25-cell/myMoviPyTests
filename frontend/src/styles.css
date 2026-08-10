@@ -651,6 +651,30 @@ nav {
   gap: 12px;
 }
 
+/* Selector de punto de enfoque: línea vertical + franja aproximada del recorte */
+.fp-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #14b8a6;
+  transform: translateX(-50%);
+  pointer-events: none;
+  box-shadow: 0 0 6px rgba(20, 184, 166, 0.9);
+}
+
+.fp-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  transform: translateX(-50%);
+  background: rgba(20, 184, 166, 0.18);
+  border-left: 1px dashed rgba(20, 184, 166, 0.6);
+  border-right: 1px dashed rgba(20, 184, 166, 0.6);
+  pointer-events: none;
+}
+
 .person-actions {
   position: absolute;
   bottom: 2px;

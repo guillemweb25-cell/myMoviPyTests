@@ -285,24 +285,33 @@ def person_focus_segments(persons_json: Path, person_id: int, duration: float, f
     return [(round(s, 3), round(e, 3), round(c, 4)) for s, e, c in merged] or None
 
 
-def focus_plan_segments(persons_json: Path, plan: list, fps: float = 25.0):
-    """Enfoque POR TRAMO. `plan` = [(t0, t1, person_id), ...] (person_id=-1 => centro).
-    Por cada tramo centra el recorte en la posición MEDIANA de esa persona durante el
-    tramo. Devuelve los (t0,t1,cx) para el render 'follow'."""
+def focus_plan_segments(persons_json: Path | None, plan: list, fps: float = 25.0):
+    """Enfoque POR TRAMO. `plan` = [(t0, t1, person_id, cx_manual|None), ...]
+    (person_id=-1 => centro). Si `cx_manual` viene dado (el usuario clicó un punto
+    en el frame), se usa directamente; si no, se centra en la posición MEDIANA de esa
+    persona durante el tramo. Devuelve los (t0,t1,cx) para el render 'follow'.
+    No necesita detección si todos los tramos traen cx manual."""
     import json as _json
-    try:
-        det = _json.loads(persons_json.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+    det = {}
+    if persons_json and Path(persons_json).exists():
+        try:
+            det = _json.loads(Path(persons_json).read_text(encoding="utf-8"))
+        except Exception:
+            det = {}
     persons = {p["id"]: p for p in det.get("persons", [])}
     segs = []
-    for (t0, t1, pid) in plan:
-        cx = 0.5
-        p = persons.get(pid)
-        if p:
-            cxs = sorted(b[1] + b[3] / 2.0 for b in p["boxes"] if t0 <= b[0] / fps < t1)
-            if cxs:
-                cx = cxs[len(cxs) // 2]
+    for entry in plan:
+        t0, t1, pid = entry[0], entry[1], entry[2]
+        cx_manual = entry[3] if len(entry) > 3 else None
+        if cx_manual is not None:
+            cx = float(cx_manual)
+        else:
+            cx = 0.5
+            p = persons.get(pid)
+            if p:
+                cxs = sorted(b[1] + b[3] / 2.0 for b in p["boxes"] if t0 <= b[0] / fps < t1)
+                if cxs:
+                    cx = cxs[len(cxs) // 2]
         segs.append((round(t0, 3), round(t1, 3), round(float(cx), 4)))
     return segs or None
 
@@ -406,14 +415,16 @@ def main() -> None:
 
     follow_segments = None
     focus = args.focus
-    if args.focus_plan and args.persons_json and Path(args.persons_json).exists():
-        # Enfoque POR TRAMO (Fase 3): 't0:t1:pid,...'
+    if args.focus_plan:
+        # Enfoque POR TRAMO: 't0:t1:pid[:cx],...' (cx opcional = punto manual clicado).
         plan = []
         for chunk in args.focus_plan.split(","):
             parts = chunk.split(":")
-            if len(parts) == 3:
-                plan.append((float(parts[0]), float(parts[1]), int(parts[2])))
-        follow_segments = focus_plan_segments(Path(args.persons_json), plan) if plan else None
+            if len(parts) >= 3:
+                cx = float(parts[3]) if len(parts) >= 4 and parts[3] != "" else None
+                plan.append((float(parts[0]), float(parts[1]), int(parts[2]), cx))
+        pj = Path(args.persons_json) if args.persons_json and Path(args.persons_json).exists() else None
+        follow_segments = focus_plan_segments(pj, plan) if plan else None
         if follow_segments:
             print(f"Enfoque por tramo: {len(follow_segments)} tramos.", flush=True)
             focus = "follow"

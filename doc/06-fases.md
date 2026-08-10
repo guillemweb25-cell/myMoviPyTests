@@ -205,6 +205,13 @@ y **enfoque por tramo** (elegir a quién centra el recorte en cada movimiento de
   worker `/blur` campo `static` (se difuminan en TODOS los frames). No sigue el
   movimiento (es fija); útil como red de seguridad cuando la detección falla.
   Funciona aunque no haya personas marcadas (detección opcional).
+- **Punto de enfoque manual por tramo** (`cx`): en planos generales las personas
+  detectadas salen diminutas y no se distinguen. El botón "📍 punto" abre un frame
+  del tramo (`scene-frame?t=`) donde clicas/arrastras para fijar **dónde centra el
+  recorte** (línea + franja aproximada). Se guarda como `cx` (0-1) en el tramo de
+  `focusSegments` y manda sobre `personId`. En el render, `--focus-plan
+  't0:t1:pid[:cx]'` → `focus_plan_segments` usa `cx` directo. Funciona **sin
+  detección** (clips en plano general sin personas marcadas).
 - **Thumbnails cabeza+hombros** (`_head_crop_vf`): las cajas de YOLO son de cuerpo
   entero (altas); al recortarlas enteras y mostrarlas con `object-fit: cover` en una
   miniatura cuadrada se veía el torso/mesa, no la cara → parecía que la persona "no

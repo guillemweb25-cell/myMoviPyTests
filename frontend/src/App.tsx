@@ -119,6 +119,7 @@ export default function App() {
   const [drawRect, setDrawRect] = useState<Rect | null>(null)
   const drawStart = useRef<{ x: number; y: number } | null>(null)
   const restoredPersonsRef = useRef<Set<string>>(new Set())
+  const [focusPicker, setFocusPicker] = useState<{ clipId: string; segIdx: number; frame: string; cx: number; segments: SegList } | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow'>('center')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
@@ -661,26 +662,59 @@ export default function App() {
     }
   }
 
-  async function handleSetSegmentFocus(
-    clip: ClipCandidate,
-    segments: { start: number; end: number; autoPersonId: number; persons: { id: number; thumb: string }[] }[],
-    idx: number,
-    personId: number,
-  ) {
-    let existing: { start: number; end: number; personId: number }[] = []
+  type SegList = { start: number; end: number; autoPersonId: number; persons: { id: number; thumb: string }[] }[]
+  type FocusPlanItem = { start: number; end: number; personId: number; cx?: number | null }
+
+  // Construye el plan completo aplicando un override en el tramo idx y preservando
+  // el resto (persona o punto manual cx) de lo que ya había guardado.
+  async function saveFocusPlan(clip: ClipCandidate, segments: SegList, idx: number, override: Partial<FocusPlanItem>) {
+    let existing: FocusPlanItem[] = []
     try { existing = JSON.parse(clip.focusSegments || '[]') } catch { existing = [] }
-    const plan = segments.map((seg, i) => ({
-      start: seg.start,
-      end: seg.end,
-      personId: i === idx ? personId : (existing[i]?.personId ?? seg.autoPersonId),
-    }))
-    const planStr = JSON.stringify(plan)
-    setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, focusSegments: planStr } : c)))
+    const plan: FocusPlanItem[] = segments.map((seg, i) => {
+      if (i === idx) {
+        return { start: seg.start, end: seg.end, personId: seg.autoPersonId, ...override }
+      }
+      const e = existing[i]
+      return { start: seg.start, end: seg.end, personId: e?.personId ?? seg.autoPersonId, ...(e?.cx != null ? { cx: e.cx } : {}) }
+    })
+    setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, focusSegments: JSON.stringify(plan) } : c)))
     try {
       await api.setFocusPlan(clip.id, plan)
     } catch (e) {
       handleApiError(e)
     }
+  }
+
+  // Elegir persona (o centro): fija personId y BORRA el punto manual de ese tramo.
+  function handleSetSegmentFocus(clip: ClipCandidate, segments: SegList, idx: number, personId: number) {
+    return saveFocusPlan(clip, segments, idx, { personId, cx: null })
+  }
+
+  // Elegir punto manual en el frame: fija cx (personId pasa a -1/centro como base).
+  function handleSetSegmentFocusPoint(clip: ClipCandidate, segments: SegList, idx: number, cx: number) {
+    return saveFocusPlan(clip, segments, idx, { personId: -1, cx })
+  }
+
+  // Abre el selector de punto de enfoque: extrae un frame en la mitad del tramo.
+  async function handleOpenFocusPoint(clip: ClipCandidate, segments: SegList, idx: number) {
+    setError('')
+    const seg = segments[idx]
+    let existing: FocusPlanItem[] = []
+    try { existing = JSON.parse(clip.focusSegments || '[]') } catch { existing = [] }
+    const curCx = existing[idx]?.cx ?? 0.5
+    try {
+      const { frame } = await api.sceneFrame(clip.id, (seg.start + seg.end) / 2)
+      setFocusPicker({ clipId: clip.id, segIdx: idx, frame, cx: curCx, segments })
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  async function handleSaveFocusPoint() {
+    if (!focusPicker) return
+    const clip = clipCandidates.find((c) => c.id === focusPicker.clipId)
+    if (clip) await handleSetSegmentFocusPoint(clip, focusPicker.segments, focusPicker.segIdx, focusPicker.cx)
+    setFocusPicker(null)
   }
 
   async function handleSetFocusPerson(clip: ClipCandidate, personId: number) {
@@ -2154,15 +2188,16 @@ export default function App() {
                                 </p>
 
                                 {clipSegments[clip.id] && clipSegments[clip.id].length > 0 && (() => {
-                                  let plan: { start: number; end: number; personId: number }[] = []
+                                  let plan: FocusPlanItem[] = []
                                   try { plan = JSON.parse(clip.focusSegments || '[]') } catch { plan = [] }
                                   return (
                                     <div className="focus-plan">
                                       <div className="seo-head" style={{ marginTop: 10 }}>
-                                        <span>🎯 Enfoque por tramo — clic en la miniatura para centrar (o auto = quien habla); 🌫 en la esquina para difuminar a esa persona</span>
+                                        <span>🎯 Enfoque por tramo — clic en la miniatura para centrar (o auto = quien habla); 🌫 para difuminar; 📍 punto para elegir el enfoque clicando en el frame (planos generales)</span>
                                       </div>
                                       {clipSegments[clip.id].map((seg, i) => {
-                                        const cur = plan[i]?.personId ?? seg.autoPersonId
+                                        const hasCx = plan[i]?.cx != null
+                                        const cur = hasCx ? -999 : (plan[i]?.personId ?? seg.autoPersonId)
                                         return (
                                           <div key={i} className="focus-seg">
                                             <span className="focus-seg-time">{seg.start.toFixed(0)}–{seg.end.toFixed(0)}s</span>
@@ -2193,6 +2228,7 @@ export default function App() {
                                                 )
                                               })}
                                               <button className={cur === -1 ? 'fs-p ctr sel' : 'fs-p ctr'} title="Centro (sin seguir a nadie)" onClick={() => handleSetSegmentFocus(clip, clipSegments[clip.id], i, -1)}>centro</button>
+                                              <button className={hasCx ? 'fs-p ctr sel' : 'fs-p ctr'} title="Elegir el punto de enfoque clicando en el frame (ideal en planos generales)" onClick={() => handleOpenFocusPoint(clip, clipSegments[clip.id], i)}>📍 punto</button>
                                             </div>
                                           </div>
                                         )
@@ -2582,6 +2618,39 @@ export default function App() {
                   {ed.regions.length > 0 && <button onClick={() => setRegions([])}>Borrar todas</button>}
                   <button className="lb-blur on" onClick={handleSaveManualBlur}>Guardar</button>
                 </span>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {focusPicker && (() => {
+        const fp = focusPicker
+        const close = () => setFocusPicker(null)
+        const setCx = (e: React.PointerEvent) => {
+          const r = e.currentTarget.getBoundingClientRect()
+          setFocusPicker({ ...fp, cx: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) })
+        }
+        return (
+          <div className="lightbox-backdrop" onClick={close}>
+            <div className="manual-editor" onClick={(e) => e.stopPropagation()}>
+              <div className="me-head">
+                <span>📍 Punto de enfoque — clic (o arrastra) donde quieres centrar el recorte de arriba en este tramo</span>
+                <button className="lb-close" title="Cerrar" onClick={close}>✕</button>
+              </div>
+              <div
+                className="me-stage"
+                onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); drawStart.current = { x: 0, y: 0 }; setCx(e) }}
+                onPointerMove={(e) => { if (drawStart.current) setCx(e) }}
+                onPointerUp={() => { drawStart.current = null }}
+              >
+                <img src={api.fileUrl(fp.frame)} alt="fotograma del tramo" draggable={false} />
+                <div className="fp-band" style={{ left: `${fp.cx * 100}%` }} />
+                <div className="fp-line" style={{ left: `${fp.cx * 100}%` }} />
+              </div>
+              <div className="me-bar">
+                <span className="lb-count">Enfoque en x={Math.round(fp.cx * 100)}%. La franja marca la zona aproximada del recorte.</span>
+                <button className="lb-blur on" onClick={handleSaveFocusPoint}>Guardar</button>
               </div>
             </div>
           </div>

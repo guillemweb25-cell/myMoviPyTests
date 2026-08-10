@@ -958,12 +958,17 @@ def _clip_blur_ids(clip: dict) -> list[int]:
 
 
 def _clip_focus_plan(clip: dict) -> str:
-    """Convierte focusSegments (JSON) al formato compacto 't0:t1:pid,...' del render."""
+    """Convierte focusSegments (JSON) al formato compacto 't0:t1:pid[:cx],...' del
+    render. `cx` (0-1) = punto manual clicado en el frame; si está, manda sobre pid."""
     try:
         segs = json.loads(clip.get("focusSegments") or "[]")
     except Exception:
         return ""
-    parts = [f"{s['start']}:{s['end']}:{int(s.get('personId', -1))}" for s in segs]
+    parts = []
+    for s in segs:
+        cx = s.get("cx")
+        base = f"{s['start']}:{s['end']}:{int(s.get('personId', -1))}"
+        parts.append(f"{base}:{float(cx):.4f}" if cx is not None else base)
     return ",".join(parts)
 
 
@@ -1076,10 +1081,11 @@ def render_clip_endpoint(clip_id: str) -> dict:
             args.extend(["--persons-json", str(persons_json)])
             if blur_ids:
                 args.extend(["--blur-persons", ",".join(str(i) for i in blur_ids)])
-            if focus_plan:
-                args.extend(["--focus-plan", focus_plan])
-            elif focus_person >= 0:
-                args.extend(["--focus-person", str(focus_person)])
+        # El enfoque por tramo puede llevar puntos manuales (cx): no requiere detección.
+        if focus_plan:
+            args.extend(["--focus-plan", focus_plan])
+        elif focus_person >= 0 and persons_json.exists():
+            args.extend(["--focus-person", str(focus_person)])
     manual_blur = _clip_manual_blur(clip)
     if manual_blur:
         args.extend(["--manual-blur", json.dumps(manual_blur)])
@@ -1321,10 +1327,10 @@ def set_clip_blur_persons(clip_id: str, payload: BlurPersonsRequest) -> dict:
 
 
 @app.post("/api/clips/{clip_id}/scene-frame")
-def clip_scene_frame(clip_id: str) -> dict:
-    """Extrae un fotograma del vídeo FUENTE (a la mitad del tramo) para dibujar
-    encima la región manual de blur. Las coordenadas del frontend van normalizadas
-    a ESTE frame (mismo encuadre/resolución que el segmento que se difumina)."""
+def clip_scene_frame(clip_id: str, t: float | None = None) -> dict:
+    """Extrae un fotograma del vídeo FUENTE para dibujar encima (región manual de
+    blur o punto de enfoque). `t` = segundos DESDE el inicio del clip (por defecto,
+    la mitad). Las coordenadas del frontend van normalizadas a ESTE frame."""
     clip = db.get_clip(clip_id)
     if not clip:
         raise HTTPException(status_code=404, detail="Clip no encontrado")
@@ -1333,12 +1339,15 @@ def clip_scene_frame(clip_id: str) -> dict:
         raise HTTPException(status_code=400, detail="El clip no tiene vídeo asociado.")
     video_abs = resolve_within_root(video_rel)
     start, end = float(clip["start"]), float(clip["end"])
-    mid = start + (end - start) / 2.0
+    if t is None:
+        at = start + (end - start) / 2.0
+    else:
+        at = min(max(start + float(t), start), max(start, end - 0.1))
 
     clips_dir = video_abs.parent / "clips"
     clips_dir.mkdir(parents=True, exist_ok=True)
-    out = clips_dir / f"scene_{clip_id}_{int(start)}_{int(end)}.jpg"
-    subprocess.run(["ffmpeg", "-y", "-ss", f"{mid:.2f}", "-i", str(video_abs),
+    out = clips_dir / f"scene_{clip_id}_{int(start)}_{int(end)}_{int(at)}.jpg"
+    subprocess.run(["ffmpeg", "-y", "-ss", f"{at:.2f}", "-i", str(video_abs),
                     "-frames:v", "1", "-q:v", "3", "-vf", "scale=720:-1", str(out)],
                    capture_output=True)
     if not out.exists():
@@ -1392,6 +1401,7 @@ class FocusSegment(BaseModel):
     start: float
     end: float
     personId: int = -1
+    cx: float | None = None  # punto manual clicado en el frame (0-1); manda sobre personId
 
 
 class FocusPlanRequest(BaseModel):
@@ -1400,10 +1410,16 @@ class FocusPlanRequest(BaseModel):
 
 @app.post("/api/clips/{clip_id}/focus-plan")
 def set_clip_focus_plan(clip_id: str, payload: FocusPlanRequest) -> dict:
-    """Guarda el enfoque POR TRAMO: por cada movimiento, qué persona centrar."""
+    """Guarda el enfoque POR TRAMO: por cada movimiento, qué persona centrar (o un
+    punto manual `cx` clicado en el frame, útil en planos generales)."""
     if not db.get_clip(clip_id):
         raise HTTPException(status_code=404, detail="Clip no encontrado")
-    plan = [{"start": s.start, "end": s.end, "personId": s.personId} for s in payload.segments]
+    plan = []
+    for s in payload.segments:
+        item = {"start": s.start, "end": s.end, "personId": s.personId}
+        if s.cx is not None:
+            item["cx"] = round(min(max(s.cx, 0.0), 1.0), 4)
+        plan.append(item)
     db.update_clip(clip_id, {"focus_segments": json.dumps(plan)})
     return {"focusSegments": plan}
 

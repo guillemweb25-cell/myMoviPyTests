@@ -77,7 +77,11 @@ def main() -> None:
             fplan = json.loads(clip.get("focusSegments") or "[]")
         except Exception:
             fplan = []
-        focus_plan = ",".join(f"{s['start']}:{s['end']}:{int(s.get('personId', -1))}" for s in fplan)
+        def _fp_item(s):
+            base = f"{s['start']}:{s['end']}:{int(s.get('personId', -1))}"
+            cx = s.get("cx")
+            return f"{base}:{float(cx):.4f}" if cx is not None else base
+        focus_plan = ",".join(_fp_item(s) for s in fplan)
         if blur_ids or focus_person >= 0 or focus_plan:
             tag = f"{cid}_{int(clip['start'])}_{int(clip['end'])}"
             pj = Path(video_rel).parent / "clips" / f"persons_{tag}.json"
@@ -85,10 +89,11 @@ def main() -> None:
                 cmd += ["--persons-json", str(root / pj)]
                 if blur_ids:
                     cmd += ["--blur-persons", ",".join(str(x) for x in blur_ids)]
-                if focus_plan:
-                    cmd += ["--focus-plan", focus_plan]
-                elif focus_person >= 0:
-                    cmd += ["--focus-person", str(focus_person)]
+            # focus-plan puede llevar puntos manuales (cx): no requiere detección.
+            if focus_plan:
+                cmd += ["--focus-plan", focus_plan]
+            elif focus_person >= 0 and (root / pj).exists():
+                cmd += ["--focus-person", str(focus_person)]
         try:
             manual_blur = [[float(r["x"]), float(r["y"]), float(r["w"]), float(r["h"])]
                            for r in json.loads(clip.get("manualBlur") or "[]")
