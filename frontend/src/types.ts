@@ -120,6 +120,7 @@ export type ClipCandidate = {
   focusPerson?: number
   focusSegments?: string
   manualBlur?: string
+  hasPersons?: boolean
 }
 
 export type DetectClipsResponse = {

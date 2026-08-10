@@ -988,6 +988,14 @@ def _annotate_clip(clip: dict) -> dict:
     rendered_path = clip.get("renderedPath") or ""
     clip["rendered"] = bool(rendered_path) and (ROOT_DIR / rendered_path).exists()
     clip["uploaded"] = bool(clip.get("youtubeUrl"))
+    # ¿Hay detección de personas cacheada para este tramo? (para restaurar el panel
+    # al recargar sin volver a detectar).
+    clip["hasPersons"] = False
+    video_rel = clip.get("videoPath") or ""
+    if video_rel:
+        tag = f"{clip.get('id')}_{int(float(clip.get('start', 0)))}_{int(float(clip.get('end', 0)))}"
+        cdir = (ROOT_DIR / video_rel).parent / "clips"
+        clip["hasPersons"] = (cdir / f"pdisplay_{tag}.json").exists() or (cdir / f"persons_{tag}.json").exists()
     return clip
 
 
@@ -1182,8 +1190,17 @@ def detect_clip_persons(clip_id: str, force: bool = False) -> dict:
     clips_dir = video_abs.parent / "clips"
     tag = f"{clip_id}_{int(start)}_{int(end)}"
     cache_json = clips_dir / f"persons_{tag}.json"
+    display_json = clips_dir / f"pdisplay_{tag}.json"
     if force:
         cache_json.unlink(missing_ok=True)
+        display_json.unlink(missing_ok=True)
+    # Caché de la RESPUESTA (personas + tramos con thumbnails): permite restaurar
+    # el panel al recargar sin re-generar thumbnails ni re-detectar.
+    elif display_json.exists():
+        try:
+            return json.loads(display_json.read_text(encoding="utf-8"))
+        except Exception:
+            pass
     detection = person_client.detect(video_abs, start, end, cache_json)
     if not detection:
         raise HTTPException(status_code=502, detail="Worker de personas no disponible (¿encendido el Windows?).")
@@ -1230,7 +1247,12 @@ def detect_clip_persons(clip_id: str, force: bool = False) -> dict:
                 auto_area, auto_id = area, p["id"]
         seg_out.append({"start": round(t0, 2), "end": round(t1, 2),
                         "autoPersonId": auto_id, "persons": seg_persons})
-    return {"persons": persons, "segments": seg_out}
+    result = {"persons": persons, "segments": seg_out}
+    try:
+        display_json.write_text(json.dumps(result), encoding="utf-8")
+    except Exception:
+        pass
+    return result
 
 
 def _scene_segments(video_abs: Path, start: float, end: float, min_len: float = 1.2) -> list[tuple[float, float]]:

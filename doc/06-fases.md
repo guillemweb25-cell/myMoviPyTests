@@ -205,6 +205,12 @@ y **enfoque por tramo** (elegir a quién centra el recorte en cada movimiento de
   worker `/blur` campo `static` (se difuminan en TODOS los frames). No sigue el
   movimiento (es fija); útil como red de seguridad cuando la detección falla.
   Funciona aunque no haya personas marcadas (detección opcional).
+- **Persistencia del panel al recargar**: el panel de personas vivía solo en estado
+  React y se perdía al recargar. Ahora la respuesta del endpoint (personas + tramos
+  con thumbnails) se cachea en `pdisplay_<tag>.json`; el clip expone `hasPersons` y
+  el frontend re-pide la detección barata (desde caché, sin worker) al cargar los
+  clips (`restorePersonPanels` en `loadSavedClips`). Las marcas (blurPersons /
+  manualBlur / focusSegments) ya estaban en la DB.
 
 ## Ideas futuras (no implementadas)
 

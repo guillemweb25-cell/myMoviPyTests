@@ -456,9 +456,26 @@ export default function App() {
     try {
       const data = await api.savedClips(transcriptPath)
       setClipCandidates(data.clips)
+      restorePersonPanels(data.clips)
     } catch (e) {
       handleApiError(e)
     }
+  }
+
+  // Restaura el panel de blur/enfoque tras recargar: la detección está cacheada
+  // en disco (pdisplay_*.json), así que se re-pide barato para los clips que la
+  // tienen (hasPersons). No depende del worker (lee de caché).
+  async function restorePersonPanels(clips: ClipCandidate[]) {
+    const targets = clips.filter((c) => c.hasPersons)
+    await Promise.allSettled(
+      targets.map(async (c) => {
+        try {
+          const { persons, segments } = await api.detectPersons(c.id)
+          setClipPersons((prev) => ({ ...prev, [c.id]: persons }))
+          setClipSegments((prev) => ({ ...prev, [c.id]: segments }))
+        } catch { /* si falla, el usuario puede pulsar Detectar personas */ }
+      }),
+    )
   }
 
   function handleSelectClipSource(transcriptPath: string) {
