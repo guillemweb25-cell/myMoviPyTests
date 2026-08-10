@@ -830,9 +830,12 @@ def apply_campaign_rules(campaign_id: int) -> dict:
     campaign = db.get_campaign(campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campana no encontrada")
-    on_screen = (campaign.get("rules") or {}).get("onScreenText", "").strip()
+    rules = campaign.get("rules") or {}
+    # Si el brief no define un texto en pantalla explícito, usa el caption obligatorio
+    # (p.ej. "Subscribe to @thetrailblazerspod...") — que sí debe verse siempre.
+    on_screen = (rules.get("onScreenText") or "").strip() or (rules.get("captionRequired") or "").strip()
     if not on_screen:
-        raise HTTPException(status_code=400, detail="El brief no define texto en pantalla obligatorio.")
+        raise HTTPException(status_code=400, detail="El brief no define texto en pantalla ni caption obligatorio.")
     clips = db.load_clips(campaign["transcriptPath"])
     for clip in clips:
         db.update_clip(clip["id"], {"overlay_text": on_screen})
