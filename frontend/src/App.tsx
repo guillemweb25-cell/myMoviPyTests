@@ -118,6 +118,7 @@ export default function App() {
   const [manualEditor, setManualEditor] = useState<{ clipId: string; frame: string; regions: Rect[] } | null>(null)
   const [drawRect, setDrawRect] = useState<Rect | null>(null)
   const drawStart = useRef<{ x: number; y: number } | null>(null)
+  const restoredPersonsRef = useRef<Set<string>>(new Set())
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow'>('center')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
@@ -464,18 +465,21 @@ export default function App() {
 
   // Restaura el panel de blur/enfoque tras recargar: la detección está cacheada
   // en disco (pdisplay_*.json), así que se re-pide barato para los clips que la
-  // tienen (hasPersons). No depende del worker (lee de caché).
+  // tienen (hasPersons). SECUENCIAL (una a una) para no saturar el límite de
+  // conexiones del navegador y bloquear un "Detectar" manual. La guarda evita
+  // repetir clips ya restaurados (loadSavedClips puede llamarse varias veces).
   async function restorePersonPanels(clips: ClipCandidate[]) {
-    const targets = clips.filter((c) => c.hasPersons)
-    await Promise.allSettled(
-      targets.map(async (c) => {
-        try {
-          const { persons, segments } = await api.detectPersons(c.id)
-          setClipPersons((prev) => ({ ...prev, [c.id]: persons }))
-          setClipSegments((prev) => ({ ...prev, [c.id]: segments }))
-        } catch { /* si falla, el usuario puede pulsar Detectar personas */ }
-      }),
-    )
+    for (const c of clips) {
+      if (!c.hasPersons || restoredPersonsRef.current.has(c.id)) continue
+      restoredPersonsRef.current.add(c.id)
+      try {
+        const { persons, segments } = await api.detectPersons(c.id)
+        setClipPersons((prev) => ({ ...prev, [c.id]: persons }))
+        setClipSegments((prev) => ({ ...prev, [c.id]: segments }))
+      } catch {
+        restoredPersonsRef.current.delete(c.id)  // reintentar la próxima vez
+      }
+    }
   }
 
   function handleSelectClipSource(transcriptPath: string) {
@@ -2117,8 +2121,8 @@ export default function App() {
                                   </button>
                                 )
                               })()}
-                              <button className="link-btn" disabled={detectingPersonsId === clip.id} onClick={() => handleDetectPersons(clip, !!clipPersons[clip.id])}>
-                                {detectingPersonsId === clip.id ? 'Detectando...' : (clipPersons[clip.id] ? 'Re-detectar' : 'Detectar personas')}
+                              <button className="link-btn" disabled={detectingPersonsId === clip.id} onClick={() => handleDetectPersons(clip, (clipPersons[clip.id]?.length ?? 0) > 0)}>
+                                {detectingPersonsId === clip.id ? 'Detectando...' : ((clipPersons[clip.id]?.length ?? 0) > 0 ? 'Re-detectar' : 'Detectar personas')}
                               </button>
                             </span>
                           </div>

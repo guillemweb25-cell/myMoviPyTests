@@ -1214,8 +1214,9 @@ def detect_clip_persons(clip_id: str, force: bool = False) -> dict:
         out = thumbs_dir / f"person_{p['id']}.jpg"
         vf = (f"crop='min(iw-2,iw*{max(w,0.02):.4f})':'min(ih-2,ih*{max(h,0.02):.4f})'"
               f":'iw*{max(x,0):.4f}':'ih*{max(y,0):.4f}',scale=360:-1")
-        subprocess.run(["ffmpeg", "-y", "-ss", f"{t:.2f}", "-i", str(video_abs),
-                        "-vf", vf, "-frames:v", "1", "-q:v", "3", str(out)], capture_output=True)
+        if not out.exists():  # idempotente: no regenerar si ya está (restauración barata)
+            subprocess.run(["ffmpeg", "-y", "-ss", f"{t:.2f}", "-i", str(video_abs),
+                            "-vf", vf, "-frames:v", "1", "-q:v", "3", str(out)], capture_output=True)
         persons.append({
             "id": p["id"],
             "thumb": str(out.relative_to(ROOT_DIR)) if out.exists() else "",
@@ -1240,8 +1241,9 @@ def detect_clip_persons(clip_id: str, force: bool = False) -> dict:
             tt = start + best[0] / fps
             vf = (f"crop='min(iw-2,iw*{max(w, 0.02):.4f})':'min(ih-2,ih*{max(h, 0.02):.4f})'"
                   f":'iw*{max(x, 0):.4f}':'ih*{max(y, 0):.4f}',scale=120:-1")
-            subprocess.run(["ffmpeg", "-y", "-ss", f"{tt:.2f}", "-i", str(video_abs),
-                            "-vf", vf, "-frames:v", "1", "-q:v", "3", str(st)], capture_output=True)
+            if not st.exists():  # idempotente
+                subprocess.run(["ffmpeg", "-y", "-ss", f"{tt:.2f}", "-i", str(video_abs),
+                                "-vf", vf, "-frames:v", "1", "-q:v", "3", str(st)], capture_output=True)
             seg_persons.append({"id": p["id"], "thumb": str(st.relative_to(ROOT_DIR)) if st.exists() else ""})
             if area > auto_area:
                 auto_area, auto_id = area, p["id"]
