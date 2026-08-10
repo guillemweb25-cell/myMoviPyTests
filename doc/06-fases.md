@@ -205,6 +205,12 @@ y **enfoque por tramo** (elegir a quién centra el recorte en cada movimiento de
   worker `/blur` campo `static` (se difuminan en TODOS los frames). No sigue el
   movimiento (es fija); útil como red de seguridad cuando la detección falla.
   Funciona aunque no haya personas marcadas (detección opcional).
+- **Thumbnails cabeza+hombros** (`_head_crop_vf`): las cajas de YOLO son de cuerpo
+  entero (altas); al recortarlas enteras y mostrarlas con `object-fit: cover` en una
+  miniatura cuadrada se veía el torso/mesa, no la cara → parecía que la persona "no
+  estaba" como opción. Ahora el thumbnail recorta solo la parte superior de la caja
+  (cara + hombros) y es reconocible. Versionado con `PTHUMB_VER` (sube la versión y
+  se regeneran thumbnails + `pdisplay` sin re-lanzar YOLO).
 - **Persistencia del panel al recargar**: el panel de personas vivía solo en estado
   React y se perdía al recargar. Ahora la respuesta del endpoint (personas + tramos
   con thumbnails) se cachea en `pdisplay_<tag>.json`; el clip expone `hasPersons` y

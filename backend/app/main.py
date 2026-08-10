@@ -995,7 +995,7 @@ def _annotate_clip(clip: dict) -> dict:
     if video_rel:
         tag = f"{clip.get('id')}_{int(float(clip.get('start', 0)))}_{int(float(clip.get('end', 0)))}"
         cdir = (ROOT_DIR / video_rel).parent / "clips"
-        clip["hasPersons"] = (cdir / f"pdisplay_{tag}.json").exists() or (cdir / f"persons_{tag}.json").exists()
+        clip["hasPersons"] = (cdir / f"pdisplay_{tag}_{PTHUMB_VER}.json").exists() or (cdir / f"persons_{tag}.json").exists()
     return clip
 
 
@@ -1171,6 +1171,22 @@ def extract_clip_frames(clip_id: str) -> dict:
     return {"frames": result}
 
 
+# Versión del recorte de thumbnail. Súbela si cambias _head_crop_vf: invalida los
+# thumbnails y el pdisplay cacheados (se regeneran sin re-lanzar YOLO).
+PTHUMB_VER = "v2"
+
+
+def _head_crop_vf(x: float, y: float, w: float, h: float, scale: int) -> str:
+    """Filtro ffmpeg que recorta CABEZA+HOMBROS (parte superior de la caja de la
+    persona), no la caja entera. Las cajas de YOLO suelen ser de cuerpo entero
+    (altas); con `object-fit: cover` en una miniatura cuadrada se vería el torso.
+    Recortando la parte de arriba la miniatura muestra la cara y es reconocible."""
+    cw = max(w, 0.02)
+    ch = max(min(h, max(w, 0.15) * 1.15), 0.02)  # alto ~ ancho (retrato de cabeza)
+    return (f"crop='min(iw-2,iw*{cw:.4f})':'min(ih-2,ih*{ch:.4f})'"
+            f":'iw*{max(x, 0):.4f}':'ih*{max(y, 0):.4f}',scale={scale}:-1")
+
+
 @app.post("/api/clips/{clip_id}/persons")
 def detect_clip_persons(clip_id: str, force: bool = False) -> dict:
     """Detecta personas en el tramo del clip (worker YOLO) y devuelve cada una con
@@ -1190,7 +1206,7 @@ def detect_clip_persons(clip_id: str, force: bool = False) -> dict:
     clips_dir = video_abs.parent / "clips"
     tag = f"{clip_id}_{int(start)}_{int(end)}"
     cache_json = clips_dir / f"persons_{tag}.json"
-    display_json = clips_dir / f"pdisplay_{tag}.json"
+    display_json = clips_dir / f"pdisplay_{tag}_{PTHUMB_VER}.json"
     if force:
         cache_json.unlink(missing_ok=True)
         display_json.unlink(missing_ok=True)
@@ -1211,9 +1227,8 @@ def detect_clip_persons(clip_id: str, force: bool = False) -> dict:
     for p in detection.get("persons", []):
         x, y, w, h = p["repr_bbox_norm"]
         t = start + float(p.get("repr_time", 0))
-        out = thumbs_dir / f"person_{p['id']}.jpg"
-        vf = (f"crop='min(iw-2,iw*{max(w,0.02):.4f})':'min(ih-2,ih*{max(h,0.02):.4f})'"
-              f":'iw*{max(x,0):.4f}':'ih*{max(y,0):.4f}',scale=360:-1")
+        out = thumbs_dir / f"person_{p['id']}_{PTHUMB_VER}.jpg"
+        vf = _head_crop_vf(x, y, w, h, 360)
         if not out.exists():  # idempotente: no regenerar si ya está (restauración barata)
             subprocess.run(["ffmpeg", "-y", "-ss", f"{t:.2f}", "-i", str(video_abs),
                             "-vf", vf, "-frames:v", "1", "-q:v", "3", str(out)], capture_output=True)
@@ -1237,10 +1252,9 @@ def detect_clip_persons(clip_id: str, force: bool = False) -> dict:
             area = best[3] * best[4]
             # thumbnail de ESA persona en ESE plano (no la global).
             x, y, w, h = best[1], best[2], best[3], best[4]
-            st = thumbs_dir / f"seg{si}_person_{p['id']}.jpg"
+            st = thumbs_dir / f"seg{si}_person_{p['id']}_{PTHUMB_VER}.jpg"
             tt = start + best[0] / fps
-            vf = (f"crop='min(iw-2,iw*{max(w, 0.02):.4f})':'min(ih-2,ih*{max(h, 0.02):.4f})'"
-                  f":'iw*{max(x, 0):.4f}':'ih*{max(y, 0):.4f}',scale=120:-1")
+            vf = _head_crop_vf(x, y, w, h, 160)
             if not st.exists():  # idempotente
                 subprocess.run(["ffmpeg", "-y", "-ss", f"{tt:.2f}", "-i", str(video_abs),
                                 "-vf", vf, "-frames:v", "1", "-q:v", "3", str(st)], capture_output=True)
