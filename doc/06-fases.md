@@ -194,6 +194,9 @@ y **enfoque por tramo** (elegir a quién centra el recorte en cada movimiento de
   frame poco reconocible, así que cada miniatura de tramo (crop de ESE plano, más
   reconocible) lleva un badge 🌫 que activa/desactiva el blur de esa persona (mismo
   `blurPersons` que la lista de arriba). Resuelve el "sale abajo pero no arriba".
+- **Lightbox de personas**: clic en un crop de la lista global lo amplía en un modal
+  (crop a `scale=360`), con navegación ← → (y Esc) y botón de difuminar. Facilita
+  reconocer a quién difuminar. (`lightbox` state + `.lightbox*` en styles.css.)
 
 ## Ideas futuras (no implementadas)
 

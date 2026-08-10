@@ -1176,7 +1176,7 @@ def detect_clip_persons(clip_id: str, force: bool = False) -> dict:
         t = start + float(p.get("repr_time", 0))
         out = thumbs_dir / f"person_{p['id']}.jpg"
         vf = (f"crop='min(iw-2,iw*{max(w,0.02):.4f})':'min(ih-2,ih*{max(h,0.02):.4f})'"
-              f":'iw*{max(x,0):.4f}':'ih*{max(y,0):.4f}',scale=200:-1")
+              f":'iw*{max(x,0):.4f}':'ih*{max(y,0):.4f}',scale=360:-1")
         subprocess.run(["ffmpeg", "-y", "-ss", f"{t:.2f}", "-i", str(video_abs),
                         "-vf", vf, "-frames:v", "1", "-q:v", "3", str(out)], capture_output=True)
         persons.append({

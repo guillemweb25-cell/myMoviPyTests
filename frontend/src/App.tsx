@@ -113,6 +113,7 @@ export default function App() {
   const [clipPersons, setClipPersons] = useState<Record<string, { id: number; thumb: string; frames: number }[]>>({})
   const [clipSegments, setClipSegments] = useState<Record<string, { start: number; end: number; autoPersonId: number; persons: { id: number; thumb: string }[] }[]>>({})
   const [detectingPersonsId, setDetectingPersonsId] = useState('')
+  const [lightbox, setLightbox] = useState<{ clipId: string; index: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow'>('center')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
@@ -1058,6 +1059,19 @@ export default function App() {
       refreshCampaigns(activeChannel.id)
     }
   }, [activeChannel?.id])
+
+  // Lightbox de personas: navegar con flechas y cerrar con Esc.
+  useEffect(() => {
+    if (!lightbox) return
+    const onKey = (e: KeyboardEvent) => {
+      const n = clipPersons[lightbox.clipId]?.length || 0
+      if (e.key === 'Escape') setLightbox(null)
+      else if (n && e.key === 'ArrowLeft') setLightbox((lb) => (lb ? { ...lb, index: (lb.index - 1 + n) % n } : lb))
+      else if (n && e.key === 'ArrowRight') setLightbox((lb) => (lb ? { ...lb, index: (lb.index + 1) % n } : lb))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightbox, clipPersons])
 
   // Persiste la navegacion para no perder el sitio al recargar la pestana.
   useEffect(() => {
@@ -2043,14 +2057,14 @@ export default function App() {
                             return (
                               <>
                                 <div className="person-grid">
-                                  {clipPersons[clip.id].map((p) => {
+                                  {clipPersons[clip.id].map((p, idx) => {
                                     const isBlur = selected.includes(p.id)
                                     return (
                                       <button
                                         key={p.id}
                                         className={`person-thumb${isBlur ? ' selected' : ''}`}
-                                        title={isBlur ? 'Se difuminará' : 'Clic para difuminar (las mujeres)'}
-                                        onClick={() => handleToggleBlurPerson(clip, p.id)}
+                                        title="Ampliar y difuminar"
+                                        onClick={() => setLightbox({ clipId: clip.id, index: idx })}
                                       >
                                         {p.thumb ? <img src={api.fileUrl(p.thumb)} alt={`#${p.id}`} /> : <span className="person-noimg">#{p.id}</span>}
                                         <span className="person-tag">{isBlur ? '🌫' : `#${p.id}`}</span>
@@ -2059,8 +2073,9 @@ export default function App() {
                                   })}
                                 </div>
                                 <p className="help" style={{ margin: '6px 0 0' }}>
-                                  🌫 marca a las mujeres → se difuminan al <strong>Regenerar</strong>. Ante la duda, marca de más.
-                                  Si no la reconoces aquí arriba, márcala con el 🌫 de su miniatura en el tramo de abajo (mismo efecto).
+                                  Clic en un crop para <strong>ampliarlo</strong> (flechas ← → para navegar) y difuminar ahí.
+                                  Marca a las mujeres → se difuminan al <strong>Regenerar</strong>. Ante la duda, marca de más.
+                                  También puedes usar el 🌫 de cada miniatura en los tramos de abajo.
                                 </p>
 
                                 {clipSegments[clip.id] && clipSegments[clip.id].length > 0 && (() => {
@@ -2412,6 +2427,39 @@ export default function App() {
           </section>
         )}
       </main>
+
+      {lightbox && (() => {
+        const persons = clipPersons[lightbox.clipId] || []
+        const clip = clipCandidates.find((c) => c.id === lightbox.clipId)
+        if (!persons.length || !clip) return null
+        const idx = Math.max(0, Math.min(lightbox.index, persons.length - 1))
+        const p = persons[idx]
+        let selected: number[] = []
+        try { selected = JSON.parse(clip.blurPersons || '[]') } catch { selected = [] }
+        const isBlur = selected.includes(p.id)
+        const go = (d: number) => setLightbox({ clipId: lightbox.clipId, index: (idx + d + persons.length) % persons.length })
+        return (
+          <div className="lightbox-backdrop" onClick={() => setLightbox(null)}>
+            <div className="lightbox" onClick={(e) => e.stopPropagation()}>
+              <button className="lb-close" title="Cerrar (Esc)" onClick={() => setLightbox(null)}>✕</button>
+              <button className="lb-nav lb-prev" title="Anterior (←)" onClick={() => go(-1)}>‹</button>
+              <div className="lb-stage">
+                {p.thumb ? <img src={api.fileUrl(p.thumb)} alt={`#${p.id}`} /> : <div className="lb-noimg">Persona #{p.id}<br />(sin miniatura)</div>}
+              </div>
+              <button className="lb-nav lb-next" title="Siguiente (→)" onClick={() => go(1)}>›</button>
+              <div className="lb-bar">
+                <span className="lb-count">Persona #{p.id} · {idx + 1}/{persons.length}</span>
+                <button
+                  className={`lb-blur${isBlur ? ' on' : ''}`}
+                  onClick={() => handleToggleBlurPerson(clip, p.id)}
+                >
+                  {isBlur ? '🌫 Se difuminará — quitar' : 'Difuminar a esta persona'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

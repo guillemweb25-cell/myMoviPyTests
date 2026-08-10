@@ -329,7 +329,7 @@ nav {
   height: 100%;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
+  color: var(--ink-soft);
 }
 
 .person-thumb .person-tag {
@@ -373,7 +373,7 @@ nav {
 .focus-seg-time {
   min-width: 62px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--ink-soft);
 }
 
 .focus-seg-choices {
@@ -464,6 +464,115 @@ nav {
   right: 0;
   font-size: 9px;
   background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+}
+
+/* Lightbox de personas: ver el crop grande, navegar y difuminar. */
+.lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.lightbox {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  max-width: min(92vw, 560px);
+}
+
+.lb-stage {
+  grid-row: 1;
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lb-stage img {
+  max-width: 100%;
+  max-height: 62vh;
+  border-radius: 8px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+.lb-noimg {
+  color: var(--ink-soft);
+  text-align: center;
+  padding: 60px 40px;
+}
+
+.lb-nav {
+  grid-row: 1;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lb-prev { grid-column: 1; }
+.lb-next { grid-column: 3; }
+
+.lb-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.lb-bar {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 6px;
+}
+
+.lb-count {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.lb-blur {
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.lb-blur.on {
+  background: #ef4444;
+  border-color: #ef4444;
   color: #fff;
 }
 
