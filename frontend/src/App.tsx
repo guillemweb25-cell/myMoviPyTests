@@ -30,6 +30,21 @@ function loadNav(): NavState {
   }
 }
 
+// Posicion de scroll (ventana) para volver al mismo sitio tras recargar la
+// pestana en el movil (al cambiar de app y volver, el navegador la recarga).
+function loadScroll(): number {
+  const v = Number(localStorage.getItem('mediaops_scroll') || '0')
+  return Number.isFinite(v) ? v : 0
+}
+
+function saveScroll(): void {
+  try {
+    localStorage.setItem('mediaops_scroll', String(Math.round(window.scrollY)))
+  } catch {
+    /* almacenamiento no disponible */
+  }
+}
+
 export default function App() {
   const [authState, setAuthState] = useState<'checking' | 'authed' | 'login'>('checking')
   const [tokenInput, setTokenInput] = useState('')
@@ -1051,6 +1066,41 @@ export default function App() {
     }))
   }, [activeSection, activeChannelId, clipTab, activeCampaignId])
 
+  // Guarda la posicion de scroll (throttle con rAF) y, sobre todo, al ocultar
+  // la pestana (el movil dispara pagehide/visibilitychange al cambiar de app).
+  useEffect(() => {
+    let ticking = false
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        saveScroll()
+        ticking = false
+      })
+    }
+    const onHide = () => saveScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('pagehide', onHide)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('pagehide', onHide)
+      document.removeEventListener('visibilitychange', onHide)
+    }
+  }, [])
+
+  // Restaura el scroll una sola vez, cuando ya se han pintado los clips de la
+  // campana restaurada (la pagina ya tiene altura). Asi el movil vuelve al
+  // clip exacto donde estabas, no al principio.
+  const pendingScrollRef = useRef<number>(loadScroll())
+  useEffect(() => {
+    if (pendingScrollRef.current <= 0) return
+    if (activeSection !== 'clipping' || !activeCampaignId || clipCandidates.length === 0) return
+    const target = pendingScrollRef.current
+    pendingScrollRef.current = 0
+    requestAnimationFrame(() => window.scrollTo(0, target))
+  }, [activeSection, activeCampaignId, clipCandidates.length])
+
   // Retorno del OAuth de YouTube: Google redirige a la raiz con ?code=&state=.
   useEffect(() => {
     if (authState !== 'authed') return
@@ -1559,7 +1609,9 @@ export default function App() {
 
             {clipTab === 'manage' && (
               <>
-                {!activeCampaign ? (
+                {!activeCampaign && activeCampaignId != null && campaigns.length === 0 ? (
+                  <p className="help">⏳ Restaurando campaña…</p>
+                ) : !activeCampaign ? (
                   <>
                     <p className="description">Tus campañas de este canal. Abre una para ver y gestionar sus shorts.</p>
                     {campaigns.length === 0 && <p className="help">Aún no hay campañas. Crea una en “Crear campaña”.</p>}

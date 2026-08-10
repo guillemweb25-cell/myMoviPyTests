@@ -9,6 +9,12 @@ SPA de un solo componente grande (`src/App.tsx`) + `api.ts` (cliente HTTP tipado
   Scripts, Historial, Explorador Output. Debajo, lista de **CANALES**.
 - La navegación se **persiste en `localStorage`** (`mediaops_nav`: section, channelId,
   clipTab, campaignId) para no perder el sitio al recargar (HMR de Vite recarga a menudo).
+- **Restauración móvil**: al cambiar de app (p. ej. copiar título → Whop → volver) el
+  navegador del móvil recarga la pestaña. Además de `mediaops_nav`, se guarda la
+  posición de scroll en `mediaops_scroll` (throttle con `requestAnimationFrame` +
+  `pagehide`/`visibilitychange`). Al volver, tras pintarse los clips de la campaña
+  restaurada, se hace `scrollTo` **una sola vez** para caer en el clip exacto. Mientras
+  la campaña aún carga se muestra “⏳ Restaurando campaña…” (evita el flash de la lista).
 
 ## Sección Clipping
 
