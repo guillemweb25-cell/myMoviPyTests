@@ -621,11 +621,11 @@ export default function App() {
     }
   }
 
-  async function handleDetectPersons(clip: ClipCandidate) {
+  async function handleDetectPersons(clip: ClipCandidate, force = false) {
     setDetectingPersonsId(clip.id)
     setError('')
     try {
-      const { persons, segments } = await api.detectPersons(clip.id)
+      const { persons, segments } = await api.detectPersons(clip.id, force)
       setClipPersons((prev) => ({ ...prev, [clip.id]: persons }))
       setClipSegments((prev) => ({ ...prev, [clip.id]: segments }))
     } catch (e) {
@@ -2033,7 +2033,7 @@ export default function App() {
                         <div className="blur-panel">
                           <div className="seo-head">
                             <span>Blur de personas (marca a quién difuminar)</span>
-                            <button className="link-btn" disabled={detectingPersonsId === clip.id} onClick={() => handleDetectPersons(clip)}>
+                            <button className="link-btn" disabled={detectingPersonsId === clip.id} onClick={() => handleDetectPersons(clip, !!clipPersons[clip.id])}>
                               {detectingPersonsId === clip.id ? 'Detectando...' : (clipPersons[clip.id] ? 'Re-detectar' : 'Detectar personas')}
                             </button>
                           </div>

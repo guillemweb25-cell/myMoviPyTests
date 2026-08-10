@@ -124,8 +124,8 @@ export const api = {
     patchJson<ClipCandidate>(`/api/clips/${clipId}/settings`, payload),
   extractFrames: (clipId: string) =>
     postJson<{ frames: { percent: number; path: string }[] }>(`/api/clips/${clipId}/frames`, {}),
-  detectPersons: (clipId: string) =>
-    postJson<{ persons: { id: number; thumb: string; frames: number }[]; segments: { start: number; end: number; autoPersonId: number; persons: { id: number; thumb: string }[] }[] }>(`/api/clips/${clipId}/persons`, {}),
+  detectPersons: (clipId: string, force = false) =>
+    postJson<{ persons: { id: number; thumb: string; frames: number }[]; segments: { start: number; end: number; autoPersonId: number; persons: { id: number; thumb: string }[] }[] }>(`/api/clips/${clipId}/persons${force ? '?force=true' : ''}`, {}),
   setBlurPersons: (clipId: string, personIds: number[]) =>
     postJson<{ blurPersons: number[] }>(`/api/clips/${clipId}/blur-persons`, { personIds }),
   setFocusPerson: (clipId: string, personId: number) =>

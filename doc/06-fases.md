@@ -169,6 +169,28 @@ desacoplado del Docker de la app. Ver [`07-asd-active-speaker.md`](07-asd-active
 - [x] Modo de encuadre "Seguir al hablante" en el render (recorte dinámico que sigue
   al hablante activo). Validado con el podcast WATO. Ver [`07-asd-active-speaker.md`](07-asd-active-speaker.md).
 
+## Fase 11 — Blur/Enfoque por personas (worker YOLO)
+
+Detección + seguimiento de personas (YOLOv8 + ByteTrack) para dos usos:
+**blur** (campañas que exigen difuminar mujeres, p. ej. Sheikh Uthman ~450$/vídeo)
+y **enfoque por tramo** (elegir a quién centra el recorte en cada movimiento de cámara).
+
+- Worker aparte en el Windows: `asd_worker/person/` (FastAPI, puerto **8901**,
+  contenedor separado del ASD, código montado con `--reload`). `numpy<2`.
+- Cliente: `backend/app/services/person_client.py` — corta el tramo `-an -r 25`
+  (mismo fps que el blur, para que los índices de frame de las cajas coincidan),
+  `POST /persons`, cachea `persons_<tag>.json` con cajas frame-a-frame.
+- Endpoint `POST /api/clips/{id}/persons` → lista global de personas (miniatura) +
+  personas por tramo (cortes de cámara vía `_scene_segments`). `?force=true` borra
+  la caché y re-detecta (botón **Re-detectar**).
+- **Merge de tracks** (`detect_persons.py`): fusiona fragmentos del mismo individuo
+  por histograma de color (`MERGE_THRESHOLD=0.72`, conservador). **Guarda temporal**:
+  no fusiona dos tracks que coexisten en >2 frames (si salen a la vez son personas
+  distintas) — evita que una mujer quede "escondida" dentro del ID de otra persona
+  y por tanto no aparezca en la lista de blur.
+- Blur per-frame (pixelate+gaussian) siguiendo las cajas; enfoque por tramo con
+  `focus_segments` (plan `[(t0,t1,personId)]`). Ver también memoria `blur-women-feature`.
+
 ## Ideas futuras (no implementadas)
 
 - Subida a **TikTok e Instagram** (cada plataforma con su enlace y su botón de submiteado).

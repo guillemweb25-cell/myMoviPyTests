@@ -1144,9 +1144,10 @@ def extract_clip_frames(clip_id: str) -> dict:
 
 
 @app.post("/api/clips/{clip_id}/persons")
-def detect_clip_persons(clip_id: str) -> dict:
+def detect_clip_persons(clip_id: str, force: bool = False) -> dict:
     """Detecta personas en el tramo del clip (worker YOLO) y devuelve cada una con
-    su miniatura (para el panel de blur/enfoque). Cachea la detección."""
+    su miniatura (para el panel de blur/enfoque). Cachea la detección.
+    Con force=true borra la caché y vuelve a detectar (botón "Re-detectar")."""
     from .services import person_client
 
     clip = db.get_clip(clip_id)
@@ -1161,6 +1162,8 @@ def detect_clip_persons(clip_id: str) -> dict:
     clips_dir = video_abs.parent / "clips"
     tag = f"{clip_id}_{int(start)}_{int(end)}"
     cache_json = clips_dir / f"persons_{tag}.json"
+    if force:
+        cache_json.unlink(missing_ok=True)
     detection = person_client.detect(video_abs, start, end, cache_json)
     if not detection:
         raise HTTPException(status_code=502, detail="Worker de personas no disponible (¿encendido el Windows?).")

@@ -84,22 +84,34 @@ def detect_persons(video_path: str) -> dict:
         reprs[tid] = {"frame": f, "bbox": arr[j], "hist": hist}
     cap.release()
 
+    # Frames en los que aparece cada track (para no fusionar personas que
+    # coexisten en pantalla: si salen en el mismo frame son DOS personas distintas).
+    track_frames = {tid: {b[0] for b in bx} for tid, bx in tracks.items()}
+
     # 3) fusiona tracks -> personas por similitud de histograma (conservador)
     tids = sorted(tracks.keys(), key=lambda t: -len(tracks[t]))  # los más largos primero
     persons_tracks: list[list[int]] = []
     person_hist: list = []
+    person_frames: list[set] = []  # frames ocupados por cada persona (unión de sus tracks)
     for tid in tids:
         h = reprs[tid]["hist"]
+        tf = track_frames[tid]
         placed = False
         if h is not None:
             for k, ph in enumerate(person_hist):
+                # NO fusionar si coexisten en pantalla: solaparse en >2 frames
+                # significa que son personas distintas visibles a la vez.
+                if len(tf & person_frames[k]) > 2:
+                    continue
                 if ph is not None and cv2.compareHist(h, ph, cv2.HISTCMP_CORREL) >= MERGE_THRESHOLD:
                     persons_tracks[k].append(tid)
+                    person_frames[k] |= tf
                     placed = True
                     break
         if not placed:
             persons_tracks.append([tid])
             person_hist.append(h)
+            person_frames.append(set(tf))
 
     # 4) construye personas: cajas frame-a-frame (de todos sus tracks) + repr
     out = []
