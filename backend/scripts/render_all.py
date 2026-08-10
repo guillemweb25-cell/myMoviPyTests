@@ -89,6 +89,14 @@ def main() -> None:
                     cmd += ["--focus-plan", focus_plan]
                 elif focus_person >= 0:
                     cmd += ["--focus-person", str(focus_person)]
+        try:
+            manual_blur = [[float(r["x"]), float(r["y"]), float(r["w"]), float(r["h"])]
+                           for r in json.loads(clip.get("manualBlur") or "[]")
+                           if float(r.get("w", 0)) > 0.005 and float(r.get("h", 0)) > 0.005]
+        except Exception:
+            manual_blur = []
+        if manual_blur:
+            cmd += ["--manual-blur", json.dumps(manual_blur)]
 
         title = (clip.get("title") or "")[:50]
         print(f"\n[{i}/{len(pending)}] Renderizando {cid} — {title}", flush=True)

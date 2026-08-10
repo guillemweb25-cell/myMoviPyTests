@@ -197,6 +197,14 @@ y **enfoque por tramo** (elegir a quién centra el recorte en cada movimiento de
 - **Lightbox de personas**: clic en un crop de la lista global lo amplía en un modal
   (crop a `scale=360`), con navegación ← → (y Esc) y botón de difuminar. Facilita
   reconocer a quién difuminar. (`lightbox` state + `.lightbox*` en styles.css.)
+- **Región manual de blur** (rectángulo FIJO): botón "▭ Región manual" abre un editor
+  con un fotograma del clip (`POST /api/clips/{id}/scene-frame`, frame fuente a la
+  mitad del tramo, `scale=720`); arrastras rectángulos que se guardan normalizados
+  (`POST /api/clips/{id}/manual-blur`, columna `manual_blur`). En el render van como
+  `--manual-blur '[[x,y,w,h],...]'` → `person_client.blur(static_regions=...)` →
+  worker `/blur` campo `static` (se difuminan en TODOS los frames). No sigue el
+  movimiento (es fija); útil como red de seguridad cuando la detección falla.
+  Funciona aunque no haya personas marcadas (detección opcional).
 
 ## Ideas futuras (no implementadas)
 

@@ -9,6 +9,7 @@ Encadena make_vertical_clip (composicion vertical) y subtitle_engine
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import textwrap
@@ -307,15 +308,25 @@ def focus_plan_segments(persons_json: Path, plan: list, fps: float = 25.0):
 
 
 def apply_person_blur(video: Path, start: float, end: float, out_path: Path,
-                      blur_ids: list[int], persons_json: Path, ffmpeg: str) -> Path | None:
-    """Difumina las personas `blur_ids` en el tramo [start,end] y devuelve un segmento
+                      blur_ids: list[int], persons_json: Path | None, ffmpeg: str,
+                      manual_regions: list | None = None) -> Path | None:
+    """Difumina las personas `blur_ids` (siguiéndolas frame a frame) más las
+    `manual_regions` manuales fijas en el tramo [start,end]. Devuelve un segmento
     difuminado CON audio (para componer encima). None si falla (se sigue sin blur)."""
     import json as _json
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
     try:
         from app.services import person_client  # noqa: E402
-        detection = _json.loads(persons_json.read_text(encoding="utf-8"))
     except Exception:
+        return None
+    detection = {}
+    if persons_json and Path(persons_json).exists():
+        try:
+            detection = _json.loads(Path(persons_json).read_text(encoding="utf-8"))
+        except Exception:
+            detection = {}
+    manual_regions = manual_regions or []
+    if not blur_ids and not manual_regions:
         return None
 
     dur = round(end - start, 3)
@@ -331,8 +342,8 @@ def apply_person_blur(video: Path, start: float, end: float, out_path: Path,
     if not seg.exists():
         return None
 
-    print(f"Blur de personas {blur_ids} (siguiéndolas frame a frame)...", flush=True)
-    ok = person_client.blur(seg, detection, blur_ids, blurred)
+    print(f"Blur de personas {blur_ids} + {len(manual_regions)} región(es) manual(es)...", flush=True)
+    ok = person_client.blur(seg, detection, blur_ids, blurred, static_regions=manual_regions)
     if not ok:
         print("Worker de personas no disponible o sin cajas; se sigue SIN blur.", flush=True)
         seg.unlink(missing_ok=True)
@@ -362,6 +373,7 @@ def main() -> None:
     parser.add_argument("--overlay", default="", help="Texto fijo visible todo el clip (encima de los subs)")
     parser.add_argument("--endcard", type=int, default=0, help="%% del clip para el fotograma de cierre/miniatura (0 = sin tarjeta)")
     parser.add_argument("--blur-persons", default="", help="ids de personas a difuminar, separados por comas")
+    parser.add_argument("--manual-blur", default="", help="regiones manuales fijas a difuminar: JSON [[x,y,w,h],...] normalizado")
     parser.add_argument("--persons-json", default="", help="ruta al JSON de detección (cajas por persona)")
     parser.add_argument("--focus-person", type=int, default=-1, help="id de persona a la que centra el recorte de arriba (-1 = no)")
     parser.add_argument("--focus-plan", default="", help="enfoque por tramo: 't0:t1:personId,...' (personId=-1=centro)")
@@ -379,9 +391,16 @@ def main() -> None:
     # Blur de personas: difumina el tramo ANTES de componer. A partir de aquí todo
     # opera sobre el segmento difuminado (video local [0, dur]).
     blur_ids = [int(x) for x in args.blur_persons.split(",") if x.strip().isdigit()]
-    if blur_ids and args.persons_json and Path(args.persons_json).exists():
+    manual_regions = []
+    if args.manual_blur:
+        try:
+            manual_regions = [[float(v) for v in r] for r in json.loads(args.manual_blur) if len(r) == 4]
+        except Exception:
+            manual_regions = []
+    persons_json = Path(args.persons_json) if args.persons_json and Path(args.persons_json).exists() else None
+    if blur_ids or manual_regions:
         blurred = apply_person_blur(video, start, end, out_path, blur_ids,
-                                    Path(args.persons_json), args.ffmpeg)
+                                    persons_json, args.ffmpeg, manual_regions=manual_regions)
         if blurred:
             video, start, end = blurred, 0.0, round(end - start, 3)
 

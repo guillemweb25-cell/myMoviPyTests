@@ -576,6 +576,81 @@ nav {
   color: #fff;
 }
 
+/* Editor de región manual de blur */
+.manual-editor {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  max-width: min(94vw, 760px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.me-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.me-stage {
+  position: relative;
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+  line-height: 0;
+  align-self: center;
+  max-width: 100%;
+}
+
+.me-stage img {
+  max-width: 100%;
+  max-height: 66vh;
+  border-radius: 8px;
+  display: block;
+  pointer-events: none;
+}
+
+.me-rect {
+  position: absolute;
+  border: 2px solid #ef4444;
+  background: rgba(239, 68, 68, 0.28);
+  pointer-events: none;
+}
+
+.me-rect.drawing {
+  border-style: dashed;
+}
+
+.me-rect-del {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 0;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  line-height: 20px;
+  padding: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.me-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .person-actions {
   position: absolute;
   bottom: 2px;

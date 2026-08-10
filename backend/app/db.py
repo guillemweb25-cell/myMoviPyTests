@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS clips (
     uploaded_at     TEXT DEFAULT '',
     blur_persons    TEXT DEFAULT '',
     focus_person    INTEGER DEFAULT -1,
-    focus_segments  TEXT DEFAULT ''
+    focus_segments  TEXT DEFAULT '',
+    manual_blur     TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_clips_transcript ON clips(transcript_path);
 CREATE TABLE IF NOT EXISTS channels (
@@ -118,6 +119,7 @@ CLIP_MIGRATIONS = [
     "ALTER TABLE clips ADD COLUMN blur_persons TEXT DEFAULT ''",
     "ALTER TABLE clips ADD COLUMN focus_person INTEGER DEFAULT -1",
     "ALTER TABLE clips ADD COLUMN focus_segments TEXT DEFAULT ''",
+    "ALTER TABLE clips ADD COLUMN manual_blur TEXT DEFAULT ''",
 ]
 
 
@@ -236,6 +238,7 @@ def _clip_to_dict(row: sqlite3.Row) -> dict:
         "blurPersons": (row["blur_persons"] if "blur_persons" in row.keys() else "") or "",
         "focusPerson": (row["focus_person"] if "focus_person" in row.keys() else -1) if (row["focus_person"] if "focus_person" in row.keys() else -1) is not None else -1,
         "focusSegments": (row["focus_segments"] if "focus_segments" in row.keys() else "") or "",
+        "manualBlur": (row["manual_blur"] if "manual_blur" in row.keys() else "") or "",
     }
 
 
@@ -295,7 +298,8 @@ def get_clip(clip_id: str) -> dict | None:
 def update_clip(clip_id: str, fields: dict) -> dict | None:
     allowed = {"focus", "zoom", "top_ratio", "subtitles", "rendered_path", "youtube_url", "channel_id",
                "seo_title", "seo_description", "seo_tags", "overlay_text", "youtube_privacy", "start", "end",
-               "endcard_percent", "submitted", "uploaded_at", "blur_persons", "focus_person", "focus_segments"}
+               "endcard_percent", "submitted", "uploaded_at", "blur_persons", "focus_person", "focus_segments",
+               "manual_blur"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)

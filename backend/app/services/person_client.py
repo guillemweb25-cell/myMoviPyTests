@@ -55,25 +55,29 @@ def detect(source_video: Path, start: float, end: float, cache_json: Path,
     return data
 
 
-def blur(segment: Path, detection: dict, person_ids: list[int], out_path: Path) -> bool:
+def blur(segment: Path, detection: dict, person_ids: list[int], out_path: Path,
+         static_regions: list | None = None) -> bool:
     """Difumina en `segment` las personas `person_ids` (según sus cajas en
-    `detection`) y escribe el resultado (sin audio) en `out_path`. True si OK."""
+    `detection`) más las `static_regions` manuales fijas ([x,y,w,h] normalizado,
+    aplicadas a todos los frames). Escribe el resultado (sin audio) en `out_path`.
+    True si OK."""
     url = _worker_url()
-    if not url or not detection or not segment.exists():
+    if not url or not segment.exists():
         return False
+    static = [list(r) for r in (static_regions or [])]
     idset = set(person_ids)
     frames: dict[str, list] = {}
-    for p in detection.get("persons", []):
+    for p in (detection or {}).get("persons", []):
         if p.get("id") in idset:
             for box in p.get("boxes", []):
                 f, x, y, w, h = box
                 frames.setdefault(str(int(f)), []).append([x, y, w, h])
-    if not frames:
+    if not frames and not static:
         return False
     try:
         with segment.open("rb") as fh:
             r = httpx.post(f"{url}/blur", files={"file": (segment.name, fh, "video/mp4")},
-                           data={"boxes": json.dumps({"frames": frames})},
+                           data={"boxes": json.dumps({"frames": frames, "static": static})},
                            timeout=httpx.Timeout(900.0, connect=10.0))
         r.raise_for_status()
         out_path.write_bytes(r.content)

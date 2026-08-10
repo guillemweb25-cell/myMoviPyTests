@@ -8,8 +8,13 @@ from __future__ import annotations
 PAD = 0.06  # agranda cada caja un 6% por lado
 
 
-def blur_video(in_path: str, out_path: str, frames_boxes: dict) -> None:
+def blur_video(in_path: str, out_path: str, frames_boxes: dict,
+               static_boxes: list | None = None) -> None:
+    """`frames_boxes`: cajas por frame (siguen a las personas). `static_boxes`:
+    regiones manuales fijas [x,y,w,h] que se difuminan en TODOS los frames."""
     import cv2
+
+    static_boxes = static_boxes or []
 
     cap = cv2.VideoCapture(in_path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
@@ -22,7 +27,7 @@ def blur_video(in_path: str, out_path: str, frames_boxes: dict) -> None:
         ok, frame = cap.read()
         if not ok:
             break
-        for (bx, by, bw, bh) in frames_boxes.get(str(i), []):
+        for (bx, by, bw, bh) in list(frames_boxes.get(str(i), [])) + list(static_boxes):
             x1 = int((bx - PAD * bw) * w); y1 = int((by - PAD * bh) * h)
             x2 = int((bx + bw + PAD * bw) * w); y2 = int((by + bh + PAD * bh) * h)
             x1 = max(0, x1); y1 = max(0, y1); x2 = min(w, x2); y2 = min(h, y2)

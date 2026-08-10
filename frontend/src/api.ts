@@ -130,6 +130,10 @@ export const api = {
     postJson<{ blurPersons: number[] }>(`/api/clips/${clipId}/blur-persons`, { personIds }),
   setFocusPerson: (clipId: string, personId: number) =>
     postJson<{ focusPerson: number }>(`/api/clips/${clipId}/focus-person`, { personId }),
+  sceneFrame: (clipId: string) =>
+    postJson<{ frame: string }>(`/api/clips/${clipId}/scene-frame`, {}),
+  setManualBlur: (clipId: string, regions: { x: number; y: number; w: number; h: number }[]) =>
+    postJson<{ manualBlur: { x: number; y: number; w: number; h: number }[] }>(`/api/clips/${clipId}/manual-blur`, { regions }),
   setFocusPlan: (clipId: string, segments: { start: number; end: number; personId: number }[]) =>
     postJson<{ focusSegments: unknown }>(`/api/clips/${clipId}/focus-plan`, { segments }),
   trimClip: (clipId: string, start: number, end: number) =>

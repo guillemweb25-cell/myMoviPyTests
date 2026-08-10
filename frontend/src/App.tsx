@@ -114,6 +114,10 @@ export default function App() {
   const [clipSegments, setClipSegments] = useState<Record<string, { start: number; end: number; autoPersonId: number; persons: { id: number; thumb: string }[] }[]>>({})
   const [detectingPersonsId, setDetectingPersonsId] = useState('')
   const [lightbox, setLightbox] = useState<{ clipId: string; index: number } | null>(null)
+  type Rect = { x: number; y: number; w: number; h: number }
+  const [manualEditor, setManualEditor] = useState<{ clipId: string; frame: string; regions: Rect[] } | null>(null)
+  const [drawRect, setDrawRect] = useState<Rect | null>(null)
+  const drawStart = useRef<{ x: number; y: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow'>('center')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
@@ -679,6 +683,45 @@ export default function App() {
     } catch (e) {
       handleApiError(e)
     }
+  }
+
+  async function handleOpenManualBlur(clip: ClipCandidate) {
+    setError('')
+    let regions: Rect[] = []
+    try {
+      const raw = JSON.parse(clip.manualBlur || '[]')
+      regions = Array.isArray(raw) ? raw.filter((r) => r && typeof r.x === 'number') : []
+    } catch { regions = [] }
+    try {
+      const { frame } = await api.sceneFrame(clip.id)
+      setManualEditor({ clipId: clip.id, frame, regions })
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  // Punto normalizado [0,1] dentro del stage a partir de un evento de puntero.
+  function normPoint(e: React.PointerEvent, el: HTMLElement) {
+    const r = el.getBoundingClientRect()
+    return {
+      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+    }
+  }
+
+  async function handleSaveManualBlur() {
+    if (!manualEditor) return
+    const regions = manualEditor.regions
+    // Optimista en el estado del clip para que Regenerar ya lo use.
+    setClipCandidates((prev) => prev.map((c) => (c.id === manualEditor.clipId ? { ...c, manualBlur: JSON.stringify(regions) } : c)))
+    try {
+      await api.setManualBlur(manualEditor.clipId, regions)
+    } catch (e) {
+      handleApiError(e)
+    }
+    setManualEditor(null)
+    setDrawRect(null)
+    drawStart.current = null
   }
 
   async function handleExtractFrames(clip: ClipCandidate) {
@@ -2047,9 +2090,20 @@ export default function App() {
                         <div className="blur-panel">
                           <div className="seo-head">
                             <span>Blur de personas (marca a quién difuminar)</span>
-                            <button className="link-btn" disabled={detectingPersonsId === clip.id} onClick={() => handleDetectPersons(clip, !!clipPersons[clip.id])}>
-                              {detectingPersonsId === clip.id ? 'Detectando...' : (clipPersons[clip.id] ? 'Re-detectar' : 'Detectar personas')}
-                            </button>
+                            <span style={{ display: 'flex', gap: 10 }}>
+                              {(() => {
+                                let n = 0
+                                try { n = (JSON.parse(clip.manualBlur || '[]') as unknown[]).length } catch { n = 0 }
+                                return (
+                                  <button className="link-btn" title="Dibujar un rectángulo fijo a difuminar en todo el clip" onClick={() => handleOpenManualBlur(clip)}>
+                                    ▭ Región manual{n ? ` (${n})` : ''}
+                                  </button>
+                                )
+                              })()}
+                              <button className="link-btn" disabled={detectingPersonsId === clip.id} onClick={() => handleDetectPersons(clip, !!clipPersons[clip.id])}>
+                                {detectingPersonsId === clip.id ? 'Detectando...' : (clipPersons[clip.id] ? 'Re-detectar' : 'Detectar personas')}
+                              </button>
+                            </span>
                           </div>
                           {clipPersons[clip.id] && (() => {
                             let selected: number[] = []
@@ -2455,6 +2509,58 @@ export default function App() {
                 >
                   {isBlur ? '🌫 Se difuminará — quitar' : 'Difuminar a esta persona'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {manualEditor && (() => {
+        const ed = manualEditor
+        const close = () => { setManualEditor(null); setDrawRect(null); drawStart.current = null }
+        const setRegions = (regions: Rect[]) => setManualEditor({ ...ed, regions })
+        return (
+          <div className="lightbox-backdrop" onClick={close}>
+            <div className="manual-editor" onClick={(e) => e.stopPropagation()}>
+              <div className="me-head">
+                <span>▭ Región manual — arrastra para dibujar el rectángulo a difuminar (fijo, todo el clip)</span>
+                <button className="lb-close" title="Cerrar" onClick={close}>✕</button>
+              </div>
+              <div
+                className="me-stage"
+                onPointerDown={(e) => {
+                  const el = e.currentTarget
+                  el.setPointerCapture(e.pointerId)
+                  const pt = normPoint(e, el)
+                  drawStart.current = pt
+                  setDrawRect({ x: pt.x, y: pt.y, w: 0, h: 0 })
+                }}
+                onPointerMove={(e) => {
+                  if (!drawStart.current) return
+                  const pt = normPoint(e, e.currentTarget)
+                  const s = drawStart.current
+                  setDrawRect({ x: Math.min(s.x, pt.x), y: Math.min(s.y, pt.y), w: Math.abs(pt.x - s.x), h: Math.abs(pt.y - s.y) })
+                }}
+                onPointerUp={() => {
+                  if (drawRect && drawRect.w > 0.01 && drawRect.h > 0.01) setRegions([...ed.regions, drawRect])
+                  setDrawRect(null)
+                  drawStart.current = null
+                }}
+              >
+                <img src={api.fileUrl(ed.frame)} alt="fotograma del clip" draggable={false} />
+                {ed.regions.map((r, i) => (
+                  <div key={i} className="me-rect" style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` }}>
+                    <button className="me-rect-del" title="Quitar" onPointerDown={(e) => e.stopPropagation()} onClick={() => setRegions(ed.regions.filter((_, j) => j !== i))}>✕</button>
+                  </div>
+                ))}
+                {drawRect && <div className="me-rect drawing" style={{ left: `${drawRect.x * 100}%`, top: `${drawRect.y * 100}%`, width: `${drawRect.w * 100}%`, height: `${drawRect.h * 100}%` }} />}
+              </div>
+              <div className="me-bar">
+                <span className="lb-count">{ed.regions.length} región(es). Se difuminan al <strong>Regenerar</strong>.</span>
+                <span style={{ display: 'flex', gap: 8 }}>
+                  {ed.regions.length > 0 && <button onClick={() => setRegions([])}>Borrar todas</button>}
+                  <button className="lb-blur on" onClick={handleSaveManualBlur}>Guardar</button>
+                </span>
               </div>
             </div>
           </div>

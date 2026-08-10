@@ -967,6 +967,23 @@ def _clip_focus_plan(clip: dict) -> str:
     return ",".join(parts)
 
 
+def _clip_manual_blur(clip: dict) -> list[list[float]]:
+    """Regiones manuales fijas [[x,y,w,h],...] normalizadas al frame fuente."""
+    try:
+        regs = json.loads(clip.get("manualBlur") or "[]")
+    except Exception:
+        return []
+    out = []
+    for r in regs:
+        try:
+            box = [float(r["x"]), float(r["y"]), float(r["w"]), float(r["h"])]
+        except (TypeError, KeyError, ValueError):
+            continue
+        if box[2] > 0.005 and box[3] > 0.005:
+            out.append(box)
+    return out
+
+
 def _annotate_clip(clip: dict) -> dict:
     rendered_path = clip.get("renderedPath") or ""
     clip["rendered"] = bool(rendered_path) and (ROOT_DIR / rendered_path).exists()
@@ -1055,6 +1072,9 @@ def render_clip_endpoint(clip_id: str) -> dict:
                 args.extend(["--focus-plan", focus_plan])
             elif focus_person >= 0:
                 args.extend(["--focus-person", str(focus_person)])
+    manual_blur = _clip_manual_blur(clip)
+    if manual_blur:
+        args.extend(["--manual-blur", json.dumps(manual_blur)])
 
     db.update_clip(clip_id, {"rendered_path": out_rel})
     job = enqueue_job("render_clip.py", args)
@@ -1260,6 +1280,61 @@ def set_clip_blur_persons(clip_id: str, payload: BlurPersonsRequest) -> dict:
         raise HTTPException(status_code=404, detail="Clip no encontrado")
     db.update_clip(clip_id, {"blur_persons": json.dumps(payload.personIds)})
     return {"blurPersons": payload.personIds}
+
+
+@app.post("/api/clips/{clip_id}/scene-frame")
+def clip_scene_frame(clip_id: str) -> dict:
+    """Extrae un fotograma del vídeo FUENTE (a la mitad del tramo) para dibujar
+    encima la región manual de blur. Las coordenadas del frontend van normalizadas
+    a ESTE frame (mismo encuadre/resolución que el segmento que se difumina)."""
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    video_rel = clip.get("videoPath") or ""
+    if not video_rel:
+        raise HTTPException(status_code=400, detail="El clip no tiene vídeo asociado.")
+    video_abs = resolve_within_root(video_rel)
+    start, end = float(clip["start"]), float(clip["end"])
+    mid = start + (end - start) / 2.0
+
+    clips_dir = video_abs.parent / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    out = clips_dir / f"scene_{clip_id}_{int(start)}_{int(end)}.jpg"
+    subprocess.run(["ffmpeg", "-y", "-ss", f"{mid:.2f}", "-i", str(video_abs),
+                    "-frames:v", "1", "-q:v", "3", "-vf", "scale=720:-1", str(out)],
+                   capture_output=True)
+    if not out.exists():
+        raise HTTPException(status_code=500, detail="No se pudo extraer el fotograma.")
+    return {"frame": str(out.relative_to(ROOT_DIR))}
+
+
+class ManualBlurRegion(BaseModel):
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class ManualBlurRequest(BaseModel):
+    regions: list[ManualBlurRegion] = []
+
+
+@app.post("/api/clips/{clip_id}/manual-blur")
+def set_clip_manual_blur(clip_id: str, payload: ManualBlurRequest) -> dict:
+    """Guarda las regiones manuales fijas (normalizadas [0,1]) a difuminar en todo
+    el clip. Se recortan a [0,1] y se descartan las diminutas."""
+    if not db.get_clip(clip_id):
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    regions = []
+    for r in payload.regions:
+        x = min(max(r.x, 0.0), 1.0)
+        y = min(max(r.y, 0.0), 1.0)
+        w = min(max(r.w, 0.0), 1.0 - x)
+        h = min(max(r.h, 0.0), 1.0 - y)
+        if w > 0.005 and h > 0.005:
+            regions.append({"x": round(x, 4), "y": round(y, 4), "w": round(w, 4), "h": round(h, 4)})
+    db.update_clip(clip_id, {"manual_blur": json.dumps(regions)})
+    return {"manualBlur": regions}
 
 
 class FocusPersonRequest(BaseModel):

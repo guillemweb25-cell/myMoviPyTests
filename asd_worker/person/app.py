@@ -49,7 +49,9 @@ async def persons(file: UploadFile = File(...)) -> JSONResponse:
 
 @app.post("/blur")
 async def blur(file: UploadFile = File(...), boxes: str = Form(...)) -> FileResponse:
-    """`boxes` = JSON {"frames": {"<idx>": [[x,y,w,h], ...], ...}} normalizado."""
+    """`boxes` = JSON {"frames": {"<idx>": [[x,y,w,h], ...], ...},
+    "static": [[x,y,w,h], ...]} normalizado. `static` = regiones manuales fijas
+    difuminadas en todos los frames."""
     job = uuid.uuid4().hex[:8]
     folder = DATA / job
     folder.mkdir(parents=True, exist_ok=True)
@@ -58,8 +60,10 @@ async def blur(file: UploadFile = File(...), boxes: str = Form(...)) -> FileResp
     with src.open("wb") as f:
         shutil.copyfileobj(file.file, f)
     try:
-        frames_boxes = json.loads(boxes).get("frames", {})
-        blur_video(str(src), str(out), frames_boxes)
+        payload = json.loads(boxes)
+        frames_boxes = payload.get("frames", {})
+        static_boxes = payload.get("static", [])
+        blur_video(str(src), str(out), frames_boxes, static_boxes)
     except Exception as exc:  # noqa: BLE001
         shutil.rmtree(folder, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Blur falló: {exc}") from exc
