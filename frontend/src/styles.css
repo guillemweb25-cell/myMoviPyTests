@@ -396,11 +396,50 @@ nav {
   font-size: 11px;
 }
 
+.fs-pick {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+}
+
 .fs-p img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Badge de blur en la esquina de cada miniatura de tramo: marca a la mujer
+   justo donde la ves clara, sin tener que buscarla en la lista de arriba. */
+.fs-blur {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+}
+
+.fs-p.blur {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px #ef4444;
+}
+
+.fs-p.blur .fs-blur {
+  background: #ef4444;
 }
 
 .fs-p.ctr {
@@ -412,6 +451,10 @@ nav {
 .fs-p.sel {
   border-color: #3b82f6;
   box-shadow: 0 0 0 2px #3b82f6;
+}
+
+.fs-p.sel.blur {
+  box-shadow: 0 0 0 2px #3b82f6, 0 0 0 4px #ef4444;
 }
 
 .fs-p .fs-auto {

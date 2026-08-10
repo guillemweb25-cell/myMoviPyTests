@@ -2060,6 +2060,7 @@ export default function App() {
                                 </div>
                                 <p className="help" style={{ margin: '6px 0 0' }}>
                                   🌫 marca a las mujeres → se difuminan al <strong>Regenerar</strong>. Ante la duda, marca de más.
+                                  Si no la reconoces aquí arriba, márcala con el 🌫 de su miniatura en el tramo de abajo (mismo efecto).
                                 </p>
 
                                 {clipSegments[clip.id] && clipSegments[clip.id].length > 0 && (() => {
@@ -2068,7 +2069,7 @@ export default function App() {
                                   return (
                                     <div className="focus-plan">
                                       <div className="seo-head" style={{ marginTop: 10 }}>
-                                        <span>🎯 Enfoque por tramo — en cada movimiento, clic en a quién centrar (o déjalo en auto = quien habla)</span>
+                                        <span>🎯 Enfoque por tramo — clic en la miniatura para centrar (o auto = quien habla); 🌫 en la esquina para difuminar a esa persona</span>
                                       </div>
                                       {clipSegments[clip.id].map((seg, i) => {
                                         const cur = plan[i]?.personId ?? seg.autoPersonId
@@ -2076,17 +2077,31 @@ export default function App() {
                                           <div key={i} className="focus-seg">
                                             <span className="focus-seg-time">{seg.start.toFixed(0)}–{seg.end.toFixed(0)}s</span>
                                             <div className="focus-seg-choices">
-                                              {seg.persons.map((pp) => (
-                                                <button
-                                                  key={pp.id}
-                                                  className={cur === pp.id ? 'fs-p sel' : 'fs-p'}
-                                                  title={pp.id === seg.autoPersonId ? 'Quien habla (auto)' : 'Centrar en esta persona'}
-                                                  onClick={() => handleSetSegmentFocus(clip, clipSegments[clip.id], i, pp.id)}
-                                                >
-                                                  {pp.thumb ? <img src={api.fileUrl(pp.thumb)} alt={`#${pp.id}`} /> : <span>#{pp.id}</span>}
-                                                  {pp.id === seg.autoPersonId && <span className="fs-auto">auto</span>}
-                                                </button>
-                                              ))}
+                                              {seg.persons.map((pp) => {
+                                                const isBlur = selected.includes(pp.id)
+                                                return (
+                                                  <div
+                                                    key={pp.id}
+                                                    className={`fs-p${cur === pp.id ? ' sel' : ''}${isBlur ? ' blur' : ''}`}
+                                                  >
+                                                    <button
+                                                      className="fs-pick"
+                                                      title={pp.id === seg.autoPersonId ? 'Quien habla (auto)' : 'Centrar en esta persona'}
+                                                      onClick={() => handleSetSegmentFocus(clip, clipSegments[clip.id], i, pp.id)}
+                                                    >
+                                                      {pp.thumb ? <img src={api.fileUrl(pp.thumb)} alt={`#${pp.id}`} /> : <span>#{pp.id}</span>}
+                                                      {pp.id === seg.autoPersonId && <span className="fs-auto">auto</span>}
+                                                    </button>
+                                                    <button
+                                                      className="fs-blur"
+                                                      title={isBlur ? 'Se difuminará (clic para quitar)' : 'Difuminar a esta persona (mujer)'}
+                                                      onClick={() => handleToggleBlurPerson(clip, pp.id)}
+                                                    >
+                                                      {isBlur ? '🌫' : '○'}
+                                                    </button>
+                                                  </div>
+                                                )
+                                              })}
                                               <button className={cur === -1 ? 'fs-p ctr sel' : 'fs-p ctr'} title="Centro (sin seguir a nadie)" onClick={() => handleSetSegmentFocus(clip, clipSegments[clip.id], i, -1)}>centro</button>
                                             </div>
                                           </div>

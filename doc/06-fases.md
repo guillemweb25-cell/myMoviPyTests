@@ -190,6 +190,10 @@ y **enfoque por tramo** (elegir a quién centra el recorte en cada movimiento de
   y por tanto no aparezca en la lista de blur.
 - Blur per-frame (pixelate+gaussian) siguiendo las cajas; enfoque por tramo con
   `focus_segments` (plan `[(t0,t1,personId)]`). Ver también memoria `blur-women-feature`.
+- **Marcar blur desde el tramo**: la miniatura global (`repr`) puede salir en un
+  frame poco reconocible, así que cada miniatura de tramo (crop de ESE plano, más
+  reconocible) lleva un badge 🌫 que activa/desactiva el blur de esa persona (mismo
+  `blurPersons` que la lista de arriba). Resuelve el "sale abajo pero no arriba".
 
 ## Ideas futuras (no implementadas)
 
