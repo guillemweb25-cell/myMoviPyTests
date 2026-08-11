@@ -454,6 +454,16 @@ export default function App() {
     }
   }
 
+  // Desplaza hasta una tarjeta de clip y la resalta un momento (para retomar el
+  // sitio tras submitear en el móvil).
+  function goToClip(clipId: string) {
+    const el = document.getElementById(`clip-${clipId}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('flash')
+    window.setTimeout(() => el.classList.remove('flash'), 1600)
+  }
+
   async function loadSavedClips(transcriptPath: string) {
     try {
       const data = await api.savedClips(transcriptPath)
@@ -1783,11 +1793,19 @@ export default function App() {
                       const subidos = clipCandidates.filter((c) => c.uploaded).length
                       const submiteados = clipCandidates.filter((c) => c.submitted).length
                       const completa = subidos === total && submiteados === total
+                      const lastSubmitted = [...clipCandidates].reverse().find((c) => c.submitted)
                       return (
-                        <div className={completa ? 'campaign-status complete' : 'campaign-status'}>
-                          {completa
-                            ? '✅ Campaña totalmente subida y submiteada'
-                            : `Progreso — ${subidos}/${total} subidos · ${submiteados}/${total} submiteados a Whop`}
+                        <div className={completa ? 'campaign-status complete' : 'campaign-status'} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                          <span>
+                            {completa
+                              ? '✅ Campaña totalmente subida y submiteada'
+                              : `Progreso — ${subidos}/${total} subidos · ${submiteados}/${total} submiteados a Whop`}
+                          </span>
+                          {lastSubmitted && (
+                            <button className="goto-submitted" onClick={() => goToClip(lastSubmitted.id)}>
+                              ↓ Ir al último submiteado
+                            </button>
+                          )}
                         </div>
                       )
                     })()}
@@ -1924,7 +1942,7 @@ export default function App() {
 
                     <div className="jobs-list clip-list" style={{ maxHeight: 'unset' }}>
                   {clipCandidates.map((clip) => (
-                    <article key={clip.id} className="clip-card">
+                    <article key={clip.id} id={`clip-${clip.id}`} className="clip-card">
                       <div className="viewer-header">
                         <div>
                           <h3 style={{ margin: 0 }}>

@@ -652,6 +652,36 @@ nav {
 }
 
 /* Selector de punto de enfoque: línea vertical + franja aproximada del recorte */
+.goto-submitted {
+  border: 1px solid var(--accent);
+  background: rgba(20, 184, 166, 0.14);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.goto-submitted:hover {
+  background: rgba(20, 184, 166, 0.26);
+}
+
+/* Resalte breve al saltar a un clip */
+.clip-card.flash {
+  animation: clip-flash 1.6s ease-out;
+}
+
+@keyframes clip-flash {
+  0%, 30% {
+    box-shadow: 0 0 0 3px var(--accent);
+    border-left-color: var(--accent);
+  }
+  100% {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+}
+
 .fp-line {
   position: absolute;
   top: 0;
