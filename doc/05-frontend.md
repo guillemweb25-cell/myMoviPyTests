@@ -3,6 +3,18 @@
 SPA de un solo componente grande (`src/App.tsx`) + `api.ts` (cliente HTTP tipado) +
 `types.ts` + `styles.css` (tema oscuro).
 
+## Despliegue (producción, sin HMR)
+
+El frontend se sirve **compilado** con nginx (`target: production` en
+`docker-compose.yml` → build `tsc -b && vite build` → nginx sirve `dist/`,
+`frontend/nginx.conf` hace proxy `/api` al backend, fallback SPA a `index.html`).
+Se eligió producción porque el **HMR de Vite recargaba la página** al volver a la
+pestaña (y empeoraba en el móvil). Sin dev-server no hay WebSocket de recarga.
+
+- `nginx.conf`: `client_max_body_size 8g` (subidas de vídeo), `proxy_buffering off`
+  + `proxy_read_timeout 3600s` para el **SSE** del log en vivo y jobs lentos.
+- **Aplicar cambios de frontend**: `docker compose build frontend && docker compose up -d frontend` (ya no hay recarga en caliente).
+
 ## Navegación
 
 - Barra lateral con secciones: Dashboard, Contenido Web, **Clipping**, Ejecutar
