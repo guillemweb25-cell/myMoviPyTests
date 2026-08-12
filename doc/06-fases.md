@@ -205,6 +205,14 @@ y **enfoque por tramo** (elegir a quién centra el recorte en cada movimiento de
   worker `/blur` campo `static` (se difuminan en TODOS los frames). No sigue el
   movimiento (es fija); útil como red de seguridad cuando la detección falla.
   Funciona aunque no haya personas marcadas (detección opcional).
+- **Estabilidad del worker + fallo en voz alta**: el `person_worker` corría con
+  `uvicorn --reload`, cuyo watcher petaba sobre el bind-mount de Windows
+  (`WatchfilesRustInternalError: IO error on /app`) y reiniciaba el contenedor; si
+  el render caía en esa ventana, el `/blur` fallaba y el clip salía SIN blur. Se
+  quitó `--reload` (deploy = scp + `docker compose up -d person_worker`). Además,
+  si se pidió blur y el worker no responde, `render_clip` **falla el render**
+  (SystemExit) en vez de generar el clip sin difuminar (evita subir contenido no
+  conforme en campañas que exigen blur), y `person_client.blur` reintenta 1 vez.
 - **Punto de enfoque manual por tramo** (`cx`): en planos generales las personas
   detectadas salen diminutas y no se distinguen. El botón "📍 punto" abre un frame
   del tramo (`scene-frame?t=`) donde clicas/arrastras para fijar **dónde centra el

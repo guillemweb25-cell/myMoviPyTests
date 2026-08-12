@@ -412,6 +412,15 @@ def main() -> None:
                                     persons_json, args.ffmpeg, manual_regions=manual_regions)
         if blurred:
             video, start, end = blurred, 0.0, round(end - start, 3)
+        else:
+            # Se pidió blur pero no se pudo aplicar (worker caído/sin respuesta).
+            # NO se genera el clip SIN blur: en campañas que exigen difuminar,
+            # subir el clip sin blur sería contenido no conforme. Falla el render.
+            raise SystemExit(
+                "ERROR: se pidió blur de personas pero el worker no lo aplicó "
+                "(caído o sin respuesta). No se genera el clip SIN blur para no "
+                "subir contenido no conforme. Reintenta con el worker disponible."
+            )
 
     follow_segments = None
     focus = args.focus

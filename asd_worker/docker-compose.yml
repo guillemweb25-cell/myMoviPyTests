@@ -22,12 +22,16 @@ services:
   person_worker:
     build: ./person
     container_name: person-worker
-    command: uvicorn app:app --host 0.0.0.0 --port 8901 --reload
+    # SIN --reload: el watcher de watchfiles peta sobre el bind-mount de Windows
+    # (WatchfilesRustInternalError: IO error on /app) y tira el contenedor, lo que
+    # hacía fallar blur/deteccion a media faena. Para desplegar cambios: scp del
+    # código + `docker compose up -d person_worker` (recrea con el código montado).
+    command: uvicorn app:app --host 0.0.0.0 --port 8901
     ports:
       - "8901:8901"
     volumes:
       - person_data:/data
-      - ./person:/app          # código montado: cambios sin rebuild (uvicorn --reload)
+      - ./person:/app          # código montado: cambios con scp + recreate (sin rebuild)
     deploy:
       resources:
         reservations:

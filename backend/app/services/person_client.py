@@ -78,13 +78,21 @@ def blur(segment: Path, detection: dict, person_ids: list[int], out_path: Path,
                 frames.setdefault(str(int(f)), []).append([x, y, w, h])
     if not frames and not static:
         return False
-    try:
-        with segment.open("rb") as fh:
-            r = httpx.post(f"{url}/blur", files={"file": (segment.name, fh, "video/mp4")},
-                           data={"boxes": json.dumps({"frames": frames, "static": static})},
-                           timeout=httpx.Timeout(900.0, connect=10.0))
-        r.raise_for_status()
-        out_path.write_bytes(r.content)
-        return out_path.exists() and out_path.stat().st_size > 0
-    except Exception:
-        return False
+    payload = json.dumps({"frames": frames, "static": static})
+    # Reintenta una vez: el worker puede estar reiniciándose justo en ese momento.
+    for attempt in range(2):
+        try:
+            with segment.open("rb") as fh:
+                r = httpx.post(f"{url}/blur", files={"file": (segment.name, fh, "video/mp4")},
+                               data={"boxes": payload},
+                               timeout=httpx.Timeout(900.0, connect=10.0))
+            r.raise_for_status()
+            out_path.write_bytes(r.content)
+            if out_path.exists() and out_path.stat().st_size > 0:
+                return True
+        except Exception as exc:
+            print(f"blur intento {attempt + 1}/2 falló: {exc}", flush=True)
+            if attempt == 0:
+                import time
+                time.sleep(3)
+    return False
