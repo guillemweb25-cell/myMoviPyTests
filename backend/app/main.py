@@ -842,6 +842,33 @@ def apply_campaign_rules(campaign_id: int) -> dict:
     return {"updated": len(clips), "onScreenText": on_screen}
 
 
+@app.post("/api/campaigns/{campaign_id}/watermark")
+async def upload_campaign_watermark(campaign_id: int, file: UploadFile = File(...)) -> dict:
+    """Sube el PNG del watermark de la campaña. Se superpone ARRIBA CENTRADO en
+    todos los clips al renderizar (requisito 'watermark clearly visible')."""
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    ref = campaign.get("videoPath") or campaign.get("transcriptPath") or ""
+    if not ref:
+        raise HTTPException(status_code=400, detail="La campaña aún no tiene carpeta (prepárala primero).")
+    folder = resolve_within_root(ref).parent
+    folder.mkdir(parents=True, exist_ok=True)
+    out = folder / "watermark.png"
+    out.write_bytes(await file.read())
+    rel = str(out.relative_to(ROOT_DIR))
+    db.update_campaign(campaign_id, {"watermark_path": rel})
+    return {"watermarkPath": rel}
+
+
+@app.delete("/api/campaigns/{campaign_id}/watermark")
+def delete_campaign_watermark(campaign_id: int) -> dict:
+    if not db.get_campaign(campaign_id):
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    db.update_campaign(campaign_id, {"watermark_path": ""})
+    return {"watermarkPath": ""}
+
+
 @app.delete("/api/campaigns/{campaign_id}")
 def delete_campaign_endpoint(campaign_id: int) -> dict:
     if not db.get_campaign(campaign_id):
@@ -972,6 +999,17 @@ def _clip_focus_plan(clip: dict) -> str:
     return ",".join(parts)
 
 
+def _clip_watermark(clip: dict) -> str:
+    """Ruta ABSOLUTA del watermark de la campaña del clip (si tiene y existe), para
+    pasarlo a render_clip. '' si no hay."""
+    campaign = db.get_campaign_by_transcript(clip.get("transcriptPath") or "")
+    wm = (campaign or {}).get("watermarkPath") or ""
+    if not wm:
+        return ""
+    p = ROOT_DIR / wm
+    return str(p) if p.exists() else ""
+
+
 def _clip_manual_blur(clip: dict) -> list[list[float]]:
     """Regiones manuales fijas [[x,y,w,h],...] normalizadas al frame fuente."""
     try:
@@ -1089,6 +1127,9 @@ def render_clip_endpoint(clip_id: str) -> dict:
     manual_blur = _clip_manual_blur(clip)
     if manual_blur:
         args.extend(["--manual-blur", json.dumps(manual_blur)])
+    watermark = _clip_watermark(clip)
+    if watermark:
+        args.extend(["--watermark", watermark])
 
     db.update_clip(clip_id, {"rendered_path": out_rel})
     job = enqueue_job("render_clip.py", args)

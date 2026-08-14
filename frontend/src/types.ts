@@ -78,6 +78,7 @@ export type Campaign = {
   briefUrl?: string
   rules?: CampaignRules
   clipStats?: { total: number; rendered: number; uploaded: number; submitted: number }
+  watermarkPath?: string
 }
 
 export type ClipSource = {

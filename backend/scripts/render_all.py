@@ -33,6 +33,11 @@ def main() -> None:
     pending = [c for c in clips if not (c.get("renderedPath") and (root / c["renderedPath"]).exists())]
     print(f"Clips pendientes de renderizar: {len(pending)} de {len(clips)}", flush=True)
 
+    # Watermark de la campaña (mismo para todos sus clips).
+    campaign = db.get_campaign_by_transcript(args.transcript)
+    wm_rel = (campaign or {}).get("watermarkPath") or ""
+    watermark = str(root / wm_rel) if wm_rel and (root / wm_rel).exists() else ""
+
     render_clip = str(Path(__file__).with_name("render_clip.py"))
     done = 0
     for i, clip in enumerate(pending, 1):
@@ -102,6 +107,8 @@ def main() -> None:
             manual_blur = []
         if manual_blur:
             cmd += ["--manual-blur", json.dumps(manual_blur)]
+        if watermark:
+            cmd += ["--watermark", watermark]
 
         title = (clip.get("title") or "")[:50]
         print(f"\n[{i}/{len(pending)}] Renderizando {cid} — {title}", flush=True)

@@ -368,6 +368,29 @@ def apply_person_blur(video: Path, start: float, end: float, out_path: Path,
     return final if final.exists() else None
 
 
+def add_watermark(video: Path, watermark: Path, ffmpeg: str = "ffmpeg",
+                  width_frac: float = 0.42, top_frac: float = 0.03) -> None:
+    """Superpone el PNG `watermark` ARRIBA CENTRADO en el clip vertical (requisito
+    de algunas campañas: 'watermark clearly visible'). Escala a `width_frac` del
+    ancho del canvas, margen superior `top_frac` de la altura, respeta la
+    transparencia. Si se pidió pero falla, LEVANTA error (no subir sin watermark)."""
+    if not watermark.exists():
+        raise SystemExit(f"ERROR: watermark no encontrado ({watermark}). No se genera el clip.")
+    wm_w = int(CANVAS_W * width_frac)
+    top = int(CANVAS_H * top_frac)
+    tmp = video.with_name(video.stem + "_wm.mp4")
+    fc = f"[1:v]scale={wm_w}:-1[wm];[0:v][wm]overlay=(W-w)/2:{top}"
+    r = subprocess.run([ffmpeg, "-y", "-i", str(video), "-i", str(watermark),
+                        "-filter_complex", fc, "-c:a", "copy", str(tmp)], capture_output=True)
+    if tmp.exists() and tmp.stat().st_size > 0:
+        tmp.replace(video)
+    else:
+        tmp.unlink(missing_ok=True)
+        raise SystemExit("ERROR: no se pudo aplicar el watermark de la campaña. "
+                         "No se genera el clip SIN watermark (sería no conforme). "
+                         f"ffmpeg: {(r.stderr.decode()[-300:] if r.stderr else '')}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Render de clip vertical con subtitulos opcionales")
     parser.add_argument("--video", required=True)
@@ -386,6 +409,7 @@ def main() -> None:
     parser.add_argument("--persons-json", default="", help="ruta al JSON de detección (cajas por persona)")
     parser.add_argument("--focus-person", type=int, default=-1, help="id de persona a la que centra el recorte de arriba (-1 = no)")
     parser.add_argument("--focus-plan", default="", help="enfoque por tramo: 't0:t1:personId,...' (personId=-1=centro)")
+    parser.add_argument("--watermark", default="", help="ruta a un PNG a superponer arriba centrado (watermark de campaña)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
 
@@ -460,6 +484,12 @@ def main() -> None:
         top_ratio=args.top_ratio, focus=focus, zoom=args.zoom, ffmpeg=args.ffmpeg,
         follow_segments=follow_segments,
     )
+
+    # Watermark de la campaña (arriba centrado). Se aplica ANTES de sacar el
+    # fotograma de cierre para que también aparezca en la miniatura.
+    if args.watermark:
+        print("Anadiendo watermark de la campana (arriba centrado)...", flush=True)
+        add_watermark(out_path, Path(args.watermark), ffmpeg=args.ffmpeg)
 
     # Fotograma de cierre limpio: se saca AHORA (vertical sin karaoke ni overlay) para que
     # la miniatura no arrastre subtitulos quemados. La duracion no cambia con los pasos

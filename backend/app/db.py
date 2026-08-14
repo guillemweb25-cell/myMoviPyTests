@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
 CAMPAIGN_MIGRATIONS = [
     "ALTER TABLE campaigns ADD COLUMN brief_url TEXT DEFAULT ''",
     "ALTER TABLE campaigns ADD COLUMN rules_json TEXT DEFAULT ''",
+    "ALTER TABLE campaigns ADD COLUMN watermark_path TEXT DEFAULT ''",
 ]
 
 
@@ -382,6 +383,7 @@ def _campaign_to_dict(row: sqlite3.Row) -> dict:
         "createdAt": row["created_at"],
         "briefUrl": (row["brief_url"] if "brief_url" in row.keys() else "") or "",
         "rules": rules,
+        "watermarkPath": (row["watermark_path"] if "watermark_path" in row.keys() else "") or "",
     }
 
 
@@ -451,7 +453,7 @@ def get_campaign_by_transcript(transcript_path: str) -> dict | None:
 
 
 def update_campaign(campaign_id: int, fields: dict) -> dict | None:
-    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status", "brief_url", "rules_json"}
+    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status", "brief_url", "rules_json", "watermark_path"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)

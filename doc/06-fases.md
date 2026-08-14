@@ -233,6 +233,23 @@ y **enfoque por tramo** (elegir a quién centra el recorte en cada movimiento de
   clips (`restorePersonPanels` en `loadSavedClips`). Las marcas (blurPersons /
   manualBlur / focusSegments) ya estaban en la DB.
 
+## Fase 12 — Watermark de campaña (overlay PNG)
+
+Algunas campañas exigen superponer SU watermark ("clearly visible"), distinto de
+`keepWatermark` (no recortar el que ya trae la fuente). Se sube un PNG por campaña
+y se superpone **arriba centrado** en todos sus clips.
+
+- DB: columna `campaigns.watermark_path` (+ migración), mapeo `watermarkPath`.
+- Endpoints `POST/DELETE /api/campaigns/{id}/watermark` (guarda el PNG en la carpeta
+  de la campaña, `watermark.png`).
+- `render_clip.add_watermark`: overlay ffmpeg del PNG escalado al 42% del ancho del
+  canvas, margen superior 3%, respeta transparencia; se aplica tras `make_clip` (antes
+  del fotograma de cierre, así también sale en la miniatura). Si se pidió y falla,
+  **levanta error** (no subir sin watermark = no conforme).
+- `render_clip` recibe `--watermark <png>`; el endpoint de render y `render_all`
+  buscan el watermark de la campaña (`_clip_watermark` / `get_campaign_by_transcript`).
+- Frontend: en la campaña, subir/cambiar/quitar el PNG con vista previa.
+
 ## Ideas futuras (no implementadas)
 
 - Subida a **TikTok e Instagram** (cada plataforma con su enlace y su botón de submiteado).

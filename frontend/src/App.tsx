@@ -427,6 +427,26 @@ export default function App() {
     }
   }
 
+  async function handleUploadWatermark(campaign: Campaign, file: File) {
+    setError('')
+    try {
+      const { watermarkPath } = await api.uploadCampaignWatermark(campaign.id, file)
+      setCampaigns((prev) => prev.map((c) => (c.id === campaign.id ? { ...c, watermarkPath } : c)))
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  async function handleDeleteWatermark(campaign: Campaign) {
+    setError('')
+    try {
+      await api.deleteCampaignWatermark(campaign.id)
+      setCampaigns((prev) => prev.map((c) => (c.id === campaign.id ? { ...c, watermarkPath: '' } : c)))
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
   async function handleDeleteCampaign(campaign: Campaign) {
     if (!window.confirm(`¿Eliminar la campana "${campaign.name}"? (no borra el video ni YouTube)`)) return
     try {
@@ -1868,6 +1888,29 @@ export default function App() {
                         )}
                       </div>
                     )}
+
+                    <div className="seo-box" style={{ marginTop: 4 }}>
+                      <div className="seo-head"><span>💧 Watermark de la campaña (se superpone arriba centrado en todos los clips)</span></div>
+                      {activeCampaign.watermarkPath ? (
+                        <div className="actions-row" style={{ alignItems: 'center', gap: 12 }}>
+                          <img src={api.fileUrl(activeCampaign.watermarkPath)} alt="watermark" style={{ maxHeight: 54, maxWidth: 180, background: '#0b1120', borderRadius: 6, padding: 4 }} />
+                          <span className="help" style={{ color: 'var(--ok)' }}>✅ Se aplicará al renderizar.</span>
+                          <label className="link-btn" style={{ cursor: 'pointer' }}>
+                            Cambiar
+                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadWatermark(activeCampaign, f); e.currentTarget.value = '' }} />
+                          </label>
+                          <button className="link-btn" onClick={() => handleDeleteWatermark(activeCampaign)}>Quitar</button>
+                        </div>
+                      ) : (
+                        <div className="actions-row" style={{ alignItems: 'center', gap: 12 }}>
+                          <label className="primary" style={{ cursor: 'pointer', padding: '10px 14px', borderRadius: 10 }}>
+                            Subir PNG del watermark
+                            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadWatermark(activeCampaign, f); e.currentTarget.value = '' }} />
+                          </label>
+                          <span className="help">Descarga el PNG del brief (recurso "Watermark") y súbelo aquí. Ideal PNG con transparencia.</span>
+                        </div>
+                      )}
+                    </div>
 
                     <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
 

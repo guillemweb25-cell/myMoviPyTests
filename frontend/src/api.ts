@@ -112,6 +112,13 @@ export const api = {
   extractBrief: (id: number, payload: { briefUrl?: string; briefText?: string }) =>
     postJson<{ campaign: Campaign; rules: Record<string, unknown> }>(`/api/campaigns/${id}/brief`, payload),
   applyCampaignRules: (id: number) => postJson<{ updated: number; onScreenText: string }>(`/api/campaigns/${id}/apply-rules`, {}),
+  uploadCampaignWatermark: async (id: number, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await fetch(`/api/campaigns/${id}/watermark`, { method: 'POST', headers: authHeaders(), body: formData })
+    return handle<{ watermarkPath: string }>(response)
+  },
+  deleteCampaignWatermark: (id: number) => del<{ watermarkPath: string }>(`/api/campaigns/${id}/watermark`),
   clipSources: (channelId?: number | null) =>
     getJson<ClipSource[]>(channelId != null ? `/api/clips/sources?channelId=${channelId}` : '/api/clips/sources'),
   clipSourceFromUrl: (payload: { url: string; channelId?: number | null; browser?: string; cookiesFile?: string; lang?: string; subtitleFormat?: string }) =>
