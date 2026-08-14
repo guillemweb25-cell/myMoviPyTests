@@ -17,8 +17,24 @@ UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0 Safari/537
 _GOOGLE_DOC_RE = re.compile(r"docs\.google\.com/document/d/([a-zA-Z0-9_-]+)")
 
 
+def _html_to_text(html: str) -> str:
+    """Extrae el texto legible de una página web (quita scripts/estilos/nav) para
+    dárselo limpio al LLM. Las páginas de brief (Reach, ClipFarm, etc.) son webs,
+    no siempre Google Docs."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "svg", "header", "footer", "nav"]):
+        tag.decompose()
+    text = soup.get_text("\n")
+    # Colapsa líneas en blanco repetidas.
+    lines = [ln.strip() for ln in text.splitlines()]
+    return "\n".join(ln for ln in lines if ln)
+
+
 def fetch_brief_text(url: str) -> str:
-    """Descarga el texto del brief. Soporta Google Docs (export a txt)."""
+    """Descarga el texto del brief. Google Docs → export a txt; cualquier otra web
+    (Reach, ClipFarm, Notion pública...) → se limpia el HTML a texto legible."""
     match = _GOOGLE_DOC_RE.search(url)
     if match:
         export = f"https://docs.google.com/document/d/{match.group(1)}/export?format=txt"
@@ -27,6 +43,13 @@ def fetch_brief_text(url: str) -> str:
         return resp.text
     resp = requests.get(url, headers={"User-Agent": UA}, timeout=30)
     resp.raise_for_status()
+    ctype = resp.headers.get("content-type", "")
+    if "html" in ctype.lower() or resp.text.lstrip()[:1] == "<":
+        text = _html_to_text(resp.text)
+        if len(text) < 40:
+            raise RuntimeError("La página no expone el brief como texto (¿es una app que "
+                               "carga con JavaScript?). Pega el texto del brief a mano.")
+        return text
     return resp.text
 
 

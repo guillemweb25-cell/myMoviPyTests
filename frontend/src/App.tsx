@@ -409,7 +409,7 @@ export default function App() {
   }
 
   async function handleExtractBrief(campaign: Campaign) {
-    if (!campBriefUrl.trim()) { setError('Pega el link del brief (Google Docs).'); return }
+    if (!campBriefUrl.trim()) { setError('Pega el link del brief (Google Docs o página web de la campaña).'); return }
     setIsExtractingBrief(true)
     setError('')
     try {
@@ -1725,7 +1725,7 @@ export default function App() {
                     <input type="url" value={campCampaignUrl} onChange={(e) => setCampCampaignUrl(e.target.value)} placeholder="https://whop.com/..." />
                   </label>
                   <label className="field span-2">
-                    <span>Link del brief con las instrucciones (Google Docs) — la IA extrae los requisitos</span>
+                    <span>Link del brief con las instrucciones (Google Docs o web: Reach, ClipFarm…) — la IA extrae los requisitos</span>
                     <input type="url" value={campBriefUrl} onChange={(e) => setCampBriefUrl(e.target.value)} placeholder="https://docs.google.com/document/d/..." />
                   </label>
                   <label className="field">
@@ -1855,7 +1855,7 @@ export default function App() {
                     <h3 style={{ margin: '4px 0' }}>Reglas de la campaña (brief)</h3>
                     <div className="form-grid">
                       <label className="field span-2">
-                        <span>Link del brief (Google Docs) — la IA extrae los requisitos</span>
+                        <span>Link del brief (Google Docs o web: Reach, ClipFarm…) — la IA extrae los requisitos</span>
                         <input type="url" value={campBriefUrl} onChange={(e) => setCampBriefUrl(e.target.value)} placeholder="https://docs.google.com/document/d/..." />
                       </label>
                       <div className="field" style={{ justifyContent: 'flex-end' }}>
