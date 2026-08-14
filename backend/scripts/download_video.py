@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import argparse, json, os, re
+import argparse, json, os, re, shutil
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 
@@ -78,10 +78,7 @@ def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None, 
         os.makedirs(out_dir, exist_ok=True)
         final = os.path.join(out_dir, f"{clean}{downloaded.suffix or '.mp4'}")
         os.replace(str(downloaded), final)
-        try:
-            os.rmdir(staging)
-        except OSError:
-            pass
+        shutil.rmtree(staging, ignore_errors=True)  # limpia subcarpeta y otros ficheros
         _write_source_metadata(out_dir, url, title, browser, cookies_file)
         print(f"✅ Vídeo (Drive) guardado en: {out_dir}")
         return final, out_dir
