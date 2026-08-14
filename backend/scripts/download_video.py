@@ -9,6 +9,7 @@ from yt_dlp.utils import DownloadError
 
 from kvs_fallback import download_direct, extract_kvs, is_flashvars_error
 from wetransfer_dl import is_wetransfer, resolve_wetransfer
+from gdrive_dl import download_gdrive, is_gdrive
 
 
 def clean_title(title: str) -> str:
@@ -62,6 +63,28 @@ def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None, 
         video_path = download_direct(direct, url, out_dir, clean, ffmpeg_path=ffmpeg_path)
         print(f"✅ Vídeo guardado en: {out_dir}")
         return str(video_path), out_dir
+
+    # 0.5) GOOGLE DRIVE (yt-dlp falla en ficheros grandes por la confirmación
+    # anti-virus). gdown lo descarga con su nombre remoto; luego lo movemos a la
+    # carpeta con el nombre-fecha de siempre (rename = instantáneo, mismo disco).
+    if is_gdrive(url):
+        staging = os.path.join(outbase, "_gdrive_tmp")
+        print(f"➡️ Descargando de Google Drive (puede tardar en ficheros grandes)...")
+        downloaded = download_gdrive(url, staging)
+        title = downloaded.stem
+        clean = clean_title(title) or "gdrive-video"
+        today = datetime.now().strftime("%Y-%m-%d")
+        out_dir = os.path.join(outbase, f"{today}-{clean}")
+        os.makedirs(out_dir, exist_ok=True)
+        final = os.path.join(out_dir, f"{clean}{downloaded.suffix or '.mp4'}")
+        os.replace(str(downloaded), final)
+        try:
+            os.rmdir(staging)
+        except OSError:
+            pass
+        _write_source_metadata(out_dir, url, title, browser, cookies_file)
+        print(f"✅ Vídeo (Drive) guardado en: {out_dir}")
+        return final, out_dir
 
     # 1) TÍTULO (con fallback KVS si yt-dlp no reconoce el reproductor)
     kvs_formats = None

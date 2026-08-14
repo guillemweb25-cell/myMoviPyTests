@@ -112,3 +112,8 @@ a recargas del navegador. Args: `--transcript --focus`.
   canal (p.ej. contenido previo al renombrarlo) SIN tocar los clips de campaña.
   Doble salvaguarda: conserva los `video_id` que están en la BD (subidos por la app)
   y los publicados a partir del cutoff. Dry-run por defecto.
+
+- **Google Drive**: `gdrive_dl.py` (gdown) para descargar ficheros grandes (Google
+  mete confirmación anti-virus que rompe yt-dlp). El fichero debe ser público
+  ('cualquiera con el enlace'). Se descarga a staging y se mueve a la carpeta
+  fecha-título. La transcripción usa solo el audio (mp3 extraído), no el vídeo entero.
