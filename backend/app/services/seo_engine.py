@@ -50,7 +50,19 @@ def detect_language(text: str) -> str:
         return "ru (Russian)"
     if counts["ar"] / total > 0.10:
         return "ar (Arabic)"
-    return "es (Spanish)"
+    # Alfabeto latino: español e inglés no se distinguen por bloque unicode, así
+    # que se decide por diacríticos españoles y stopwords frecuentes de cada idioma.
+    low = " " + sample.lower() + " "
+    es_marks = sum(low.count(ch) for ch in "áéíóúñ¿¡")
+    es_words = sum(low.count(f" {w} ") for w in (
+        "que", "de", "la", "el", "los", "las", "con", "por", "para", "una", "como",
+        "pero", "más", "está", "son", "este", "esta", "muy", "y", "en", "un", "no"))
+    en_words = sum(low.count(f" {w} ") for w in (
+        "the", "and", "of", "to", "a", "in", "is", "that", "this", "for", "with",
+        "you", "are", "was", "have", "it", "on", "but", "not", "they", "what"))
+    if es_marks > 0 or es_words > en_words:
+        return "es (Spanish)"
+    return "en (English)"
 
 
 class SEOEngine:

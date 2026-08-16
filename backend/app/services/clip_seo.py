@@ -9,7 +9,7 @@ import json
 import re
 from pathlib import Path
 
-from .seo_engine import SEOEngine
+from .seo_engine import SEOEngine, detect_language
 
 LANG_HINT = {"es": "es (Spanish)", "en": "en (English)"}
 
@@ -58,9 +58,15 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dic
     y, si se pasan, las reglas de compliance de la campana (caption obligatorio,
     hashtags). La descripcion incluye el titulo y enlace del video original.
     """
-    lang = LANG_HINT.get(channel.get("language", ""), None)
     rules = channel.get("seoRules") or None
     snippet = clip.get("transcript") or clip.get("title") or ""
+    # El SEO va en el idioma del CONTENIDO (transcripción), no en el fijo del canal:
+    # un canal 'en' puede clipear un vídeo en español y el SEO debe salir en español.
+    # Si la transcripción es muy corta, cae al idioma del canal.
+    if len(snippet.strip()) >= 40:
+        lang = detect_language(snippet)
+    else:
+        lang = LANG_HINT.get(channel.get("language", ""), None)
 
     engine = SEOEngine()
     title = strip_wrapping_quotes(strip_markdown(engine.generate_video_title(snippet, lang=lang, custom_rules=rules)))
