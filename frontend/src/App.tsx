@@ -1769,12 +1769,13 @@ export default function App() {
                               </p>
                               {camp.clipStats && camp.clipStats.total > 0 && (() => {
                                 const s = camp.clipStats!
-                                const completa = s.uploaded === s.total && s.submitted === s.total
+                                const hasWhop = !!camp.campaignUrl?.trim()
+                                const completa = hasWhop ? (s.uploaded === s.total && s.submitted === s.total) : (s.uploaded === s.total)
                                 return (
                                   <p className={completa ? 'campaign-status complete' : 'campaign-status'} style={{ margin: '6px 0 0', display: 'inline-block' }}>
                                     {completa
-                                      ? '✅ Completada — todo subido y submiteado'
-                                      : `${s.rendered}/${s.total} renderizados · ${s.uploaded}/${s.total} subidos · ${s.submitted}/${s.total} submiteados`}
+                                      ? (hasWhop ? '✅ Completada — todo subido y submiteado' : '✅ Completada — todo subido a YouTube')
+                                      : `${s.rendered}/${s.total} renderizados · ${s.uploaded}/${s.total} subidos${hasWhop ? ` · ${s.submitted}/${s.total} submiteados` : ''}`}
                                   </p>
                                 )
                               })()}
@@ -1809,23 +1810,34 @@ export default function App() {
                     </div>
 
                     {clipCandidates.length > 0 && (() => {
+                      const hasWhop = !!activeCampaign.campaignUrl?.trim()
                       const total = clipCandidates.length
                       const subidos = clipCandidates.filter((c) => c.uploaded).length
                       const submiteados = clipCandidates.filter((c) => c.submitted).length
-                      const completa = subidos === total && submiteados === total
-                      const lastSubmitted = [...clipCandidates].reverse().find((c) => c.submitted)
+                      const completa = hasWhop ? (subidos === total && submiteados === total) : (subidos === total)
+                      const lastSubmitted = hasWhop ? [...clipCandidates].reverse().find((c) => c.submitted) : undefined
+                      const lastUploaded = [...clipCandidates].reverse().find((c) => c.uploaded)
                       return (
                         <div className={completa ? 'campaign-status complete' : 'campaign-status'} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                           <span>
                             {completa
-                              ? '✅ Campaña totalmente subida y submiteada'
-                              : `Progreso — ${subidos}/${total} subidos · ${submiteados}/${total} submiteados a Whop`}
+                              ? (hasWhop ? '✅ Campaña totalmente subida y submiteada' : '✅ Todos los shorts subidos a YouTube')
+                              : (hasWhop
+                                  ? `Progreso — ${subidos}/${total} subidos · ${submiteados}/${total} submiteados a Whop`
+                                  : `Progreso — ${subidos}/${total} subidos a YouTube`)}
                           </span>
-                          {lastSubmitted && (
-                            <button className="goto-submitted" onClick={() => goToClip(lastSubmitted.id)}>
-                              ↓ Ir al último submiteado
-                            </button>
-                          )}
+                          <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {lastUploaded && (
+                              <button className="goto-submitted" onClick={() => goToClip(lastUploaded.id)}>
+                                ↓ Último subido a YouTube
+                              </button>
+                            )}
+                            {lastSubmitted && (
+                              <button className="goto-submitted" onClick={() => goToClip(lastSubmitted.id)}>
+                                ↓ Último submiteado
+                              </button>
+                            )}
+                          </span>
                         </div>
                       )
                     })()}
@@ -2167,23 +2179,27 @@ export default function App() {
                           <button className="panel-link panel-link-button" onClick={() => handleCopyUrl(clip.youtubeUrl!)}>
                             {copiedUrl === clip.youtubeUrl ? '¡Copiado!' : 'Copiar enlace'}
                           </button>
-                          <button
-                            className={clip.submitted ? 'submit-flag submitted' : 'submit-flag'}
-                            onClick={() => handleToggleSubmitted(clip)}
-                            title="Marcar si ya has enviado este clip a la campaña de Whop"
-                          >
-                            {clip.submitted ? '✅ Submiteado a Whop' : 'Marcar submiteado'}
-                          </button>
-                          {!clip.submitted && clip.uploadedAt && (() => {
-                            const remainingMin = Math.floor((30 * 60000 - (now - new Date(clip.uploadedAt).getTime())) / 60000)
-                            return remainingMin >= 0 ? (
-                              <span className={remainingMin <= 5 ? 'submit-timer urgent' : 'submit-timer'}>
-                                ⏱ {remainingMin} min para submitear
-                              </span>
-                            ) : (
-                              <span className="submit-timer expired">⛔ fuera de plazo (&gt;30 min)</span>
-                            )
-                          })()}
+                          {activeCampaign?.campaignUrl?.trim() && (
+                            <>
+                              <button
+                                className={clip.submitted ? 'submit-flag submitted' : 'submit-flag'}
+                                onClick={() => handleToggleSubmitted(clip)}
+                                title="Marcar si ya has enviado este clip a la campaña de Whop"
+                              >
+                                {clip.submitted ? '✅ Submiteado a Whop' : 'Marcar submiteado'}
+                              </button>
+                              {!clip.submitted && clip.uploadedAt && (() => {
+                                const remainingMin = Math.floor((30 * 60000 - (now - new Date(clip.uploadedAt).getTime())) / 60000)
+                                return remainingMin >= 0 ? (
+                                  <span className={remainingMin <= 5 ? 'submit-timer urgent' : 'submit-timer'}>
+                                    ⏱ {remainingMin} min para submitear
+                                  </span>
+                                ) : (
+                                  <span className="submit-timer expired">⛔ fuera de plazo (&gt;30 min)</span>
+                                )
+                              })()}
+                            </>
+                          )}
                         </div>
                       )}
 
