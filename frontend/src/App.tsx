@@ -1717,16 +1717,16 @@ export default function App() {
                     <input value={campName} onChange={(e) => setCampName(e.target.value)} placeholder="Ej: Trailblazers Kate McAndrew" />
                   </label>
                   <label className="field span-2">
-                    <span>Link del vídeo a clipear (YouTube o WeTransfer)</span>
-                    <input type="url" value={campSourceUrl} onChange={(e) => setCampSourceUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=...  o  https://wetransfer.com/..." />
+                    <span>Link del vídeo a clipear (YouTube, Twitch VOD, Google Drive o WeTransfer)</span>
+                    <input type="url" value={campSourceUrl} onChange={(e) => setCampSourceUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=...  ·  twitch.tv/videos/...  ·  drive.google.com/..." />
                   </label>
                   <label className="field span-2">
-                    <span>Link de la campaña (Whop)</span>
-                    <input type="url" value={campCampaignUrl} onChange={(e) => setCampCampaignUrl(e.target.value)} placeholder="https://whop.com/..." />
+                    <span>Link de la campaña Whop <em style={{ color: 'var(--ink-soft)', fontStyle: 'normal' }}>(opcional — déjalo vacío si es un short sin campaña)</em></span>
+                    <input type="url" value={campCampaignUrl} onChange={(e) => setCampCampaignUrl(e.target.value)} placeholder="https://whop.com/...  (opcional)" />
                   </label>
                   <label className="field span-2">
-                    <span>Link del brief con las instrucciones (Google Docs o web: Reach, ClipFarm…) — la IA extrae los requisitos</span>
-                    <input type="url" value={campBriefUrl} onChange={(e) => setCampBriefUrl(e.target.value)} placeholder="https://docs.google.com/document/d/..." />
+                    <span>Link del brief <em style={{ color: 'var(--ink-soft)', fontStyle: 'normal' }}>(opcional</em> — Google Docs o web: Reach, ClipFarm…; la IA extrae los requisitos)</span>
+                    <input type="url" value={campBriefUrl} onChange={(e) => setCampBriefUrl(e.target.value)} placeholder="(opcional) https://docs.google.com/...  o  https://reachclipping.com/..." />
                   </label>
                   <label className="field">
                     <span>Cookies (opcional)</span>
