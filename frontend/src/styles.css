@@ -652,6 +652,48 @@ nav {
 }
 
 /* Selector de punto de enfoque: línea vertical + franja aproximada del recorte */
+/* Mapa de cobertura del vídeo (estilo github) */
+.coverage {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--input-bg);
+}
+
+.cov-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 10px 0 8px;
+}
+
+.cov-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: #1b2433;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.cov-cell.l0 { background: #1b2433; }
+.cov-cell.l1 { background: #0e4429; }
+.cov-cell.l2 { background: #006d32; }
+.cov-cell.l3 { background: #26a641; }
+.cov-cell.l4 { background: #39d353; }
+
+.cov-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.cov-legend .cov-cell {
+  cursor: default;
+}
+
 .goto-submitted {
   border: 1px solid var(--accent);
   background: rgba(20, 184, 166, 0.14);

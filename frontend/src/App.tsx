@@ -120,6 +120,7 @@ export default function App() {
   const drawStart = useRef<{ x: number; y: number } | null>(null)
   const restoredPersonsRef = useRef<Set<string>>(new Set())
   const [focusPicker, setFocusPicker] = useState<{ clipId: string; segIdx: number; frame: string; cx: number; segments: SegList } | null>(null)
+  const [videoDuration, setVideoDuration] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow'>('center')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
@@ -1188,6 +1189,16 @@ export default function App() {
     }
   }, [activeChannel?.id])
 
+  // Duración del vídeo de la campaña activa (para el mapa de cobertura).
+  useEffect(() => {
+    if (activeCampaignId == null) { setVideoDuration(null); return }
+    let cancelled = false
+    api.campaignCoverage(activeCampaignId)
+      .then((d) => { if (!cancelled) setVideoDuration(d.duration || 0) })
+      .catch(() => { if (!cancelled) setVideoDuration(null) })
+    return () => { cancelled = true }
+  }, [activeCampaignId])
+
   // Lightbox de personas: navegar con flechas y cerrar con Esc.
   useEffect(() => {
     if (!lightbox) return
@@ -1838,6 +1849,54 @@ export default function App() {
                               </button>
                             )}
                           </span>
+                        </div>
+                      )
+                    })()}
+
+                    {videoDuration != null && videoDuration > 0 && clipCandidates.length > 0 && (() => {
+                      const dur = videoDuration
+                      const CELLS = Math.min(240, Math.max(60, Math.round(dur / 30)))
+                      const cellSec = dur / CELLS
+                      // Unión de rangos clipeados (sin contar solapes) para % y minutos restantes.
+                      const sorted = clipCandidates.map((c) => [c.start, c.end] as [number, number]).sort((a, b) => a[0] - b[0])
+                      let union = 0, curS = -1, curE = -1
+                      for (const [s, e] of sorted) {
+                        if (s > curE) { union += Math.max(0, curE - curS); curS = s; curE = e }
+                        else { curE = Math.max(curE, e) }
+                      }
+                      union += Math.max(0, curE - curS)
+                      const pct = Math.min(100, Math.round((union / dur) * 100))
+                      const remainMin = Math.max(0, Math.round((dur - union) / 60))
+                      const cells = Array.from({ length: CELLS }, (_, i) => {
+                        const t0 = i * cellSec, t1 = (i + 1) * cellSec
+                        let cov = 0, count = 0
+                        for (const c of clipCandidates) {
+                          const ov = Math.min(t1, c.end) - Math.max(t0, c.start)
+                          if (ov > 0) { cov += ov; count++ }
+                        }
+                        const level = cov / cellSec < 0.05 ? 0 : Math.min(4, count)
+                        return { i, t0, t1, level, count }
+                      })
+                      return (
+                        <div className="coverage">
+                          <div className="seo-head">
+                            <span>🗺️ Cobertura del vídeo ({formatSeconds(dur)}) — <strong>{pct}%</strong> clipeado · quedan ~{remainMin} min sin clipear</span>
+                          </div>
+                          <div className="cov-grid">
+                            {cells.map((c) => (
+                              <span
+                                key={c.i}
+                                className={`cov-cell l${c.level}`}
+                                title={`${formatSeconds(c.t0)}–${formatSeconds(c.t1)} · ${c.count} clip${c.count !== 1 ? 's' : ''}`}
+                                onClick={() => { const cl = clipCandidates.find((x) => Math.min(c.t1, x.end) > Math.max(c.t0, x.start)); if (cl) goToClip(cl.id) }}
+                              />
+                            ))}
+                          </div>
+                          <div className="cov-legend">
+                            <span>Menos</span>
+                            <span className="cov-cell l0" /><span className="cov-cell l1" /><span className="cov-cell l2" /><span className="cov-cell l3" /><span className="cov-cell l4" />
+                            <span>Más · clic en una celda salta a su clip</span>
+                          </div>
                         </div>
                       )
                     })()}

@@ -842,6 +842,44 @@ def apply_campaign_rules(campaign_id: int) -> dict:
     return {"updated": len(clips), "onScreenText": on_screen}
 
 
+def _video_duration(video_abs: Path) -> float:
+    """Duración del vídeo en segundos (ffmpeg parsea 'Duration:'). Cacheada en un
+    fichero junto al vídeo para no re-sondear en cada carga."""
+    cache = video_abs.parent / "duration.txt"
+    if cache.exists():
+        try:
+            return float(cache.read_text(encoding="utf-8").strip())
+        except Exception:
+            pass
+    proc = subprocess.run(["ffmpeg", "-i", str(video_abs)], capture_output=True, text=True)
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", proc.stderr)
+    if not m:
+        return 0.0
+    dur = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+    try:
+        cache.write_text(str(dur), encoding="utf-8")
+    except Exception:
+        pass
+    return dur
+
+
+@app.get("/api/campaigns/{campaign_id}/coverage")
+def campaign_coverage(campaign_id: int) -> dict:
+    """Cobertura del vídeo fuente: duración total + rangos clipeados (para el mapa
+    tipo github de qué se ha clipeado y qué queda)."""
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    video_rel = campaign.get("videoPath") or ""
+    duration = _video_duration(resolve_within_root(video_rel)) if video_rel and (ROOT_DIR / video_rel).exists() else 0.0
+    clips = db.load_clips(campaign.get("transcriptPath") or "")
+    ranges = [{
+        "id": c["id"], "start": float(c["start"]), "end": float(c["end"]),
+        "title": c.get("title") or "", "rendered": bool(c.get("renderedPath")), "uploaded": bool(c.get("youtubeUrl")),
+    } for c in clips]
+    return {"duration": duration, "clips": ranges}
+
+
 @app.post("/api/campaigns/{campaign_id}/watermark")
 async def upload_campaign_watermark(campaign_id: int, file: UploadFile = File(...)) -> dict:
     """Sube el PNG del watermark de la campaña. Se superpone ARRIBA CENTRADO en
