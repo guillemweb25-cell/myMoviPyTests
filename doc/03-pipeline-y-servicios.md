@@ -117,3 +117,8 @@ a recargas del navegador. Args: `--transcript --focus`.
   mete confirmación anti-virus que rompe yt-dlp). El fichero debe ser público
   ('cualquiera con el enlace'). Se descarga a staging y se mueve a la carpeta
   fecha-título. La transcripción usa solo el audio (mp3 extraído), no el vídeo entero.
+
+- **YouTube necesita un runtime JS (deno)**: yt-dlp descifra la firma de los
+  formatos de YouTube con un motor JS; sin él la descarga da **HTTP 403**. El
+  backend lleva **deno** (Dockerfile + instalación idempotente en el comando del
+  compose). Es el runtime por defecto de yt-dlp: con deno en PATH, sin flags.

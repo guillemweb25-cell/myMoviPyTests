@@ -14,7 +14,7 @@ services:
     # Actualiza yt-dlp en cada arranque (sus extractores se rompen cada pocas
     # semanas) y garantiza curl_cffi para la impersonation de navegador que
     # exigen algunos sitios (Cloudflare / 403), antes de levantar la API.
-    command: sh -c "pip install --no-cache-dir --upgrade yt-dlp curl_cffi && pip install --no-cache-dir openai google-auth-oauthlib google-api-python-client gdown && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --timeout-graceful-shutdown 5"
+    command: sh -c "(command -v deno >/dev/null || (apt-get update && apt-get install -y --no-install-recommends curl unzip && curl -fsSL https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip -o /tmp/deno.zip && unzip -o /tmp/deno.zip -d /usr/local/bin && chmod +x /usr/local/bin/deno)) && pip install --no-cache-dir --upgrade yt-dlp curl_cffi && pip install --no-cache-dir openai google-auth-oauthlib google-api-python-client gdown && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --timeout-graceful-shutdown 5"
 
   frontend:
     build:
