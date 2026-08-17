@@ -112,6 +112,8 @@ export const api = {
   extractBrief: (id: number, payload: { briefUrl?: string; briefText?: string }) =>
     postJson<{ campaign: Campaign; rules: Record<string, unknown> }>(`/api/campaigns/${id}/brief`, payload),
   applyCampaignRules: (id: number) => postJson<{ updated: number; onScreenText: string }>(`/api/campaigns/${id}/apply-rules`, {}),
+  setCampaignCreator: (id: number, creator: string) =>
+    postJson<{ campaign: Campaign }>(`/api/campaigns/${id}/creator`, { creator }),
   campaignCoverage: (id: number) =>
     getJson<{ duration: number; clips: { id: string; start: number; end: number; title: string; rendered: boolean; uploaded: boolean }[] }>(`/api/campaigns/${id}/coverage`),
   uploadCampaignWatermark: async (id: number, file: File) => {

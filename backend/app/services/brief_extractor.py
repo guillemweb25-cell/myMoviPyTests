@@ -69,6 +69,8 @@ SCHEMA_HINT = (
     '"onScreenText": "SOLO si el brief exige una frase, handle o marca FIJA quemada en pantalla '
     'en todos los clips. Si solo pide subtitulos que coincidan con el dialogo (karaoke normal), '
     'dejalo VACIO. No copies el captionRequired ni el nombre del programa.",'
+    '"creator": "nombre de la persona (invitado/creador/host) que el brief pide dejar '
+    'claro que aparece, para nombrarla en el titulo. Ej: Kate McAndrew. VACIO si no lo pide.",'
     '"handles": {"youtube": "@...", "tiktok": "@...", "instagram": "@..."},'
     '"hashtags": ["#..."],'
     '"mentions": ["marcas o nombres que hay que mencionar/taggear"],'
@@ -117,6 +119,7 @@ def extract_rules(brief_text: str, model: str | None = None) -> dict:
     return {
         "onScreenText": clean_phrase(data.get("onScreenText", "")),
         "captionRequired": clean_phrase(data.get("captionRequired", "")),
+        "creator": str(data.get("creator", "")).strip(),
         "handles": {
             "youtube": str(handles.get("youtube", "")).strip(),
             "tiktok": str(handles.get("tiktok", "")).strip(),

@@ -428,6 +428,15 @@ export default function App() {
     }
   }
 
+  async function handleSaveCreator(campaign: Campaign, creator: string) {
+    try {
+      const { campaign: updated } = await api.setCampaignCreator(campaign.id, creator)
+      setCampaigns((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
   async function handleUploadWatermark(campaign: Campaign, file: File) {
     setError('')
     try {
@@ -1934,6 +1943,17 @@ export default function App() {
                           {isExtractingBrief ? 'Extrayendo...' : 'Extraer requisitos con IA'}
                         </button>
                       </div>
+                    </div>
+
+                    <div className="seo-box">
+                      <div className="seo-head"><span>🎙️ Invitado/creador a nombrar en el título (si la campaña lo exige)</span></div>
+                      <input
+                        placeholder="Ej: Kate McAndrew — el título dejará claro que es una entrevista con esta persona"
+                        value={activeCampaign.rules?.creator || ''}
+                        onChange={(e) => setCampaigns((prev) => prev.map((c) => (c.id === activeCampaign.id ? { ...c, rules: { ...(c.rules || {}), creator: e.target.value } } : c)))}
+                        onBlur={(e) => handleSaveCreator(activeCampaign, e.target.value)}
+                      />
+                      <p className="help">Al generar el SEO, el título incluirá este nombre y lo enmarcará como entrevista. Regenera los textos SEO de los clips ya hechos para aplicarlo.</p>
                     </div>
 
                     {activeCampaign.rules?.captionRequired && (

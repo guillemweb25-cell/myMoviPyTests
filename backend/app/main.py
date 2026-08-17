@@ -907,6 +907,23 @@ def delete_campaign_watermark(campaign_id: int) -> dict:
     return {"watermarkPath": ""}
 
 
+class CampaignCreatorRequest(BaseModel):
+    creator: str = ""
+
+
+@app.post("/api/campaigns/{campaign_id}/creator")
+def set_campaign_creator(campaign_id: int, payload: CampaignCreatorRequest) -> dict:
+    """Fija el nombre del invitado/creador a nombrar en el título de los clips
+    (requisito de compliance tipo 'deja claro que es una entrevista con X')."""
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    rules = campaign.get("rules") or {}
+    rules["creator"] = payload.creator.strip()
+    db.update_campaign(campaign_id, {"rules_json": json.dumps(rules, ensure_ascii=False)})
+    return {"campaign": db.get_campaign(campaign_id)}
+
+
 @app.delete("/api/campaigns/{campaign_id}")
 def delete_campaign_endpoint(campaign_id: int) -> dict:
     if not db.get_campaign(campaign_id):

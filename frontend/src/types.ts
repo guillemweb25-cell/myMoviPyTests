@@ -55,6 +55,7 @@ export type Channel = {
 export type CampaignRules = {
   onScreenText?: string
   captionRequired?: string
+  creator?: string
   handles?: { youtube?: string; tiktok?: string; instagram?: string }
   hashtags?: string[]
   mentions?: string[]

@@ -68,9 +68,18 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dic
     else:
         lang = LANG_HINT.get(channel.get("language", ""), None)
 
+    # Si la campaña pide dejar claro que es una entrevista con alguien (ej. Reach:
+    # "make it clear it's an interview with Kate McAndrew"), se fuerza a nombrarlo.
+    creator = ((campaign_rules or {}).get("creator") or "").strip()
+    title_rules = rules
+    if creator:
+        extra = (f"OBLIGATORIO: el título debe dejar claro que es un clip/entrevista con "
+                 f"{creator}; incluye '{creator}' en el título de forma natural.")
+        title_rules = f"{rules}\n{extra}" if rules else extra
+
     engine = SEOEngine()
-    title = strip_wrapping_quotes(strip_markdown(engine.generate_video_title(snippet, lang=lang, custom_rules=rules)))
-    description = strip_markdown(engine.generate_description(snippet, lang=lang, custom_rules=rules))
+    title = strip_wrapping_quotes(strip_markdown(engine.generate_video_title(snippet, lang=lang, custom_rules=title_rules)))
+    description = strip_markdown(engine.generate_description(snippet, lang=lang, custom_rules=title_rules))
     # El modelo a veces antepone etiquetas "(Video) Title:" / "(Video) Description:".
     description = re.sub(r"^\s*(video\s+)?title:.*(?:\n|$)", "", description, flags=re.IGNORECASE)
     description = re.sub(r"^\s*(video\s+)?description:\s*", "", description, flags=re.IGNORECASE).strip()
