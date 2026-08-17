@@ -91,7 +91,10 @@ SYSTEM_PROMPT = (
     "Recibes la transcripcion de un video con marcas de tiempo (en segundos) y "
     "debes seleccionar los momentos con mayor potencial viral: ganchos, "
     "revelaciones, giros, frases impactantes o emocionales, o segmentos "
-    "autoconclusivos. Cada clip debe empezar y terminar en pausas naturales."
+    "autoconclusivos. Cada clip debe empezar y terminar en pausas naturales. "
+    "Construye cada clip como un ARCO COMPLETO (preambulo/contexto -> desarrollo -> "
+    "desenlace), no solo la frase punchline: incluye el contexto previo y el cierre "
+    "para que dure lo pedido y se entienda solo."
 )
 
 
@@ -99,7 +102,10 @@ def _user_prompt(transcript_block: str, count: int, target_dur: int, min_dur: in
     return (
         f"Este es UN SEGMENTO de la transcripcion (indice, tiempo en segundos, texto):\n\n{transcript_block}\n\n"
         f"Selecciona hasta {count} clips con potencial viral de ESTE segmento. Reglas:\n"
-        f"- Cada clip debe durar aproximadamente {target_dur} segundos (entre {min_dur} y {max_dur}).\n"
+        f"- DURACION (IMPORTANTE): cada clip DEBE durar entre {min_dur} y {max_dur} segundos, "
+        f"idealmente ~{target_dur}s. Si el momento potente es corto, EXTIENDE los limites "
+        f"(hacia atras para incluir el planteamiento y hacia delante para incluir la reaccion/"
+        f"desenlace) hasta alcanzar ~{target_dur}s. NO devuelvas clips mas cortos de {min_dur}s.\n"
         "- 'start' y 'end' en segundos (numeros), alineados a los tiempos de los cues del segmento.\n"
         "- Cada clip debe ser autoconclusivo y engancharse desde el primer segundo.\n"
         "- Ordena de mayor a menor potencial.\n\n"
@@ -107,6 +113,27 @@ def _user_prompt(transcript_block: str, count: int, target_dur: int, min_dur: in
         '{"clips": [{"start": number, "end": number, "title": "gancho corto", '
         '"reason": "por que funciona", "score": number_0_100}]}'
     )
+
+
+def _extend_to_target(s: float, e: float, cues: list[Cue], target: int, max_dur: int, total_end: float) -> tuple[float, float]:
+    """Si el clip es mas corto que `target`, extiende los limites encajando a inicios/
+    finales de cue (primero hacia delante, luego hacia atras), sin pasar de `max_dur`
+    ni salirse del video. Asi se respeta la duracion pedida aunque el LLM acorte."""
+    if e - s >= target:
+        return s, e
+    # Hacia delante: alarga el final al siguiente fin de cue mientras quepa.
+    for cue in cues:
+        if cue.end > e and (cue.end - s) <= max_dur and cue.end <= total_end + 0.01:
+            e = cue.end
+            if e - s >= target:
+                return s, e
+    # Si sigue corto, hacia atras: adelanta el inicio a un comienzo de cue anterior.
+    for cue in reversed(cues):
+        if cue.start < s and (e - cue.start) <= max_dur:
+            s = cue.start
+            if e - s >= target:
+                break
+    return max(0.0, s), e
 
 
 def _text_between(cues: list[Cue], start: float, end: float) -> str:
@@ -172,6 +199,9 @@ def detect_clips(
                 continue
             if clip_end - clip_start < 3:
                 continue
+            # Respeta la duracion pedida: si el LLM acorto, extiende hasta ~target.
+            if clip_end - clip_start < min_dur:
+                clip_start, clip_end = _extend_to_target(clip_start, clip_end, cues, target_dur, max_dur, total_end)
             candidates.append(
                 ClipCandidate(
                     start=clip_start,
