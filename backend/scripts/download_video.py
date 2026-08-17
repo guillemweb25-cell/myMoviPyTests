@@ -116,11 +116,16 @@ def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None, 
         )
 
     # 3) OPCIONES YT-DLP (VÍDEO)
+    # Formato: preferimos H.264 (avc1) + audio m4a de los clientes WEB (que deno
+    # firma con nsig). Evita que "bestvideo" coja el formato del cliente android_vr,
+    # cuyas URLs dan HTTP 403, o los del cliente tv, marcados como DRM. Cae a best
+    # mp4/best para fuentes no-YouTube (Twitch VOD, etc.).
     ydl_opts = {
         "outtmpl": os.path.join(out_dir, "%(title)s.%(ext)s"),
-        "format": "bestvideo+bestaudio/best",
+        "format": "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         "merge_output_format": "mp4",
         "noplaylist": True,
+        "extractor_args": {"youtube": {"player_client": ["default"]}},
     }
 
     if ffmpeg_path:
