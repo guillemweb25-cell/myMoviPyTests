@@ -88,7 +88,7 @@ class DetectClipsRequest(BaseModel):
     channelId: int | None = None
     parts: int = Field(default=4, ge=0, le=20, description="Partes en que dividir la transcripcion (0 = auto por duracion)")
     clipsPerPart: int = Field(default=5, ge=1, le=10)
-    targetDuration: int = Field(default=25, ge=10, le=90)
+    targetDuration: int = Field(default=40, ge=10, le=90)
 
 
 class ChannelCreateRequest(BaseModel):

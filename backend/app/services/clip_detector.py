@@ -153,7 +153,7 @@ def detect_clips(
     subtitles_path: Path,
     parts: int | None = 4,
     clips_per_part: int = 5,
-    target_dur: int = 25,
+    target_dur: int = 40,
     model: str | None = None,
 ) -> list[ClipCandidate]:
     from openai import OpenAI

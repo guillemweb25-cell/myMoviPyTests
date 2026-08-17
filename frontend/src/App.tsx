@@ -97,7 +97,7 @@ export default function App() {
   const [clipCandidates, setClipCandidates] = useState<ClipCandidate[]>([])
   const [clipParts, setClipParts] = useState(4)
   const [clipsPerPart, setClipsPerPart] = useState(5)
-  const [clipTargetDur, setClipTargetDur] = useState(25)
+  const [clipTargetDur, setClipTargetDur] = useState(40)
   const [clipUrl, setClipUrl] = useState('')
   const [clipUrlCookies, setClipUrlCookies] = useState('')
   const [isPreparingSource, setIsPreparingSource] = useState(false)
@@ -2016,7 +2016,7 @@ export default function App() {
                       </label>
                       <label className="field" style={{ maxWidth: 150 }}>
                         <span>Duración (s)</span>
-                        <input type="number" min={10} max={90} value={clipTargetDur} onChange={(e) => setClipTargetDur(Number(e.target.value) || 25)} />
+                        <input type="number" min={10} max={90} value={clipTargetDur} onChange={(e) => setClipTargetDur(Number(e.target.value) || 40)} />
                       </label>
                       <button className="primary" disabled={isDetectingClips || !selectedClipSource} onClick={() => runDetect(selectedClipSource)}>
                         {isDetectingClips ? 'Analizando...' : clipCandidates.length ? 'Re-detectar clips' : 'Detectar clips'}
