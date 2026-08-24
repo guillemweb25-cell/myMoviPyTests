@@ -1268,7 +1268,7 @@ def render_all_endpoint(payload: RenderAllRequest) -> dict:
     if not clips:
         raise HTTPException(status_code=400, detail="No hay clips para esta transcripcion.")
     args = ["--transcript", payload.transcriptPath]
-    if payload.focus in ("left", "center", "right", "follow"):
+    if payload.focus in ("left", "center", "right", "follow", "facecam"):
         args += ["--focus", payload.focus]
     job = enqueue_job("render_all.py", args)
     return {"job": job}

@@ -30,8 +30,18 @@ def main() -> None:
     db.init(root / "backend" / "runs" / "jobs.db")
 
     clips = db.load_clips(args.transcript)
-    pending = [c for c in clips if not (c.get("renderedPath") and (root / c["renderedPath"]).exists())]
-    print(f"Clips pendientes de renderizar: {len(pending)} de {len(clips)}", flush=True)
+
+    def _rendered(c):
+        return bool(c.get("renderedPath")) and (root / c["renderedPath"]).exists()
+
+    # Si se pide un encuadre global, se re-renderizan también los ya hechos cuyo
+    # encuadre NO coincide (para que el cambio se aplique a TODOS, no solo a los
+    # pendientes). Sin encuadre global, solo los que faltan.
+    if args.focus:
+        pending = [c for c in clips if not _rendered(c) or c.get("focus") != args.focus]
+    else:
+        pending = [c for c in clips if not _rendered(c)]
+    print(f"Clips a renderizar: {len(pending)} de {len(clips)}", flush=True)
 
     # Watermark + facecam de la campaña (mismos para todos sus clips).
     campaign = db.get_campaign_by_transcript(args.transcript)
