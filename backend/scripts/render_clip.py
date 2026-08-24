@@ -410,6 +410,8 @@ def main() -> None:
     parser.add_argument("--focus-person", type=int, default=-1, help="id de persona a la que centra el recorte de arriba (-1 = no)")
     parser.add_argument("--focus-plan", default="", help="enfoque por tramo: 't0:t1:personId,...' (personId=-1=centro)")
     parser.add_argument("--watermark", default="", help="ruta a un PNG a superponer arriba centrado (watermark de campaña)")
+    parser.add_argument("--facecam", default="", help="modo facecam: rect de la webcam 'x,y,w,h' normalizado (arriba la cara, abajo la pantalla)")
+    parser.add_argument("--screen-zoom", type=float, default=1.4, help="zoom de la pantalla abajo en modo facecam (1.0 = completa)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
 
@@ -446,9 +448,22 @@ def main() -> None:
                 "subir contenido no conforme. Reintenta con el worker disponible."
             )
 
+    # Modo FACECAM: arriba el recuadro de la webcam, abajo la pantalla (zoom ligero).
+    # Anula el resto de encuadres (no hay "hablante" que seguir en una pantalla).
+    facecam = None
+    if args.facecam:
+        try:
+            parts = [float(x) for x in args.facecam.split(",")]
+            if len(parts) == 4 and parts[2] > 0.02 and parts[3] > 0.02:
+                facecam = tuple(parts)
+        except Exception:
+            facecam = None
+
     follow_segments = None
     focus = args.focus
-    if args.focus_plan:
+    if facecam is not None:
+        print(f"Encuadre facecam: cara={facecam}, zoom pantalla={args.screen_zoom}", flush=True)
+    elif args.focus_plan:
         # Enfoque POR TRAMO: 't0:t1:pid[:cx],...' (cx opcional = punto manual clicado).
         plan = []
         for chunk in args.focus_plan.split(","):
@@ -482,7 +497,7 @@ def main() -> None:
     make_clip(
         video, start, end, out_path,
         top_ratio=args.top_ratio, focus=focus, zoom=args.zoom, ffmpeg=args.ffmpeg,
-        follow_segments=follow_segments,
+        follow_segments=follow_segments, facecam=facecam, screen_zoom=args.screen_zoom,
     )
 
     # Watermark de la campaña (arriba centrado). Se aplica ANTES de sacar el

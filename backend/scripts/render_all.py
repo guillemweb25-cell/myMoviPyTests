@@ -22,7 +22,7 @@ from app import db  # noqa: E402
 def main() -> None:
     parser = argparse.ArgumentParser(description="Renderiza en cola todos los clips pendientes de una transcripcion")
     parser.add_argument("--transcript", required=True)
-    parser.add_argument("--focus", default=None, choices=["left", "center", "right", "follow"],
+    parser.add_argument("--focus", default=None, choices=["left", "center", "right", "follow", "facecam"],
                         help="Encuadre global a aplicar a todos antes de renderizar")
     args = parser.parse_args()
 
@@ -33,10 +33,12 @@ def main() -> None:
     pending = [c for c in clips if not (c.get("renderedPath") and (root / c["renderedPath"]).exists())]
     print(f"Clips pendientes de renderizar: {len(pending)} de {len(clips)}", flush=True)
 
-    # Watermark de la campaña (mismo para todos sus clips).
+    # Watermark + facecam de la campaña (mismos para todos sus clips).
     campaign = db.get_campaign_by_transcript(args.transcript)
     wm_rel = (campaign or {}).get("watermarkPath") or ""
     watermark = str(root / wm_rel) if wm_rel and (root / wm_rel).exists() else ""
+    fc = (campaign or {}).get("facecam")
+    facecam = fc if isinstance(fc, dict) and fc.get("w", 0) > 0.02 and fc.get("h", 0) > 0.02 else None
 
     render_clip = str(Path(__file__).with_name("render_clip.py"))
     done = 0
@@ -63,7 +65,7 @@ def main() -> None:
             "--end", f"{clip['end']:.3f}",
             "--out", out_rel,
             "--top-ratio", f"{clip['topRatio']:.2f}",
-            "--focus", clip["focus"],
+            "--focus", "center" if (clip["focus"] == "facecam" and facecam) else clip["focus"],
             "--zoom", f"{clip['zoom']:.2f}",
             "--lang", lang,
         ]
@@ -109,6 +111,9 @@ def main() -> None:
             cmd += ["--manual-blur", json.dumps(manual_blur)]
         if watermark:
             cmd += ["--watermark", watermark]
+        if clip["focus"] == "facecam" and facecam:
+            cmd += ["--facecam", f"{facecam['x']},{facecam['y']},{facecam['w']},{facecam['h']}",
+                    "--screen-zoom", str(facecam.get("zoom", 1.4))]
 
         title = (clip.get("title") or "")[:50]
         print(f"\n[{i}/{len(pending)}] Renderizando {cid} — {title}", flush=True)

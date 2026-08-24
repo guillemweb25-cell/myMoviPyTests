@@ -151,7 +151,7 @@ def channel_id_from_path(rel_path: str | None) -> int | None:
 
 
 class ClipSettingsRequest(BaseModel):
-    focus: str = Field(default="center", pattern="^(left|center|right|follow)$")
+    focus: str = Field(default="center", pattern="^(left|center|right|follow|facecam)$")
     zoom: float = Field(default=1.0, ge=1.0, le=2.5)
     topRatio: float = Field(default=0.7, ge=0.3, le=0.85)
     subtitles: bool = True
@@ -907,6 +907,56 @@ def delete_campaign_watermark(campaign_id: int) -> dict:
     return {"watermarkPath": ""}
 
 
+@app.post("/api/campaigns/{campaign_id}/scene-frame")
+def campaign_scene_frame(campaign_id: int, t: float = 30.0) -> dict:
+    """Fotograma del vídeo de la campaña (a los `t` s) para marcar el facecam."""
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    video_rel = campaign.get("videoPath") or ""
+    if not video_rel or not (ROOT_DIR / video_rel).exists():
+        raise HTTPException(status_code=400, detail="La campaña aún no tiene vídeo descargado.")
+    video_abs = resolve_within_root(video_rel)
+    out = video_abs.parent / f"campframe_{int(t)}.jpg"
+    subprocess.run(["ffmpeg", "-y", "-ss", f"{max(0.0, t):.2f}", "-i", str(video_abs),
+                    "-frames:v", "1", "-q:v", "3", "-vf", "scale=960:-1", str(out)], capture_output=True)
+    if not out.exists():
+        raise HTTPException(status_code=500, detail="No se pudo extraer el fotograma.")
+    return {"frame": str(out.relative_to(ROOT_DIR))}
+
+
+class FacecamRequest(BaseModel):
+    x: float
+    y: float
+    w: float
+    h: float
+    zoom: float = 1.4
+
+
+@app.post("/api/campaigns/{campaign_id}/facecam")
+def set_campaign_facecam(campaign_id: int, payload: FacecamRequest) -> dict:
+    """Guarda el recuadro de la webcam (facecam) de la campaña y el zoom de la
+    pantalla. Encuadre 'facecam': arriba la cara, abajo la pantalla."""
+    if not db.get_campaign(campaign_id):
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    x = min(max(payload.x, 0.0), 1.0)
+    y = min(max(payload.y, 0.0), 1.0)
+    w = min(max(payload.w, 0.02), 1.0 - x)
+    h = min(max(payload.h, 0.02), 1.0 - y)
+    fc = {"x": round(x, 4), "y": round(y, 4), "w": round(w, 4), "h": round(h, 4),
+          "zoom": round(min(max(payload.zoom, 1.0), 3.0), 2)}
+    db.update_campaign(campaign_id, {"facecam": json.dumps(fc)})
+    return {"facecam": fc}
+
+
+@app.delete("/api/campaigns/{campaign_id}/facecam")
+def delete_campaign_facecam(campaign_id: int) -> dict:
+    if not db.get_campaign(campaign_id):
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    db.update_campaign(campaign_id, {"facecam": ""})
+    return {"facecam": None}
+
+
 class CampaignCreatorRequest(BaseModel):
     creator: str = ""
 
@@ -1054,6 +1104,15 @@ def _clip_focus_plan(clip: dict) -> str:
     return ",".join(parts)
 
 
+def _clip_facecam(clip: dict) -> dict | None:
+    """Facecam de la campaña del clip (rect + zoom), para el encuadre 'facecam'."""
+    campaign = db.get_campaign_by_transcript(clip.get("transcriptPath") or "")
+    fc = (campaign or {}).get("facecam")
+    if isinstance(fc, dict) and fc.get("w", 0) > 0.02 and fc.get("h", 0) > 0.02:
+        return fc
+    return None
+
+
 def _clip_watermark(clip: dict) -> str:
     """Ruta ABSOLUTA del watermark de la campaña del clip (si tiene y existe), para
     pasarlo a render_clip. '' si no hay."""
@@ -1148,16 +1207,21 @@ def render_clip_endpoint(clip_id: str) -> dict:
     channel_id = clip.get("channelId") or channel_id_from_path(video_rel)
     channel = db.get_channel(channel_id) if channel_id else None
     lang = (channel or {}).get("language", "es") or "es"
+    # Encuadre facecam: usa el rect de la campaña; --focus va a 'center' (facecam manda).
+    facecam = _clip_facecam(clip) if clip.get("focus") == "facecam" else None
     args = [
         "--video", video_rel,
         "--start", f"{clip['start']:.3f}",
         "--end", f"{clip['end']:.3f}",
         "--out", out_rel,
         "--top-ratio", f"{clip['topRatio']:.2f}",
-        "--focus", clip["focus"],
+        "--focus", "center" if facecam else clip["focus"],
         "--zoom", f"{clip['zoom']:.2f}",
         "--lang", lang,
     ]
+    if facecam:
+        args.extend(["--facecam", f"{facecam['x']},{facecam['y']},{facecam['w']},{facecam['h']}",
+                     "--screen-zoom", str(facecam.get("zoom", 1.4))])
     if clip["subtitles"]:
         args.append("--subtitles")
     if clip.get("overlayText"):

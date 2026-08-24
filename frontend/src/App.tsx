@@ -121,8 +121,9 @@ export default function App() {
   const restoredPersonsRef = useRef<Set<string>>(new Set())
   const [focusPicker, setFocusPicker] = useState<{ clipId: string; segIdx: number; frame: string; cx: number; segments: SegList } | null>(null)
   const [videoDuration, setVideoDuration] = useState<number | null>(null)
+  const [facecamEditor, setFacecamEditor] = useState<{ campaignId: number; frame: string; rect: Rect | null; zoom: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
-  const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow'>('center')
+  const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow' | 'facecam'>('center')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
@@ -425,6 +426,39 @@ export default function App() {
       handleApiError(e)
     } finally {
       setIsExtractingBrief(false)
+    }
+  }
+
+  async function handleOpenFacecam(campaign: Campaign) {
+    setError('')
+    try {
+      const { frame } = await api.campaignSceneFrame(campaign.id, 30)
+      const fc = campaign.facecam || null
+      setFacecamEditor({ campaignId: campaign.id, frame, rect: fc ? { x: fc.x, y: fc.y, w: fc.w, h: fc.h } : null, zoom: fc?.zoom ?? 1.4 })
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  async function handleSaveFacecam() {
+    if (!facecamEditor || !facecamEditor.rect) { setFacecamEditor(null); return }
+    const { campaignId, rect, zoom } = facecamEditor
+    try {
+      const { facecam } = await api.setCampaignFacecam(campaignId, { ...rect, zoom })
+      setCampaigns((prev) => prev.map((c) => (c.id === campaignId ? { ...c, facecam } : c)))
+    } catch (e) {
+      handleApiError(e)
+    }
+    setFacecamEditor(null)
+    drawStart.current = null
+  }
+
+  async function handleDeleteFacecam(campaign: Campaign) {
+    try {
+      await api.deleteCampaignFacecam(campaign.id)
+      setCampaigns((prev) => prev.map((c) => (c.id === campaign.id ? { ...c, facecam: null } : c)))
+    } catch (e) {
+      handleApiError(e)
     }
   }
 
@@ -2003,6 +2037,24 @@ export default function App() {
                       )}
                     </div>
 
+                    <div className="seo-box" style={{ marginTop: 4 }}>
+                      <div className="seo-head"><span>🎥 Facecam + pantalla (tutoriales: cara arriba, pantalla abajo)</span></div>
+                      {activeCampaign.facecam ? (
+                        <div className="actions-row" style={{ alignItems: 'center', gap: 12 }}>
+                          <span className="help" style={{ color: 'var(--ok)' }}>✅ Recuadro marcado (zoom pantalla {activeCampaign.facecam.zoom}×). Elige el encuadre “🎥 Facecam + pantalla” en los clips.</span>
+                          <button className="link-btn" onClick={() => handleOpenFacecam(activeCampaign)}>Cambiar</button>
+                          <button className="link-btn" onClick={() => handleDeleteFacecam(activeCampaign)}>Quitar</button>
+                        </div>
+                      ) : (
+                        <div className="actions-row" style={{ alignItems: 'center', gap: 12 }}>
+                          <button className="primary" style={{ padding: '10px 14px', borderRadius: 10 }} onClick={() => handleOpenFacecam(activeCampaign)}>
+                            Marcar recuadro de la cámara
+                          </button>
+                          <span className="help">Dibuja el recuadro de tu webcam sobre un frame del vídeo. Es fijo para todo el vídeo. Requiere el vídeo ya descargado.</span>
+                        </div>
+                      )}
+                    </div>
+
                     <hr style={{ width: '100%', border: 0, borderTop: '1px solid #1f2937' }} />
 
                     <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -2041,12 +2093,13 @@ export default function App() {
                             <select
                               value={globalFocus}
                               disabled={enCola}
-                              onChange={(e) => setGlobalFocus(e.target.value as 'left' | 'center' | 'right' | 'follow')}
+                              onChange={(e) => setGlobalFocus(e.target.value as 'left' | 'center' | 'right' | 'follow' | 'facecam')}
                             >
                               <option value="left">Izquierda</option>
                               <option value="center">Centro</option>
                               <option value="right">Derecha</option>
                               <option value="follow">🎙 Seguir al hablante</option>
+                              {activeCampaign?.facecam && <option value="facecam">🎥 Facecam + pantalla</option>}
                             </select>
                           </label>
                           <button
@@ -2107,11 +2160,12 @@ export default function App() {
                       <div className="form-grid">
                         <label className="field">
                           <span>Encuadre</span>
-                          <select value={clip.focus} onChange={(e) => handleClipSettingChange(clip, { focus: e.target.value as 'left' | 'center' | 'right' | 'follow' })}>
+                          <select value={clip.focus} onChange={(e) => handleClipSettingChange(clip, { focus: e.target.value as 'left' | 'center' | 'right' | 'follow' | 'facecam' })}>
                             <option value="left">Izquierda</option>
                             <option value="center">Centro</option>
                             <option value="right">Derecha</option>
                             <option value="follow">🎙 Seguir al hablante</option>
+                            {activeCampaign?.facecam && <option value="facecam">🎥 Facecam + pantalla</option>}
                           </select>
                         </label>
                         <label className="field">
@@ -2812,6 +2866,48 @@ export default function App() {
               <div className="me-bar">
                 <span className="lb-count">Enfoque en x={Math.round(fp.cx * 100)}%. La franja marca la zona aproximada del recorte.</span>
                 <button className="lb-blur on" onClick={handleSaveFocusPoint}>Guardar</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {facecamEditor && (() => {
+        const ed = facecamEditor
+        const close = () => { setFacecamEditor(null); setDrawRect(null); drawStart.current = null }
+        const cur = drawRect || ed.rect
+        return (
+          <div className="lightbox-backdrop" onClick={close}>
+            <div className="manual-editor" onClick={(e) => e.stopPropagation()}>
+              <div className="me-head">
+                <span>🎥 Marca el recuadro de tu cámara (webcam) — arrastra sobre él. Irá arriba; la pantalla, abajo.</span>
+                <button className="lb-close" title="Cerrar" onClick={close}>✕</button>
+              </div>
+              <div
+                className="me-stage"
+                onPointerDown={(e) => {
+                  const el = e.currentTarget; el.setPointerCapture(e.pointerId)
+                  const pt = normPoint(e, el); drawStart.current = pt; setDrawRect({ x: pt.x, y: pt.y, w: 0, h: 0 })
+                }}
+                onPointerMove={(e) => {
+                  if (!drawStart.current) return
+                  const pt = normPoint(e, e.currentTarget); const s = drawStart.current
+                  setDrawRect({ x: Math.min(s.x, pt.x), y: Math.min(s.y, pt.y), w: Math.abs(pt.x - s.x), h: Math.abs(pt.y - s.y) })
+                }}
+                onPointerUp={() => {
+                  if (drawRect && drawRect.w > 0.02 && drawRect.h > 0.02) setFacecamEditor({ ...ed, rect: drawRect })
+                  setDrawRect(null); drawStart.current = null
+                }}
+              >
+                <img src={api.fileUrl(ed.frame)} alt="fotograma del vídeo" draggable={false} />
+                {cur && <div className="me-rect" style={{ left: `${cur.x * 100}%`, top: `${cur.y * 100}%`, width: `${cur.w * 100}%`, height: `${cur.h * 100}%` }} />}
+              </div>
+              <div className="me-bar">
+                <label className="help" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Zoom pantalla: {ed.zoom.toFixed(1)}×
+                  <input type="range" min={1} max={2.5} step={0.1} value={ed.zoom} onChange={(e) => setFacecamEditor({ ...ed, zoom: Number(e.target.value) })} />
+                </label>
+                <button className="lb-blur on" disabled={!ed.rect && !drawRect} onClick={handleSaveFacecam}>Guardar</button>
               </div>
             </div>
           </div>

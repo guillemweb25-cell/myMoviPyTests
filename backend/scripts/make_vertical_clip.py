@@ -55,10 +55,33 @@ def _follow_x_expr(segments: list[tuple[float, float, float]]) -> str:
 
 
 def build_filter(top_ratio: float, focus: str = "center", zoom: float = 1.0, duration: float = 0.0,
-                 follow_segments: list[tuple[float, float, float]] | None = None) -> str:
+                 follow_segments: list[tuple[float, float, float]] | None = None,
+                 facecam: tuple[float, float, float, float] | None = None,
+                 screen_zoom: float = 1.0) -> str:
     top_h = int(CANVAS_H * top_ratio)
     top_h -= top_h % 2  # alto par para el codec
     bottom_h = CANVAS_H - top_h
+
+    # Modo FACECAM: arriba el recuadro de la webcam (rect fijo del vídeo), abajo la
+    # pantalla completa con zoom ligero configurable (para que se lea el contenido).
+    if facecam is not None:
+        fx, fy, fw, fh = facecam
+        z = max(1.0, float(screen_zoom))
+        sw = int(CANVAS_W * z)
+        sw -= sw % 2
+        return (
+            f"[0:v]split=2[top][botsrc];"
+            # Arriba: recorta el rectángulo de la cámara y lo llena (cover).
+            f"[top]crop=iw*{fw:.4f}:ih*{fh:.4f}:iw*{fx:.4f}:ih*{fy:.4f},"
+            f"scale={CANVAS_W}:{top_h}:force_original_aspect_ratio=increase,"
+            f"crop={CANVAS_W}:{top_h}:(iw-ow)/2:(ih-oh)/2,setsar=1[toppad];"
+            # Abajo: pantalla escalada a ancho*zoom; recorta centrado a la franja y
+            # rellena con negro si aún queda hueco (letterbox mínimo).
+            f"[botsrc]scale={sw}:-2,"
+            f"crop={CANVAS_W}:'min({bottom_h}\\,ih)':'(iw-{CANVAS_W})/2':'(ih-oh)/2',"
+            f"pad={CANVAS_W}:{bottom_h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[bot];"
+            f"[toppad][bot]vstack=inputs=2[v]"
+        )
 
     zoom = max(1.0, float(zoom))
     scaled_w = int(CANVAS_W * zoom)
@@ -90,6 +113,8 @@ def make_clip(
     zoom: float = 1.0,
     ffmpeg: str = "ffmpeg",
     follow_segments: list[tuple[float, float, float]] | None = None,
+    facecam: tuple[float, float, float, float] | None = None,
+    screen_zoom: float = 1.0,
 ) -> Path:
     duration = round(end - start, 3)
     if duration <= 0:
@@ -101,7 +126,7 @@ def make_clip(
         "-ss", f"{start:.3f}",
         "-i", str(video),
         "-t", f"{duration:.3f}",
-        "-filter_complex", build_filter(top_ratio, focus, zoom, duration, follow_segments),
+        "-filter_complex", build_filter(top_ratio, focus, zoom, duration, follow_segments, facecam, screen_zoom),
         "-map", "[v]",
         "-map", "0:a?",
         "-c:v", "libx264",

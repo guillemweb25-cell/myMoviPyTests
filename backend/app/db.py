@@ -91,6 +91,7 @@ CAMPAIGN_MIGRATIONS = [
     "ALTER TABLE campaigns ADD COLUMN brief_url TEXT DEFAULT ''",
     "ALTER TABLE campaigns ADD COLUMN rules_json TEXT DEFAULT ''",
     "ALTER TABLE campaigns ADD COLUMN watermark_path TEXT DEFAULT ''",
+    "ALTER TABLE campaigns ADD COLUMN facecam TEXT DEFAULT ''",
 ]
 
 
@@ -365,6 +366,13 @@ def delete_channel(channel_id: int) -> None:
         conn.execute("DELETE FROM channels WHERE id = ?", (channel_id,))
 
 
+def _parse_json_obj(raw: str) -> dict | None:
+    try:
+        return json.loads(raw) if raw else None
+    except Exception:
+        return None
+
+
 def _campaign_to_dict(row: sqlite3.Row) -> dict:
     raw_rules = row["rules_json"] if "rules_json" in row.keys() else ""
     try:
@@ -384,6 +392,7 @@ def _campaign_to_dict(row: sqlite3.Row) -> dict:
         "briefUrl": (row["brief_url"] if "brief_url" in row.keys() else "") or "",
         "rules": rules,
         "watermarkPath": (row["watermark_path"] if "watermark_path" in row.keys() else "") or "",
+        "facecam": _parse_json_obj(row["facecam"] if "facecam" in row.keys() else ""),
     }
 
 
@@ -453,7 +462,7 @@ def get_campaign_by_transcript(transcript_path: str) -> dict | None:
 
 
 def update_campaign(campaign_id: int, fields: dict) -> dict | None:
-    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status", "brief_url", "rules_json", "watermark_path"}
+    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status", "brief_url", "rules_json", "watermark_path", "facecam"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)

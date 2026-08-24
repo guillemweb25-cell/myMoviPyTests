@@ -112,6 +112,11 @@ export const api = {
   extractBrief: (id: number, payload: { briefUrl?: string; briefText?: string }) =>
     postJson<{ campaign: Campaign; rules: Record<string, unknown> }>(`/api/campaigns/${id}/brief`, payload),
   applyCampaignRules: (id: number) => postJson<{ updated: number; onScreenText: string }>(`/api/campaigns/${id}/apply-rules`, {}),
+  campaignSceneFrame: (id: number, t = 30) =>
+    postJson<{ frame: string }>(`/api/campaigns/${id}/scene-frame?t=${t}`, {}),
+  setCampaignFacecam: (id: number, rect: { x: number; y: number; w: number; h: number; zoom: number }) =>
+    postJson<{ facecam: { x: number; y: number; w: number; h: number; zoom: number } }>(`/api/campaigns/${id}/facecam`, rect),
+  deleteCampaignFacecam: (id: number) => del<{ facecam: null }>(`/api/campaigns/${id}/facecam`),
   setCampaignCreator: (id: number, creator: string) =>
     postJson<{ campaign: Campaign }>(`/api/campaigns/${id}/creator`, { creator }),
   campaignCoverage: (id: number) =>

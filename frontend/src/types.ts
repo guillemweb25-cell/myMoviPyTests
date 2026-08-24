@@ -80,6 +80,7 @@ export type Campaign = {
   rules?: CampaignRules
   clipStats?: { total: number; rendered: number; uploaded: number; submitted: number }
   watermarkPath?: string
+  facecam?: { x: number; y: number; w: number; h: number; zoom: number } | null
 }
 
 export type ClipSource = {
@@ -102,7 +103,7 @@ export type ClipCandidate = {
   score: number
   transcript: string
   channelId?: number | null
-  focus: 'left' | 'center' | 'right' | 'follow'
+  focus: 'left' | 'center' | 'right' | 'follow' | 'facecam'
   zoom: number
   topRatio: number
   subtitles: boolean
