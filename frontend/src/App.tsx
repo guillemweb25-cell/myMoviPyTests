@@ -2093,13 +2093,17 @@ export default function App() {
                             <select
                               value={globalFocus}
                               disabled={enCola}
-                              onChange={(e) => setGlobalFocus(e.target.value as 'left' | 'center' | 'right' | 'follow' | 'facecam')}
+                              onChange={(e) => {
+                                const f = e.target.value as 'left' | 'center' | 'right' | 'follow' | 'facecam'
+                                setGlobalFocus(f)
+                                if (f === 'facecam' && activeCampaign && !activeCampaign.facecam) handleOpenFacecam(activeCampaign)
+                              }}
                             >
                               <option value="left">Izquierda</option>
                               <option value="center">Centro</option>
                               <option value="right">Derecha</option>
                               <option value="follow">🎙 Seguir al hablante</option>
-                              {activeCampaign?.facecam && <option value="facecam">🎥 Facecam + pantalla</option>}
+                              <option value="facecam">🎥 Facecam + pantalla</option>
                             </select>
                           </label>
                           <button
@@ -2160,12 +2164,16 @@ export default function App() {
                       <div className="form-grid">
                         <label className="field">
                           <span>Encuadre</span>
-                          <select value={clip.focus} onChange={(e) => handleClipSettingChange(clip, { focus: e.target.value as 'left' | 'center' | 'right' | 'follow' | 'facecam' })}>
+                          <select value={clip.focus} onChange={(e) => {
+                            const f = e.target.value as 'left' | 'center' | 'right' | 'follow' | 'facecam'
+                            handleClipSettingChange(clip, { focus: f })
+                            if (f === 'facecam' && activeCampaign && !activeCampaign.facecam) handleOpenFacecam(activeCampaign)
+                          }}>
                             <option value="left">Izquierda</option>
                             <option value="center">Centro</option>
                             <option value="right">Derecha</option>
                             <option value="follow">🎙 Seguir al hablante</option>
-                            {activeCampaign?.facecam && <option value="facecam">🎥 Facecam + pantalla</option>}
+                            <option value="facecam">🎥 Facecam + pantalla</option>
                           </select>
                         </label>
                         <label className="field">
