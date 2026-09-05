@@ -82,8 +82,12 @@ def main() -> None:
         print("Añadiendo subtítulos karaoke (AssemblyAI)...", flush=True)
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from subtitle_engine import SubtitleEngine  # noqa: E402
+        # Caché de transcripción PROPIA de este reel: si no, el motor reutiliza el
+        # subtitle_words.json de otro reel de la misma carpeta (subtítulos cruzados).
+        cache_dir = out.parent / f".sub_{out.stem}"
+        cache_dir.mkdir(parents=True, exist_ok=True)
         try:
-            SubtitleEngine().add_subtitles_to_video(out, audio, (CANVAS_W, CANVAS_H))
+            SubtitleEngine().add_subtitles_to_video(out, audio, (CANVAS_W, CANVAS_H), cache_dir=cache_dir)
         except Exception as exc:  # noqa: BLE001
             print(f"No se pudieron añadir subtítulos ({exc}); se deja el reel sin ellos.", flush=True)
 
