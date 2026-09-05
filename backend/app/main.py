@@ -1584,6 +1584,58 @@ def set_clip_focus_plan(clip_id: str, payload: FocusPlanRequest) -> dict:
     return {"focusSegments": plan}
 
 
+# ---------------------------------------------------------------------------
+# Avatar Reel (contenido propio con IA): guion + voz clonada. El avatar (HeyGen)
+# y el b-roll generado (ComfyUI/LTX) llegan en fases posteriores.
+# ---------------------------------------------------------------------------
+@app.get("/api/reels/voices")
+def reel_voices() -> dict:
+    from .services import tts_client
+    return {"voices": tts_client.list_voices(), "ttsUrl": os.environ.get("LOCAL_TTS_URL") or "http://192.168.1.46:8022"}
+
+
+class ReelScriptRequest(BaseModel):
+    trigger: str
+    angle: str = ""
+    seconds: int = 40
+    toneExamples: str = ""
+
+
+@app.post("/api/reels/script")
+def reel_script(payload: ReelScriptRequest) -> dict:
+    from .services.reel_engine import generate_script
+    if not payload.trigger.strip():
+        raise HTTPException(status_code=400, detail="Pon un disparador (tema, noticia, idea).")
+    try:
+        script = generate_script(payload.trigger, payload.angle, payload.seconds, payload.toneExamples)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo generando el guion: {exc}") from exc
+    return {"script": script}
+
+
+class ReelVoiceRequest(BaseModel):
+    script: str
+    voiceId: str
+    language: str | None = None
+
+
+@app.post("/api/reels/voice")
+def reel_voice(payload: ReelVoiceRequest) -> dict:
+    from .services import tts_client
+    if not payload.script.strip():
+        raise HTTPException(status_code=400, detail="No hay guion que locutar.")
+    if not payload.voiceId.strip():
+        raise HTTPException(status_code=400, detail="Elige una voz.")
+    out_dir = ROOT_DIR / "output" / "reels"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"reel_{uuid.uuid4().hex[:10]}.mp3"
+    try:
+        tts_client.synthesize(payload.script, payload.voiceId, out, payload.language)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo generando la voz (¿TTS encendido en el Windows?): {exc}") from exc
+    return {"audio": str(out.relative_to(ROOT_DIR))}
+
+
 @app.post("/api/clips/{clip_id}/seo")
 def generate_clip_seo_endpoint(clip_id: str) -> dict:
     from .services.clip_seo import generate_clip_seo

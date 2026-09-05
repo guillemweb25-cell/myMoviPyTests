@@ -73,6 +73,11 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 
 export const api = {
   health: () => getJson<{ status: string; authRequired: boolean }>('/api/health'),
+  reelVoices: () => getJson<{ voices: string[]; ttsUrl: string }>('/api/reels/voices'),
+  reelScript: (payload: { trigger: string; angle?: string; seconds?: number; toneExamples?: string }) =>
+    postJson<{ script: string }>('/api/reels/script', payload),
+  reelVoice: (payload: { script: string; voiceId: string; language?: string | null }) =>
+    postJson<{ audio: string }>('/api/reels/voice', payload),
   scripts: () => getJson<ScriptInfo[]>('/api/scripts'),
   jobs: () => getJson<Job[]>('/api/jobs'),
   job: (id: string) => getJson<Job>(`/api/jobs/${id}`),

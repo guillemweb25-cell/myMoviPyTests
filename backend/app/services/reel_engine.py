@@ -1,0 +1,56 @@
+"""Generación de guiones para reels (Avatar Reel). A partir de un disparador
+(noticia, idea, tweet, tema) escribe un guion corto de vertical con gancho fuerte
+y tono natural — pensado para leerse con TTS (solo el texto hablado, sin
+acotaciones). Reutiliza OpenAI (ya configurado en el proyecto).
+"""
+from __future__ import annotations
+
+import os
+import re
+
+
+SYSTEM = (
+    "Eres un guionista experto en vídeo corto vertical (Reels/TikTok/Shorts). "
+    "Escribes guiones para NARRAR con voz en off: solo el texto hablado, sin "
+    "acotaciones, sin emojis, sin hashtags, sin indicaciones de cámara. Tono "
+    "natural y cercano, como hablando a un amigo, NO genérico ni corporativo. "
+    "Primera frase = gancho potente que pare el scroll. Luego desarrollas la idea "
+    "con claridad y cierras con un remate o una llamada suave a seguir/ver más. "
+    "Frases cortas, ritmo ágil. Escribe SIEMPRE en el mismo idioma del disparador."
+)
+
+
+def _target_words(seconds: int) -> int:
+    # ~2.5 palabras/seg de locución natural.
+    return max(30, int(seconds * 2.5))
+
+
+def generate_script(trigger: str, angle: str = "", seconds: int = 40,
+                    tone_examples: str = "", model: str | None = None) -> str:
+    """Devuelve el guion (texto hablado). `trigger` = disparador; `angle` = ángulo
+    opcional; `seconds` = duración objetivo; `tone_examples` = ejemplos de guiones
+    propios para imitar el tono (opcional)."""
+    from openai import OpenAI
+
+    model = model or os.getenv("OPENAI_REEL_MODEL", "gpt-4o")
+    words = _target_words(seconds)
+    user = (
+        f"Disparador (tema/noticia/idea):\n{trigger.strip()}\n\n"
+        + (f"Ángulo o enfoque deseado: {angle.strip()}\n\n" if angle.strip() else "")
+        + (f"Imita ESTE tono y estilo (ejemplos de guiones propios):\n{tone_examples.strip()[:2000]}\n\n" if tone_examples.strip() else "")
+        + f"Escribe el guion hablado para un vídeo de ~{seconds} segundos "
+          f"(aprox. {words} palabras). Solo el texto que se va a narrar."
+    )
+    client = OpenAI()
+    resp = client.chat.completions.create(
+        model=model,
+        temperature=0.8,
+        messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}],
+    )
+    script = (resp.choices[0].message.content or "").strip()
+    # Limpieza: quita comillas envolventes, encabezados tipo "Guion:", emojis/hashtags.
+    script = re.sub(r"^\s*(gui[oó]n|script|texto)\s*:\s*", "", script, flags=re.IGNORECASE).strip()
+    script = script.strip("“”\"'")
+    script = re.sub(r"#\w+", "", script)
+    script = re.sub(r"[ \t]+\n", "\n", script).strip()
+    return script

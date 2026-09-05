@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, clearToken, getToken, setToken, UnauthorizedError } from './api'
 import type { Campaign, Channel, ClipCandidate, ClipSource, ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
 
-type Section = 'dashboard' | 'content' | 'clipping' | 'channel' | 'execute' | 'jobs' | 'files'
+type Section = 'dashboard' | 'content' | 'clipping' | 'reels' | 'channel' | 'execute' | 'jobs' | 'files'
 
 const sections: { id: Section; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'content', label: 'Contenido Web' },
   { id: 'clipping', label: 'Clipping' },
+  { id: 'reels', label: '🎬 Avatar Reel' },
   { id: 'execute', label: 'Ejecutar Scripts' },
   { id: 'jobs', label: 'Historial' },
   { id: 'files', label: 'Explorador Output' },
@@ -121,6 +122,15 @@ export default function App() {
   const restoredPersonsRef = useRef<Set<string>>(new Set())
   const [focusPicker, setFocusPicker] = useState<{ clipId: string; segIdx: number; frame: string; cx: number; segments: SegList } | null>(null)
   const [videoDuration, setVideoDuration] = useState<number | null>(null)
+  // Avatar Reel (guion + voz)
+  const [reelTrigger, setReelTrigger] = useState('')
+  const [reelAngle, setReelAngle] = useState('')
+  const [reelSeconds, setReelSeconds] = useState(40)
+  const [reelScript, setReelScript] = useState('')
+  const [reelVoices, setReelVoices] = useState<string[]>([])
+  const [reelVoiceId, setReelVoiceId] = useState('')
+  const [reelAudio, setReelAudio] = useState('')
+  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice'>('')
   const [facecamEditor, setFacecamEditor] = useState<{ campaignId: number; frame: string; rect: Rect | null; zoom: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow' | 'facecam'>('center')
@@ -526,6 +536,25 @@ export default function App() {
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     el.classList.add('flash')
     window.setTimeout(() => el.classList.remove('flash'), 1600)
+  }
+
+  async function handleGenReelScript() {
+    if (!reelTrigger.trim()) { setError('Escribe un disparador (tema, noticia, idea).'); return }
+    setReelBusy('script'); setError('')
+    try {
+      const { script } = await api.reelScript({ trigger: reelTrigger, angle: reelAngle, seconds: reelSeconds })
+      setReelScript(script); setReelAudio('')
+    } catch (e) { handleApiError(e) } finally { setReelBusy('') }
+  }
+
+  async function handleGenReelVoice() {
+    if (!reelScript.trim()) { setError('Primero genera o escribe el guion.'); return }
+    if (!reelVoiceId) { setError('Elige una voz (arranca el TTS del Windows si la lista está vacía).'); return }
+    setReelBusy('voice'); setError('')
+    try {
+      const { audio } = await api.reelVoice({ script: reelScript, voiceId: reelVoiceId })
+      setReelAudio(audio)
+    } catch (e) { handleApiError(e) } finally { setReelBusy('') }
   }
 
   async function loadSavedClips(transcriptPath: string) {
@@ -1231,6 +1260,15 @@ export default function App() {
       refreshCampaigns(activeChannel.id)
     }
   }, [activeChannel?.id])
+
+  // Carga las voces del TTS al abrir Avatar Reel.
+  useEffect(() => {
+    if (activeSection !== 'reels' || authState !== 'authed') return
+    api.reelVoices().then((d) => {
+      setReelVoices(d.voices)
+      setReelVoiceId((cur) => cur || d.voices[0] || '')
+    }).catch(() => {})
+  }, [activeSection, authState])
 
   // Duración del vídeo de la campaña activa (para el mapa de cobertura).
   useEffect(() => {
@@ -2470,6 +2508,63 @@ export default function App() {
                   </>
                 )}
               </>
+            )}
+          </section>
+        )}
+
+        {activeSection === 'reels' && (
+          <section className="panel">
+            <h3>🎬 Avatar Reel — guion + voz clonada</h3>
+            <p className="description">
+              Contenido propio con IA. Fase 1: de un disparador → guion → tu voz clonada (XTTS local).
+              El avatar (HeyGen) y el b-roll generado llegan en fases siguientes.
+            </p>
+
+            <label className="field span-2">
+              <span>Disparador (tema, noticia, tweet, idea)</span>
+              <textarea rows={3} value={reelTrigger} onChange={(e) => setReelTrigger(e.target.value)} placeholder="Ej: La BBC estrenó una cámara libre 3D para ver el mundial como en el FIFA" />
+            </label>
+            <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <label className="field" style={{ flex: 1, minWidth: 220 }}>
+                <span>Ángulo (opcional)</span>
+                <input value={reelAngle} onChange={(e) => setReelAngle(e.target.value)} placeholder="Enfoque o gancho que quieres darle" />
+              </label>
+              <label className="field" style={{ maxWidth: 150 }}>
+                <span>Duración (s)</span>
+                <input type="number" min={15} max={90} value={reelSeconds} onChange={(e) => setReelSeconds(Number(e.target.value) || 40)} />
+              </label>
+              <button className="primary" disabled={reelBusy !== ''} onClick={handleGenReelScript}>
+                {reelBusy === 'script' ? 'Generando…' : 'Generar guion'}
+              </button>
+            </div>
+
+            {reelScript && (
+              <>
+                <label className="field span-2" style={{ marginTop: 12 }}>
+                  <span>Guion (editable — lo que se locutará)</span>
+                  <textarea rows={7} value={reelScript} onChange={(e) => setReelScript(e.target.value)} />
+                </label>
+                <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <label className="field" style={{ minWidth: 220 }}>
+                    <span>Voz {reelVoices.length === 0 && '(⚠️ arranca el TTS en el Windows)'}</span>
+                    <select value={reelVoiceId} onChange={(e) => setReelVoiceId(e.target.value)}>
+                      {reelVoices.length === 0 && <option value="">— sin voces —</option>}
+                      {reelVoices.map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </label>
+                  <button className="primary" disabled={reelBusy !== '' || !reelVoiceId} onClick={handleGenReelVoice}>
+                    {reelBusy === 'voice' ? 'Generando voz… (puede tardar)' : '🎙 Generar voz'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {reelAudio && (
+              <div className="seo-box" style={{ marginTop: 12 }}>
+                <div className="seo-head"><span>🔊 Voz generada</span></div>
+                <audio controls src={api.fileUrl(reelAudio)} style={{ width: '100%' }} />
+                <p className="help">Siguiente fase: componer el vertical (avatar abajo + b-roll arriba + subtítulos) con este audio.</p>
+              </div>
             )}
           </section>
         )}
