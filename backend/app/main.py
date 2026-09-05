@@ -1652,6 +1652,32 @@ def reels_list() -> dict:
     return {"reels": db.list_reels()}
 
 
+class ReelBrollRequest(BaseModel):
+    reelId: str
+    subtitles: bool = True
+    title: str = ""
+
+
+@app.post("/api/reels/broll")
+def reel_broll(payload: ReelBrollRequest) -> dict:
+    """Encola un JOB que genera el b-roll con ComfyUI (prompts del guion → imágenes)
+    y compone el reel (slideshow + karaoke + voz). Como job, sobrevive a recargas.
+    Usa la GPU del Windows (ComfyUI). El frontend refresca la generación al terminar."""
+    from .services import comfy_client
+    reel = db.get_reel(payload.reelId)
+    if not reel or not reel.get("audio"):
+        raise HTTPException(status_code=400, detail="La generación no tiene audio.")
+    if not comfy_client.is_up():
+        raise HTTPException(status_code=502, detail="ComfyUI no responde (¿encendido en el Windows y la GPU libre?).")
+    args = ["--reel", payload.reelId]
+    if payload.title.strip():
+        args += ["--title", payload.title.strip()]
+    if not payload.subtitles:
+        args.append("--no-subtitles")
+    job = enqueue_job("reel_broll.py", args)
+    return {"job": job}
+
+
 @app.delete("/api/reels/{reel_id}")
 def reels_delete(reel_id: str) -> dict:
     reel = db.get_reel(reel_id)

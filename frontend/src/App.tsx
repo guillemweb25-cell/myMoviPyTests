@@ -135,7 +135,7 @@ export default function App() {
   const [reelVideo, setReelVideo] = useState('')
   const [reelId, setReelId] = useState('')
   const [reels, setReels] = useState<import('./types').ReelItem[]>([])
-  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose'>('')
+  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose' | 'broll'>('')
   const [facecamEditor, setFacecamEditor] = useState<{ campaignId: number; frame: string; rect: Rect | null; zoom: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow' | 'facecam'>('center')
@@ -571,6 +571,29 @@ export default function App() {
       setReelVideo(video)
       api.reelsList().then((d) => setReels(d.reels)).catch(() => {})
     } catch (e) { handleApiError(e) } finally { setReelBusy('') }
+  }
+
+  async function handleGenBroll() {
+    if (!reelId || !reelAudio) { setError('Primero genera la voz.'); return }
+    setReelBusy('broll'); setError('')
+    const currentId = reelId
+    try {
+      await api.reelBroll({ reelId: currentId, title: reelTitle, subtitles: reelSubs })  // encola el job
+      const started = Date.now()
+      const poll = async () => {
+        try {
+          const { reels: list } = await api.reelsList()
+          setReels(list)
+          const me = list.find((r) => r.id === currentId)
+          if (me?.video) { setReelVideo(me.video); setReelBusy(''); return }
+        } catch { /* reintenta */ }
+        if (Date.now() - started > 10 * 60 * 1000) {
+          setReelBusy(''); setError('El b-roll tarda más de lo normal; revisa el Historial (job reel_broll).'); return
+        }
+        window.setTimeout(poll, 5000)
+      }
+      window.setTimeout(poll, 5000)
+    } catch (e) { handleApiError(e); setReelBusy('') }
   }
 
   function handleOpenReel(r: import('./types').ReelItem) {
@@ -2616,10 +2639,13 @@ export default function App() {
                     </select>
                   </label>
                   <button className="primary" disabled={reelBusy !== ''} onClick={handleComposeReel}>
-                    {reelBusy === 'compose' ? 'Componiendo… (puede tardar)' : '🎬 Componer vídeo'}
+                    {reelBusy === 'compose' ? 'Componiendo…' : '🎬 Fondo simple'}
+                  </button>
+                  <button className="primary" disabled={reelBusy !== ''} onClick={handleGenBroll} title="Genera imágenes con IA (ComfyUI) que ilustran el guion. Usa la GPU del Windows.">
+                    {reelBusy === 'broll' ? 'Generando imágenes… (1-3 min)' : '🎨 Con imágenes IA'}
                   </button>
                 </div>
-                <p className="help">Fase 2: fondo + karaoke + tu voz (sin GPU). El avatar (HeyGen) y el b-roll generado llegan después.</p>
+                <p className="help"><strong>Fondo simple</strong>: negro + karaoke (sin GPU). <strong>Con imágenes IA</strong>: b-roll generado con ComfyUI (usa tu GPU). El avatar (HeyGen) llega después.</p>
               </div>
             )}
 

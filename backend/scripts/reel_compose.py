@@ -53,11 +53,47 @@ def build_base(audio: Path, out: Path, dur: float, background: Path | None,
         raise SystemExit(f"ffmpeg falló al componer el base (código {r.returncode})")
 
 
+def build_slideshow(audio: Path, out: Path, dur: float, images: list[Path],
+                    title: str, ffmpeg: str) -> None:
+    """Vídeo base con un SLIDESHOW de imágenes (b-roll) a pantalla completa: cada
+    imagen dur/N segundos (cover del canvas) + audio + título. Usa el CONCAT
+    DEMUXER (no inputs -loop, que salen con código 255 aunque el vídeo esté bien)."""
+    n = len(images)
+    seg = max(0.8, dur / n)
+    # Lista para el concat demuxer (rutas absolutas). Se repite la última imagen
+    # porque el demuxer ignora la 'duration' del último fichero.
+    listfile = out.with_suffix(".concat.txt")
+    lines = ["ffconcat version 1.0"]
+    for img in images:
+        lines.append(f"file '{img.resolve()}'")
+        lines.append(f"duration {seg:.3f}")
+    lines.append(f"file '{images[-1].resolve()}'")
+    listfile.write_text("\n".join(lines), encoding="utf-8")
+
+    vf = (f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+          f"crop={CANVAS_W}:{CANVAS_H},setsar=1,fps=30")
+    if title.strip():
+        safe = title.replace("\\", "\\\\").replace(":", "\\:").replace("'", "’")
+        vf += (f",drawtext=text='{safe}':fontcolor=white:fontsize=54:box=1:"
+               f"boxcolor=black@0.45:boxborderw=18:x=(w-text_w)/2:y=140")
+    cmd = [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
+           "-i", str(audio), "-vf", vf, "-map", "0:v", "-map", "1:a",
+           "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+           "-r", "30", "-movflags", "+faststart", "-c:a", "aac", "-b:a", "160k",
+           "-t", f"{dur:.3f}", str(out)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    listfile.unlink(missing_ok=True)
+    if r.returncode != 0 or not out.exists():
+        sys.stderr.write(r.stderr[-1500:])
+        raise SystemExit(f"ffmpeg falló al componer el slideshow (código {r.returncode})")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Compone un reel vertical desde el audio")
     ap.add_argument("--audio", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--background", default="", help="imagen de fondo opcional")
+    ap.add_argument("--images", default="", help="imágenes b-roll (slideshow), separadas por comas")
     ap.add_argument("--title", default="")
     ap.add_argument("--subtitles", action="store_true")
     ap.add_argument("--lang", default="es")
@@ -75,8 +111,13 @@ def main() -> None:
         raise SystemExit("No se pudo leer la duración del audio.")
 
     print(f"Componiendo reel ({dur:.1f}s)...", flush=True)
-    bg = Path(args.background) if args.background else None
-    build_base(audio, out, dur, bg, args.title, args.ffmpeg)
+    images = [Path(p) for p in args.images.split(",") if p.strip() and Path(p).exists()]
+    if images:
+        print(f"Slideshow de {len(images)} imágenes b-roll.", flush=True)
+        build_slideshow(audio, out, dur, images, args.title, args.ffmpeg)
+    else:
+        bg = Path(args.background) if args.background else None
+        build_base(audio, out, dur, bg, args.title, args.ffmpeg)
 
     if args.subtitles:
         print("Añadiendo subtítulos karaoke (AssemblyAI)...", flush=True)

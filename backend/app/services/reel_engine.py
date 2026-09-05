@@ -54,3 +54,31 @@ def generate_script(trigger: str, angle: str = "", seconds: int = 40,
     script = re.sub(r"#\w+", "", script)
     script = re.sub(r"[ \t]+\n", "\n", script).strip()
     return script
+
+
+def broll_prompts(script: str, n: int, model: str | None = None) -> list[str]:
+    """Convierte el guion en `n` prompts visuales EN INGLÉS (SDXL entiende inglés)
+    para generar el b-roll: planos cinematográficos que ilustran cada tramo del
+    guion, en orden. Sin texto ni marcas de agua."""
+    from openai import OpenAI
+
+    model = model or os.getenv("OPENAI_REEL_MODEL", "gpt-4o")
+    sys_p = (
+        "You turn a short-form video script into a sequence of b-roll IMAGE prompts "
+        "for an SDXL text-to-image model. Return EXACTLY N prompts, in order, each a "
+        "vivid, concrete, cinematic visual that illustrates that part of the script. "
+        "Prompts in ENGLISH, photographic/cinematic, describe subject + setting + "
+        "lighting + mood. No text, no logos, no watermarks, no captions. One line each."
+    )
+    user = f"N = {n}\n\nScript:\n{script.strip()}\n\nReturn JSON: {{\"prompts\": [\"...\", ...]}} with exactly {n} prompts."
+    client = OpenAI()
+    resp = client.chat.completions.create(
+        model=model, temperature=0.7, response_format={"type": "json_object"},
+        messages=[{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
+    )
+    import json as _json
+    data = _json.loads(resp.choices[0].message.content or "{}")
+    prompts = [str(p).strip() for p in data.get("prompts", []) if str(p).strip()]
+    # Estilo común para coherencia y calidad.
+    suffix = ", cinematic, highly detailed, sharp focus, professional photography, 8k"
+    return [(p + suffix) for p in prompts[:n]] or [f"cinematic establishing shot{suffix}"]
