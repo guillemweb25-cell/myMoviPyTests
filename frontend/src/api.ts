@@ -78,6 +78,8 @@ export const api = {
     postJson<{ script: string }>('/api/reels/script', payload),
   reelVoice: (payload: { script: string; voiceId: string; language?: string | null }) =>
     postJson<{ audio: string }>('/api/reels/voice', payload),
+  reelCompose: (payload: { audio: string; title?: string; subtitles?: boolean; language?: string }) =>
+    postJson<{ video: string }>('/api/reels/compose', payload),
   scripts: () => getJson<ScriptInfo[]>('/api/scripts'),
   jobs: () => getJson<Job[]>('/api/jobs'),
   job: (id: string) => getJson<Job>(`/api/jobs/${id}`),

@@ -1636,6 +1636,34 @@ def reel_voice(payload: ReelVoiceRequest) -> dict:
     return {"audio": str(out.relative_to(ROOT_DIR))}
 
 
+class ReelComposeRequest(BaseModel):
+    audio: str
+    title: str = ""
+    subtitles: bool = True
+    language: str = "es"
+
+
+@app.post("/api/reels/compose")
+def reel_compose(payload: ReelComposeRequest) -> dict:
+    """Compone el vídeo vertical del reel (fondo + karaoke + audio). Sin GPU:
+    ffmpeg (CPU) + AssemblyAI (nube). El avatar y el b-roll llegan en fases 2b/3."""
+    audio_abs = resolve_within_root(payload.audio)
+    if not audio_abs.exists():
+        raise HTTPException(status_code=400, detail="No existe el audio del reel.")
+    out = audio_abs.with_name(audio_abs.stem + "_video.mp4")
+    script = str((Path(__file__).resolve().parents[1]) / "scripts" / "reel_compose.py")
+    args = [sys.executable, script, "--audio", str(audio_abs), "--out", str(out),
+            "--lang", payload.language]
+    if payload.title.strip():
+        args += ["--title", payload.title.strip()]
+    if payload.subtitles:
+        args.append("--subtitles")
+    proc = subprocess.run(args, cwd=str(ROOT_DIR), capture_output=True, text=True)
+    if proc.returncode != 0 or not out.exists():
+        raise HTTPException(status_code=500, detail=f"Fallo componiendo el reel: {proc.stderr[-300:]}")
+    return {"video": str(out.relative_to(ROOT_DIR))}
+
+
 @app.post("/api/clips/{clip_id}/seo")
 def generate_clip_seo_endpoint(clip_id: str) -> dict:
     from .services.clip_seo import generate_clip_seo

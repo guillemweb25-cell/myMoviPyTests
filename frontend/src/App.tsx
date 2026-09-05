@@ -130,7 +130,10 @@ export default function App() {
   const [reelVoices, setReelVoices] = useState<string[]>([])
   const [reelVoiceId, setReelVoiceId] = useState('')
   const [reelAudio, setReelAudio] = useState('')
-  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice'>('')
+  const [reelTitle, setReelTitle] = useState('')
+  const [reelSubs, setReelSubs] = useState(true)
+  const [reelVideo, setReelVideo] = useState('')
+  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose'>('')
   const [facecamEditor, setFacecamEditor] = useState<{ campaignId: number; frame: string; rect: Rect | null; zoom: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow' | 'facecam'>('center')
@@ -553,7 +556,16 @@ export default function App() {
     setReelBusy('voice'); setError('')
     try {
       const { audio } = await api.reelVoice({ script: reelScript, voiceId: reelVoiceId })
-      setReelAudio(audio)
+      setReelAudio(audio); setReelVideo('')
+    } catch (e) { handleApiError(e) } finally { setReelBusy('') }
+  }
+
+  async function handleComposeReel() {
+    if (!reelAudio) { setError('Primero genera la voz.'); return }
+    setReelBusy('compose'); setError('')
+    try {
+      const { video } = await api.reelCompose({ audio: reelAudio, title: reelTitle, subtitles: reelSubs })
+      setReelVideo(video)
     } catch (e) { handleApiError(e) } finally { setReelBusy('') }
   }
 
@@ -2561,9 +2573,35 @@ export default function App() {
 
             {reelAudio && (
               <div className="seo-box" style={{ marginTop: 12 }}>
-                <div className="seo-head"><span>🔊 Voz generada</span></div>
+                <div className="seo-head"><span>🔊 Voz generada — compón el vídeo</span></div>
                 <audio controls src={api.fileUrl(reelAudio)} style={{ width: '100%' }} />
-                <p className="help">Siguiente fase: componer el vertical (avatar abajo + b-roll arriba + subtítulos) con este audio.</p>
+                <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 10 }}>
+                  <label className="field" style={{ flex: 1, minWidth: 220 }}>
+                    <span>Título en pantalla (opcional)</span>
+                    <input value={reelTitle} onChange={(e) => setReelTitle(e.target.value)} placeholder="Ej: El mundial ahora es un videojuego" />
+                  </label>
+                  <label className="field" style={{ maxWidth: 160 }}>
+                    <span>Subtítulos karaoke</span>
+                    <select value={reelSubs ? 'si' : 'no'} onChange={(e) => setReelSubs(e.target.value === 'si')}>
+                      <option value="si">Sí</option>
+                      <option value="no">No</option>
+                    </select>
+                  </label>
+                  <button className="primary" disabled={reelBusy !== ''} onClick={handleComposeReel}>
+                    {reelBusy === 'compose' ? 'Componiendo… (puede tardar)' : '🎬 Componer vídeo'}
+                  </button>
+                </div>
+                <p className="help">Fase 2: fondo + karaoke + tu voz (sin GPU). El avatar (HeyGen) y el b-roll generado llegan después.</p>
+              </div>
+            )}
+
+            {reelVideo && (
+              <div className="seo-box" style={{ marginTop: 12 }}>
+                <div className="seo-head">
+                  <span>✅ Reel compuesto</span>
+                  <a className="link-btn" href={api.fileUrl(reelVideo)} target="_blank" rel="noreferrer">Descargar</a>
+                </div>
+                <video controls src={api.fileUrl(reelVideo)} style={{ width: 240, borderRadius: 10, background: '#000' }} />
               </div>
             )}
           </section>
