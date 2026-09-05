@@ -133,6 +133,8 @@ export default function App() {
   const [reelTitle, setReelTitle] = useState('')
   const [reelSubs, setReelSubs] = useState(true)
   const [reelVideo, setReelVideo] = useState('')
+  const [reelId, setReelId] = useState('')
+  const [reels, setReels] = useState<import('./types').ReelItem[]>([])
   const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose'>('')
   const [facecamEditor, setFacecamEditor] = useState<{ campaignId: number; frame: string; rect: Rect | null; zoom: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
@@ -555,8 +557,9 @@ export default function App() {
     if (!reelVoiceId) { setError('Elige una voz (arranca el TTS del Windows si la lista está vacía).'); return }
     setReelBusy('voice'); setError('')
     try {
-      const { audio } = await api.reelVoice({ script: reelScript, voiceId: reelVoiceId })
-      setReelAudio(audio); setReelVideo('')
+      const { audio, reelId: id } = await api.reelVoice({ script: reelScript, voiceId: reelVoiceId, trigger: reelTrigger, reelId })
+      setReelAudio(audio); setReelVideo(''); setReelId(id)
+      api.reelsList().then((d) => setReels(d.reels)).catch(() => {})
     } catch (e) { handleApiError(e) } finally { setReelBusy('') }
   }
 
@@ -564,9 +567,30 @@ export default function App() {
     if (!reelAudio) { setError('Primero genera la voz.'); return }
     setReelBusy('compose'); setError('')
     try {
-      const { video } = await api.reelCompose({ audio: reelAudio, title: reelTitle, subtitles: reelSubs })
+      const { video } = await api.reelCompose({ audio: reelAudio, title: reelTitle, subtitles: reelSubs, reelId })
       setReelVideo(video)
+      api.reelsList().then((d) => setReels(d.reels)).catch(() => {})
     } catch (e) { handleApiError(e) } finally { setReelBusy('') }
+  }
+
+  function handleOpenReel(r: import('./types').ReelItem) {
+    setReelId(r.id); setReelTrigger(r.trigger); setReelScript(r.script)
+    setReelVoiceId(r.voiceId || reelVoiceId); setReelTitle(r.title)
+    setReelAudio(r.audio); setReelVideo(r.video)
+  }
+
+  function handleNewReel() {
+    setReelId(''); setReelTrigger(''); setReelAngle(''); setReelScript('')
+    setReelTitle(''); setReelAudio(''); setReelVideo('')
+  }
+
+  async function handleDeleteReel(r: import('./types').ReelItem) {
+    if (!window.confirm('¿Borrar esta generación (audio y vídeo incluidos)?')) return
+    try {
+      await api.reelDelete(r.id)
+      setReels((prev) => prev.filter((x) => x.id !== r.id))
+      if (reelId === r.id) handleNewReel()
+    } catch (e) { handleApiError(e) }
   }
 
   async function loadSavedClips(transcriptPath: string) {
@@ -1273,13 +1297,14 @@ export default function App() {
     }
   }, [activeChannel?.id])
 
-  // Carga las voces del TTS al abrir Avatar Reel.
+  // Carga voces + generaciones guardadas al abrir Avatar Reel.
   useEffect(() => {
     if (activeSection !== 'reels' || authState !== 'authed') return
     api.reelVoices().then((d) => {
       setReelVoices(d.voices)
       setReelVoiceId((cur) => cur || d.voices[0] || '')
     }).catch(() => {})
+    api.reelsList().then((d) => setReels(d.reels)).catch(() => {})
   }, [activeSection, authState])
 
   // Duración del vídeo de la campaña activa (para el mapa de cobertura).
@@ -2526,9 +2551,12 @@ export default function App() {
 
         {activeSection === 'reels' && (
           <section className="panel">
-            <h3>🎬 Avatar Reel — guion + voz clonada</h3>
+            <div className="viewer-header">
+              <h3 style={{ margin: 0 }}>🎬 Avatar Reel — guion + voz clonada</h3>
+              <button onClick={handleNewReel}>➕ Nueva generación</button>
+            </div>
             <p className="description">
-              Contenido propio con IA. Fase 1: de un disparador → guion → tu voz clonada (XTTS local).
+              Contenido propio con IA. Fase 1: de un disparador → guion → tu voz clonada (XTTS local) → vídeo con karaoke.
               El avatar (HeyGen) y el b-roll generado llegan en fases siguientes.
             </p>
 
@@ -2602,6 +2630,32 @@ export default function App() {
                   <a className="link-btn" href={api.fileUrl(reelVideo)} target="_blank" rel="noreferrer">Descargar</a>
                 </div>
                 <video controls src={api.fileUrl(reelVideo)} style={{ width: 240, borderRadius: 10, background: '#000' }} />
+              </div>
+            )}
+
+            {reels.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <div className="seo-head"><span>📁 Mis generaciones ({reels.length})</span></div>
+                <div className="jobs-list" style={{ maxHeight: 'unset' }}>
+                  {reels.map((r) => (
+                    <article key={r.id} className={`card${reelId === r.id ? ' selected' : ''}`} style={{ boxShadow: 'none' }}>
+                      <div className="viewer-header">
+                        <div style={{ minWidth: 0 }}>
+                          <p className="help" style={{ margin: 0 }}>
+                            {r.video ? '🎬 vídeo' : r.audio ? '🔊 voz' : '📝 guion'} · {new Date(r.createdAt).toLocaleString()}
+                          </p>
+                          <p style={{ margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {r.title || r.trigger || (r.script || '').slice(0, 80) || 'Sin título'}
+                          </p>
+                        </div>
+                        <div className="actions-row">
+                          <button className="primary" onClick={() => handleOpenReel(r)}>Abrir</button>
+                          <button className="link-btn" onClick={() => handleDeleteReel(r)}>Borrar</button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               </div>
             )}
           </section>

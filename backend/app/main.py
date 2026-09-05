@@ -1617,6 +1617,8 @@ class ReelVoiceRequest(BaseModel):
     script: str
     voiceId: str
     language: str | None = None
+    trigger: str = ""
+    reelId: str = ""
 
 
 @app.post("/api/reels/voice")
@@ -1633,7 +1635,35 @@ def reel_voice(payload: ReelVoiceRequest) -> dict:
         tts_client.synthesize(payload.script, payload.voiceId, out, payload.language)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Fallo generando la voz (¿TTS encendido en el Windows?): {exc}") from exc
-    return {"audio": str(out.relative_to(ROOT_DIR))}
+    audio_rel = str(out.relative_to(ROOT_DIR))
+    # Guarda/actualiza la generación (Mis Generaciones) para no perderla al recargar.
+    reel_id = payload.reelId or uuid.uuid4().hex[:12]
+    if db.get_reel(reel_id):
+        db.update_reel(reel_id, {"script": payload.script, "voice_id": payload.voiceId,
+                                 "audio_path": audio_rel, "trigger": payload.trigger, "video_path": ""})
+    else:
+        db.save_reel({"id": reel_id, "trigger": payload.trigger, "script": payload.script,
+                      "voiceId": payload.voiceId, "audio": audio_rel, "createdAt": now_iso()})
+    return {"audio": audio_rel, "reelId": reel_id}
+
+
+@app.get("/api/reels")
+def reels_list() -> dict:
+    return {"reels": db.list_reels()}
+
+
+@app.delete("/api/reels/{reel_id}")
+def reels_delete(reel_id: str) -> dict:
+    reel = db.get_reel(reel_id)
+    if reel:
+        for rel in (reel.get("audio"), reel.get("video")):
+            if rel:
+                try:
+                    (ROOT_DIR / rel).unlink(missing_ok=True)
+                except Exception:
+                    pass
+        db.delete_reel(reel_id)
+    return {"deleted": reel_id}
 
 
 class ReelComposeRequest(BaseModel):
@@ -1641,6 +1671,7 @@ class ReelComposeRequest(BaseModel):
     title: str = ""
     subtitles: bool = True
     language: str = "es"
+    reelId: str = ""
 
 
 @app.post("/api/reels/compose")
@@ -1661,7 +1692,10 @@ def reel_compose(payload: ReelComposeRequest) -> dict:
     proc = subprocess.run(args, cwd=str(ROOT_DIR), capture_output=True, text=True)
     if proc.returncode != 0 or not out.exists():
         raise HTTPException(status_code=500, detail=f"Fallo componiendo el reel: {proc.stderr[-300:]}")
-    return {"video": str(out.relative_to(ROOT_DIR))}
+    video_rel = str(out.relative_to(ROOT_DIR))
+    if payload.reelId and db.get_reel(payload.reelId):
+        db.update_reel(payload.reelId, {"video_path": video_rel, "title": payload.title})
+    return {"video": video_rel}
 
 
 @app.post("/api/clips/{clip_id}/seo")

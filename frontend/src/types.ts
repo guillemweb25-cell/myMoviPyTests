@@ -126,6 +126,17 @@ export type ClipCandidate = {
   hasPersons?: boolean
 }
 
+export type ReelItem = {
+  id: string
+  trigger: string
+  script: string
+  voiceId: string
+  audio: string
+  video: string
+  title: string
+  createdAt: string
+}
+
 export type DetectClipsResponse = {
   videoPath: string | null
   clips: ClipCandidate[]

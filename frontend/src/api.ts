@@ -1,4 +1,4 @@
-import type { Campaign, Channel, ClipCandidate, ClipSource, ComfyStatus, ContentJobRequest, DetectClipsResponse, FileEntry, Job, ScriptInfo, UploadTranscriptionResponse } from './types'
+import type { Campaign, Channel, ClipCandidate, ClipSource, ComfyStatus, ContentJobRequest, DetectClipsResponse, FileEntry, Job, ReelItem, ScriptInfo, UploadTranscriptionResponse } from './types'
 
 async function patchJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -76,10 +76,12 @@ export const api = {
   reelVoices: () => getJson<{ voices: string[]; ttsUrl: string }>('/api/reels/voices'),
   reelScript: (payload: { trigger: string; angle?: string; seconds?: number; toneExamples?: string }) =>
     postJson<{ script: string }>('/api/reels/script', payload),
-  reelVoice: (payload: { script: string; voiceId: string; language?: string | null }) =>
-    postJson<{ audio: string }>('/api/reels/voice', payload),
-  reelCompose: (payload: { audio: string; title?: string; subtitles?: boolean; language?: string }) =>
+  reelVoice: (payload: { script: string; voiceId: string; language?: string | null; trigger?: string; reelId?: string }) =>
+    postJson<{ audio: string; reelId: string }>('/api/reels/voice', payload),
+  reelCompose: (payload: { audio: string; title?: string; subtitles?: boolean; language?: string; reelId?: string }) =>
     postJson<{ video: string }>('/api/reels/compose', payload),
+  reelsList: () => getJson<{ reels: ReelItem[] }>('/api/reels'),
+  reelDelete: (id: string) => del<{ deleted: string }>(`/api/reels/${id}`),
   scripts: () => getJson<ScriptInfo[]>('/api/scripts'),
   jobs: () => getJson<Job[]>('/api/jobs'),
   job: (id: string) => getJson<Job>(`/api/jobs/${id}`),

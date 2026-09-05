@@ -85,6 +85,16 @@ CREATE TABLE IF NOT EXISTS campaigns (
     brief_url       TEXT DEFAULT '',
     rules_json      TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS reels (
+    id          TEXT PRIMARY KEY,
+    trigger     TEXT DEFAULT '',
+    script      TEXT DEFAULT '',
+    voice_id    TEXT DEFAULT '',
+    audio_path  TEXT DEFAULT '',
+    video_path  TEXT DEFAULT '',
+    title       TEXT DEFAULT '',
+    created_at  TEXT
+);
 """
 
 CAMPAIGN_MIGRATIONS = [
@@ -477,3 +487,55 @@ def update_campaign(campaign_id: int, fields: dict) -> dict | None:
 def delete_campaign(campaign_id: int) -> None:
     with _db_lock, _connect() as conn:
         conn.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
+
+
+# --- Reels (Avatar Reel) ---
+def _reel_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "trigger": row["trigger"] or "",
+        "script": row["script"] or "",
+        "voiceId": row["voice_id"] or "",
+        "audio": row["audio_path"] or "",
+        "video": row["video_path"] or "",
+        "title": row["title"] or "",
+        "createdAt": row["created_at"],
+    }
+
+
+def save_reel(reel: dict) -> dict:
+    with _db_lock, _connect() as conn:
+        conn.execute(
+            """INSERT INTO reels (id, trigger, script, voice_id, audio_path, video_path, title, created_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (reel["id"], reel.get("trigger", ""), reel.get("script", ""), reel.get("voiceId", ""),
+             reel.get("audio", ""), reel.get("video", ""), reel.get("title", ""), reel.get("createdAt", "")),
+        )
+    return get_reel(reel["id"])
+
+
+def update_reel(reel_id: str, fields: dict) -> dict | None:
+    allowed = {"trigger", "script", "voice_id", "audio_path", "video_path", "title"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if updates:
+        assignments = ", ".join(f"{k} = ?" for k in updates)
+        with _db_lock, _connect() as conn:
+            conn.execute(f"UPDATE reels SET {assignments} WHERE id = ?", (*updates.values(), reel_id))
+    return get_reel(reel_id)
+
+
+def get_reel(reel_id: str) -> dict | None:
+    with _db_lock, _connect() as conn:
+        row = conn.execute("SELECT * FROM reels WHERE id = ?", (reel_id,)).fetchone()
+    return _reel_to_dict(row) if row else None
+
+
+def list_reels() -> list[dict]:
+    with _db_lock, _connect() as conn:
+        rows = conn.execute("SELECT * FROM reels ORDER BY created_at DESC").fetchall()
+    return [_reel_to_dict(r) for r in rows]
+
+
+def delete_reel(reel_id: str) -> None:
+    with _db_lock, _connect() as conn:
+        conn.execute("DELETE FROM reels WHERE id = ?", (reel_id,))
