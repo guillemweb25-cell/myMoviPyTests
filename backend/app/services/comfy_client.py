@@ -28,13 +28,17 @@ def is_up() -> bool:
         return False
 
 
-def _prepare(prompt: str, seed: int, width: int, height: int) -> dict:
+def _prepare(prompt: str, seed: int, width: int, height: int, negative: str | None = None) -> dict:
     wf = json.loads(WORKFLOW.read_text(encoding="utf-8"))
     for node in wf.values():
         ct = node.get("class_type", "")
         ins = node.get("inputs", {})
-        if ct == "CLIPTextEncode" and "text" in ins and "watermark" not in str(ins["text"]).lower():
-            ins["text"] = prompt  # positivo (el negativo lleva 'watermark, low quality...')
+        if ct == "CLIPTextEncode" and "text" in ins:
+            is_neg = "watermark" in str(ins["text"]).lower()  # el negativo lleva 'watermark...'
+            if is_neg and negative:
+                ins["text"] = negative
+            elif not is_neg:
+                ins["text"] = prompt
         if "seed" in ins:
             ins["seed"] = seed
         if ct == "EmptyLatentImage":
@@ -43,11 +47,12 @@ def _prepare(prompt: str, seed: int, width: int, height: int) -> dict:
 
 
 def generate_image(prompt: str, out_path: Path, width: int = 832, height: int = 1216,
-                   seed: int | None = None, timeout_s: int = 420) -> Path:
-    """Genera una imagen con ComfyUI y la guarda (jpg) en out_path. Lanza si falla."""
+                   seed: int | None = None, timeout_s: int = 420, negative: str | None = None) -> Path:
+    """Genera una imagen con ComfyUI y la guarda (jpg) en out_path. `negative` sustituye
+    el prompt negativo del workflow (útil para forzar ausencias). Lanza si falla."""
     url = _comfy_url()
     seed = seed if seed is not None else random.randint(1, 2**31 - 1)
-    payload = {"prompt": _prepare(prompt, seed, width, height), "client_id": f"reel-{random.randint(1000,9999)}"}
+    payload = {"prompt": _prepare(prompt, seed, width, height, negative), "client_id": f"reel-{random.randint(1000,9999)}"}
     r = requests.post(f"{url}/prompt", json=payload, timeout=30)
     r.raise_for_status()
     prompt_id = r.json()["prompt_id"]

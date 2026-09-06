@@ -64,11 +64,18 @@ def main() -> None:
     db.update_plant(args.plant, {"image_prompt": plan["image_prompt"], "clips": plan["clips"]})
     clips_prompts = plan["clips"]
 
-    # 2) Primera imagen: maceta con tierra, vacía.
+    # 2) Primera imagen: maceta con SOLO tierra, sin nada plantado. SDXL tiende a meter
+    # una planta ya crecida, así que se refuerza en positivo y con un negativo fuerte.
     print("2/5 Generando la primera imagen (maceta vacía)...", flush=True)
-    img_prompt = plan["image_prompt"] + ", empty pot, bare dark soil only, no plant, no sprout, no seedling"
+    img_prompt = (f"photorealistic, {plan.get('locked_scene', '')}, the pot is filled to the brim "
+                  "with fresh dark brown bare soil, smooth flat empty soil surface, close-up of bare "
+                  "topsoil, nothing planted at all, vertical, soft daylight, sharp focus, ultra detailed, no text")
+    empty_neg = ("(plant:1.6), (sprout:1.6), (seedling:1.6), (leaves:1.6), (foliage:1.6), (green:1.4), "
+                 "(stem:1.5), (branch:1.4), (tree:1.5), (sapling:1.5), (flower:1.5), (bud:1.4), (grass:1.4), "
+                 "(weeds:1.4), (moss:1.4), (vegetation:1.5), (succulent:1.5), (aloe:1.5), (cactus:1.4), "
+                 "(greenery:1.5), growing plant, green shoots, watermark, text, logo, low quality, blurry")
     first = out_dir / "frame_start.jpg"
-    comfy_client.generate_image(img_prompt, first, width=wan_w, height=wan_h)
+    comfy_client.generate_image(img_prompt, first, width=wan_w, height=wan_h, negative=empty_neg)
 
     # 3) 3 clips WAN encadenados por el último fotograma.
     start_img = first
