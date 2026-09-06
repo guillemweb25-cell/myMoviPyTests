@@ -82,3 +82,38 @@ def broll_prompts(script: str, n: int, model: str | None = None) -> list[str]:
     # Estilo común para coherencia y calidad.
     suffix = ", cinematic, highly detailed, sharp focus, professional photography, 8k"
     return [(p + suffix) for p in prompts[:n]] or [f"cinematic establishing shot{suffix}"]
+
+
+def broll_prompts_for(segments: list[str], model: str | None = None) -> list[str]:
+    """Un prompt visual EN INGLÉS por cada SEGMENTO hablado (en orden), anclado a
+    lo que se dice en ESE tramo — así la imagen SÍ tiene que ver con lo que se
+    escucha. Devuelve exactamente len(segments) prompts."""
+    from openai import OpenAI
+
+    segs = [s.strip() for s in segments if s.strip()]
+    if not segs:
+        return []
+    model = model or os.getenv("OPENAI_REEL_MODEL", "gpt-4o")
+    sys_p = (
+        "You create ONE b-roll IMAGE prompt (for SDXL) per numbered line of a video "
+        "voiceover. Each prompt must VISUALLY ILLUSTRATE that exact line — concrete "
+        "subject, setting, action that matches what is being said there. Prompts in "
+        "ENGLISH, cinematic/photographic, describe subject + setting + lighting. No "
+        "text, no logos, no watermarks. Return exactly one prompt per input line, in order."
+    )
+    numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(segs))
+    user = (f"Voiceover lines:\n{numbered}\n\nReturn JSON {{\"prompts\": [\"...\"]}} with "
+            f"exactly {len(segs)} prompts, one illustrating each line in order.")
+    client = OpenAI()
+    resp = client.chat.completions.create(
+        model=model, temperature=0.6, response_format={"type": "json_object"},
+        messages=[{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
+    )
+    import json as _json
+    data = _json.loads(resp.choices[0].message.content or "{}")
+    prompts = [str(p).strip() for p in data.get("prompts", []) if str(p).strip()]
+    suffix = ", cinematic, highly detailed, sharp focus, professional photography, 8k"
+    # Rellena si el modelo devolvió de menos (repite el último).
+    while len(prompts) < len(segs):
+        prompts.append(prompts[-1] if prompts else "cinematic establishing shot")
+    return [(p + suffix) for p in prompts[:len(segs)]]

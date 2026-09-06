@@ -54,19 +54,20 @@ def build_base(audio: Path, out: Path, dur: float, background: Path | None,
 
 
 def build_slideshow(audio: Path, out: Path, dur: float, images: list[Path],
-                    title: str, ffmpeg: str) -> None:
+                    title: str, ffmpeg: str, durations: list[float] | None = None) -> None:
     """Vídeo base con un SLIDESHOW de imágenes (b-roll) a pantalla completa: cada
-    imagen dur/N segundos (cover del canvas) + audio + título. Usa el CONCAT
-    DEMUXER (no inputs -loop, que salen con código 255 aunque el vídeo esté bien)."""
+    imagen su `durations[i]` s (o dur/N por defecto), cover del canvas + audio +
+    título. Usa el CONCAT DEMUXER (no inputs -loop, que salen con código 255)."""
     n = len(images)
-    seg = max(0.8, dur / n)
+    if not durations or len(durations) != n:
+        durations = [max(0.8, dur / n)] * n
     # Lista para el concat demuxer (rutas absolutas). Se repite la última imagen
     # porque el demuxer ignora la 'duration' del último fichero.
     listfile = out.with_suffix(".concat.txt")
     lines = ["ffconcat version 1.0"]
-    for img in images:
+    for img, d in zip(images, durations):
         lines.append(f"file '{img.resolve()}'")
-        lines.append(f"duration {seg:.3f}")
+        lines.append(f"duration {max(0.5, d):.3f}")
     lines.append(f"file '{images[-1].resolve()}'")
     listfile.write_text("\n".join(lines), encoding="utf-8")
 
@@ -94,6 +95,7 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--background", default="", help="imagen de fondo opcional")
     ap.add_argument("--images", default="", help="imágenes b-roll (slideshow), separadas por comas")
+    ap.add_argument("--durations", default="", help="duración (s) de cada imagen, separadas por comas")
     ap.add_argument("--title", default="")
     ap.add_argument("--subtitles", action="store_true")
     ap.add_argument("--lang", default="es")
@@ -113,8 +115,9 @@ def main() -> None:
     print(f"Componiendo reel ({dur:.1f}s)...", flush=True)
     images = [Path(p) for p in args.images.split(",") if p.strip() and Path(p).exists()]
     if images:
+        durs = [float(x) for x in args.durations.split(",") if x.strip()] if args.durations else None
         print(f"Slideshow de {len(images)} imágenes b-roll.", flush=True)
-        build_slideshow(audio, out, dur, images, args.title, args.ffmpeg)
+        build_slideshow(audio, out, dur, images, args.title, args.ffmpeg, durations=durs)
     else:
         bg = Path(args.background) if args.background else None
         build_base(audio, out, dur, bg, args.title, args.ffmpeg)
