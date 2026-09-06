@@ -1733,6 +1733,7 @@ def reel_thumbnail_preview(reel_id: str, payload: ReelThumbnailRequest) -> dict:
     video_abs = ROOT_DIR / reel["video"]
     thumb_rel = str(video_abs.with_name(video_abs.stem + "_thumb.jpg").relative_to(ROOT_DIR))
     pos = payload.position if payload.position in ("top", "center", "bottom") else "bottom"
+    db.update_reel(reel_id, {"hook": payload.hook.strip(), "thumb_position": pos})  # persiste el gancho
     args = ["--reel", reel_id, "--mode", "preview", "--hook", payload.hook.strip(), "--position", pos]
     if payload.image.strip():
         args += ["--image", payload.image.strip()]

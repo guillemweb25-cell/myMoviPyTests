@@ -58,19 +58,51 @@ def generate_script(trigger: str, angle: str = "", seconds: int = 40,
 
 def hook_text(script: str, model: str | None = None) -> str:
     """Gancho corto y potente para la miniatura (3-6 palabras, en el idioma del
-    guion), estilo título de Short. Sin comillas ni emojis."""
+    guion), estilo título de Short. ANCLADO al tema concreto del guion (nombra la
+    idea/personaje/dato del vídeo), no clickbait genérico. Sin comillas ni emojis."""
     from openai import OpenAI
 
     model = model or os.getenv("OPENAI_REEL_MODEL", "gpt-4o")
     resp = OpenAI().chat.completions.create(
-        model=model, temperature=0.8,
+        model=model, temperature=0.7,
         messages=[
-            {"role": "system", "content": "Escribe SOLO un gancho de 3-6 palabras para la portada "
-             "de un Short, en MAYÚSCULAS, en el idioma del texto, muy llamativo, sin comillas ni emojis."},
+            {"role": "system", "content": (
+                "Escribe SOLO un gancho de 3-6 palabras para la portada de un Short, "
+                "en MAYÚSCULAS, en el idioma del texto, muy llamativo pero CONCRETO: "
+                "debe nombrar la idea, el dato o el personaje central de ESTE guion "
+                "(no valen frases genéricas tipo 'NO CREERÁS LO QUE PASÓ' o 'ESTO TE "
+                "SORPRENDERÁ'). Sin comillas ni emojis.")},
             {"role": "user", "content": f"Texto:\n{script.strip()[:600]}\n\nGancho:"},
         ],
     )
     return (resp.choices[0].message.content or "").strip().strip("\"'“”").upper()[:60]
+
+
+def thumbnail_prompt(script: str, model: str | None = None) -> str:
+    """Un ÚNICO prompt visual EN INGLÉS (SDXL) para la imagen de portada del Short,
+    anclado al TEMA GLOBAL del guion — el plano más representativo del vídeo, no un
+    tramo suelto. Sin texto ni marcas de agua."""
+    from openai import OpenAI
+
+    script = (script or "").strip()
+    if not script:
+        return "cinematic establishing shot, highly detailed, sharp focus, professional photography, 8k"
+    model = model or os.getenv("OPENAI_REEL_MODEL", "gpt-4o")
+    sys_p = (
+        "You create ONE cover-image prompt (for an SDXL text-to-image model) that "
+        "captures the MAIN topic of a short-form video from its full script. It must "
+        "be the single most representative, eye-catching cinematic shot of what the "
+        "video is about — concrete subject + setting + lighting + mood. English, "
+        "photographic/cinematic. No text, no logos, no watermarks, no captions."
+    )
+    resp = OpenAI().chat.completions.create(
+        model=model, temperature=0.6,
+        messages=[{"role": "system", "content": sys_p},
+                  {"role": "user", "content": f"Script:\n{script[:1200]}\n\nCover image prompt:"}],
+    )
+    p = (resp.choices[0].message.content or "").strip().strip("\"'“”")
+    suffix = ", cinematic, highly detailed, sharp focus, professional photography, 8k"
+    return (p or "cinematic establishing shot") + suffix
 
 
 def broll_prompts(script: str, n: int, model: str | None = None) -> list[str]:

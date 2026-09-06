@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS reels (
 REEL_MIGRATIONS = [
     "ALTER TABLE reels ADD COLUMN channel_id INTEGER",
     "ALTER TABLE reels ADD COLUMN youtube_url TEXT DEFAULT ''",
+    "ALTER TABLE reels ADD COLUMN hook TEXT DEFAULT ''",
+    "ALTER TABLE reels ADD COLUMN thumb_position TEXT DEFAULT 'bottom'",
 ]
 
 CAMPAIGN_MIGRATIONS = [
@@ -509,6 +511,8 @@ def _reel_to_dict(row: sqlite3.Row) -> dict:
         "createdAt": row["created_at"],
         "channelId": (row["channel_id"] if "channel_id" in row.keys() else None),
         "youtubeUrl": (row["youtube_url"] if "youtube_url" in row.keys() else "") or "",
+        "hook": (row["hook"] if "hook" in row.keys() else "") or "",
+        "thumbPosition": (row["thumb_position"] if "thumb_position" in row.keys() else "bottom") or "bottom",
     }
 
 
@@ -524,7 +528,8 @@ def save_reel(reel: dict) -> dict:
 
 
 def update_reel(reel_id: str, fields: dict) -> dict | None:
-    allowed = {"trigger", "script", "voice_id", "audio_path", "video_path", "title", "channel_id", "youtube_url"}
+    allowed = {"trigger", "script", "voice_id", "audio_path", "video_path", "title", "channel_id", "youtube_url",
+               "hook", "thumb_position"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if updates:
         assignments = ", ".join(f"{k} = ?" for k in updates)

@@ -676,11 +676,14 @@ export default function App() {
     setReelId(r.id); setReelTrigger(r.trigger); setReelScript(r.script)
     setReelVoiceId(r.voiceId || reelVoiceId); setReelTitle(r.title)
     setReelAudio(r.audio); setReelVideo(r.video); setReelYoutubeUrl(r.youtubeUrl || '')
+    setReelHook(r.hook || ''); setReelThumbPos((r.thumbPosition as 'top' | 'center' | 'bottom') || 'bottom')
+    setReelThumb(''); setReelThumbImg('')
   }
 
   function handleNewReel() {
     setReelId(''); setReelTrigger(''); setReelAngle(''); setReelScript('')
     setReelTitle(''); setReelAudio(''); setReelVideo('')
+    setReelHook(''); setReelThumb(''); setReelThumbImg(''); setReelThumbPos('bottom')
   }
 
   async function handleDeleteReel(r: import('./types').ReelItem) {

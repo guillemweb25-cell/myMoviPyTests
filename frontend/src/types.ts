@@ -137,6 +137,8 @@ export type ReelItem = {
   createdAt: string
   channelId?: number | null
   youtubeUrl?: string
+  hook?: string
+  thumbPosition?: string
 }
 
 export type DetectClipsResponse = {
