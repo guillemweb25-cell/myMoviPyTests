@@ -203,10 +203,15 @@ def main() -> None:
     if not res or not res[0]:
         raise SystemExit("No se pudo descargar el vídeo del partido.")
     match_video = Path(res[0])
-    try:
-        db.update_reel(args.reel, {"source_video": str(match_video.relative_to(root))})
-    except ValueError:
-        pass  # fuera del root: no lo guardamos, seguimos igual
+    # download_video devuelve ruta relativa al cwd (=root); guárdala relativa al root
+    # (si viniera absoluta, la convertimos; si no se puede, la dejamos tal cual).
+    sv = match_video
+    if sv.is_absolute():
+        try:
+            sv = sv.relative_to(root)
+        except ValueError:
+            pass
+    db.update_reel(args.reel, {"source_video": str(sv)})
 
     # 2) Transcribir el partido → subtítulos con tiempos.
     print("2/6 Transcribiendo el partido...", flush=True)
