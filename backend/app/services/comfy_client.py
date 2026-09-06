@@ -43,7 +43,7 @@ def _prepare(prompt: str, seed: int, width: int, height: int) -> dict:
 
 
 def generate_image(prompt: str, out_path: Path, width: int = 832, height: int = 1216,
-                   seed: int | None = None, timeout_s: int = 180) -> Path:
+                   seed: int | None = None, timeout_s: int = 420) -> Path:
     """Genera una imagen con ComfyUI y la guarda (jpg) en out_path. Lanza si falla."""
     url = _comfy_url()
     seed = seed if seed is not None else random.randint(1, 2**31 - 1)
