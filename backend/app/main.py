@@ -1773,21 +1773,39 @@ def reel_seo_title(reel_id: str, payload: ReelSeoRequest) -> dict:
 
 @app.post("/api/reels/{reel_id}/seo/description")
 def reel_seo_description(reel_id: str, payload: ReelSeoRequest) -> dict:
-    """Genera una descripción SEO con IA desde el contenido del reel y la guarda. Si el
-    reel ya tiene enlace de YouTube publicado, lo incluye al final de la descripción."""
+    """Genera una descripción SEO con IA desde el contenido del reel y la guarda. La
+    descripción NO incluye título; al final se añade el enlace del VÍDEO ORIGINAL
+    (la URL de YouTube del resumen/fuente, guardada en el disparador) si existe."""
     reel, text, rules = _reel_seo_context(reel_id, payload.channelId)
     from .services.seo_engine import SEOEngine
     from .services.clip_seo import strip_markdown
     import re as _re
+    # Instruye al modelo para que NO escriba ningún título/encabezado (más fiable que
+    # limpiarlo a posteriori); se suma a las reglas del canal si las hay.
+    no_title = ("NO escribas ningún título, encabezado ni etiquetas como 'Título:', "
+                "'Descripción:', 'Descripción del vídeo:' ni almohadillas '#'. Empieza "
+                "directamente por el cuerpo de la descripción.")
+    rules_combined = f"{rules}\n\n{no_title}" if rules else no_title
     try:
-        desc = strip_markdown(SEOEngine().generate_description(text, custom_rules=rules))
+        desc = strip_markdown(SEOEngine().generate_description(text, custom_rules=rules_combined))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Fallo generando la descripción: {exc}") from exc
-    desc = _re.sub(r"^\s*(video\s+)?title:.*(?:\n|$)", "", desc, flags=_re.IGNORECASE)
-    desc = _re.sub(r"^\s*(video\s+)?description:\s*", "", desc, flags=_re.IGNORECASE).strip()
-    yt = (reel.get("youtubeUrl") or "").strip()
-    if yt:
-        desc = f"{desc}\n\n▶️ {yt}"
+    # Respaldo: si aún así cuela un encabezado "Título ...:" / "Descripción ...:" o
+    # una línea markdown al principio, la quitamos.
+    desc = _re.sub(r"^\s*(v[ií]deo\s+)?(t[ií]tulo|title)\b[^\n]*:\s*(?:\n+|)", "", desc, flags=_re.IGNORECASE)
+    desc = _re.sub(r"^\s*(descripci[oó]n|description)\b[^\n]*:\s*(?:\n+|)", "", desc, flags=_re.IGNORECASE)
+    desc = _re.sub(r"^\s*#{1,6}\s*.*(?:\n+|$)", "", desc)  # encabezado markdown
+    title = (reel.get("title") or "").strip()
+    if title:  # si la 1ª línea repite el título del vídeo, quítala
+        first, _, rest = desc.lstrip().partition("\n")
+        if first.strip().strip("*_\"'").lower() == title.lower():
+            desc = rest
+    desc = desc.strip()
+    # Enlace del vídeo ORIGINAL: la URL de la fuente (disparador de los reels de partido).
+    trigger = (reel.get("trigger") or "").strip()
+    original = trigger if _re.match(r"https?://", trigger) else ""
+    if original:
+        desc = f"{desc}\n\n🎬 Vídeo original: {original}"
     db.update_reel(reel_id, {"seo_description": desc})
     return {"description": desc}
 
