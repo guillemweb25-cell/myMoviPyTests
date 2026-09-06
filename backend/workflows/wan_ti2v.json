@@ -1,0 +1,72 @@
+{
+  "1": {
+    "inputs": { "unet_name": "Wan2.2-TI2V-5B-Q8_0.gguf" },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": { "title": "Unet Loader (GGUF)" }
+  },
+  "2": {
+    "inputs": { "clip_name": "umt5-xxl-encoder-Q8_0.gguf", "type": "wan" },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": { "title": "CLIPLoader (GGUF)" }
+  },
+  "3": {
+    "inputs": { "vae_name": "wan2.2_vae.safetensors" },
+    "class_type": "VAELoader",
+    "_meta": { "title": "Load VAE" }
+  },
+  "4": {
+    "inputs": { "text": "a plant growing", "clip": ["2", 0] },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "CLIP Text Encode (Positive Prompt)" }
+  },
+  "5": {
+    "inputs": { "text": "text, logos, watermarks, blurry, distorted, morphing, flickering", "clip": ["2", 0] },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "CLIP Text Encode (Negative Prompt)" }
+  },
+  "6": {
+    "inputs": { "image": "start.png" },
+    "class_type": "LoadImage",
+    "_meta": { "title": "Load Image" }
+  },
+  "7": {
+    "inputs": {
+      "width": 480, "height": 832, "length": 97, "batch_size": 1,
+      "positive": ["4", 0], "negative": ["5", 0], "vae": ["3", 0], "start_image": ["6", 0]
+    },
+    "class_type": "WanImageToVideo",
+    "_meta": { "title": "WanImageToVideo" }
+  },
+  "12": {
+    "inputs": { "lora_name": "Wan22_TI2V_5B_Turbo_rank64.safetensors", "strength_model": 1.0, "model": ["1", 0] },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": { "title": "Turbo LoRA (pocos pasos)" }
+  },
+  "8": {
+    "inputs": { "shift": 8.0, "model": ["12", 0] },
+    "class_type": "ModelSamplingSD3",
+    "_meta": { "title": "ModelSamplingSD3" }
+  },
+  "9": {
+    "inputs": {
+      "seed": 0, "steps": 6, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple",
+      "denoise": 1.0, "model": ["8", 0], "positive": ["7", 0], "negative": ["7", 1], "latent_image": ["7", 2]
+    },
+    "class_type": "KSampler",
+    "_meta": { "title": "KSampler" }
+  },
+  "10": {
+    "inputs": { "samples": ["9", 0], "vae": ["3", 0] },
+    "class_type": "VAEDecode",
+    "_meta": { "title": "VAE Decode" }
+  },
+  "11": {
+    "inputs": {
+      "frame_rate": 24, "loop_count": 0, "filename_prefix": "plant", "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p", "crf": 20, "save_metadata": true, "trim_to_audio": false,
+      "pingpong": false, "save_output": true, "images": ["10", 0]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": { "title": "Video Combine" }
+  }
+}

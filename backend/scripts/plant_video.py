@@ -75,7 +75,7 @@ def main() -> None:
     norm_clips = []
     for i, prompt in enumerate(clips_prompts):
         print(f"3/5 Clip {i + 1}/3 con WAN (puede tardar)...", flush=True)
-        raw = out_dir / f"clip_{i}.webm"
+        raw = out_dir / f"clip_{i}_raw.mp4"
         wan_client.generate_video(start_img, raw, prompt, width=wan_w, height=wan_h, length=args.length)
         norm = out_dir / f"clip_{i}.mp4"
         _normalize(raw, norm, out_w, out_h, args.ffmpeg)

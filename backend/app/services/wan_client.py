@@ -14,7 +14,9 @@ from pathlib import Path
 
 import requests
 
-WAN_WORKFLOW = Path(__file__).resolve().parents[2] / "workflows" / "wan_i2v.json"
+WAN_WORKFLOW = Path(__file__).resolve().parents[2] / "workflows" / "wan_ti2v.json"
+
+_NEG_HINTS = ("watermark", "logo", "blurry", "distorted", "text,")
 
 
 def _comfy_url() -> str:
@@ -51,15 +53,22 @@ def generate_video(start_image: Path, out_path: Path, prompt: str,
     seed = seed if seed is not None else random.randint(1, 2**31 - 1)
     img_name = upload_image(Path(start_image))
 
+    # Inyecta por TIPO de nodo (funciona con cualquier workflow WAN i2v).
     wf = json.loads(WAN_WORKFLOW.read_text(encoding="utf-8"))
-    wf["134"]["inputs"]["text"] = prompt
-    wf["135"]["inputs"]["text"] = negative
-    wf["136"]["inputs"]["width"] = width
-    wf["136"]["inputs"]["height"] = height
-    wf["136"]["inputs"]["length"] = length
-    wf["156"]["inputs"]["image"] = img_name
-    wf["132"]["inputs"]["noise_seed"] = seed
-    wf["133"]["inputs"]["noise_seed"] = seed
+    for node in wf.values():
+        ct = node.get("class_type", "")
+        ins = node.get("inputs", {})
+        if ct == "CLIPTextEncode" and "text" in ins:
+            is_neg = any(h in str(ins["text"]).lower() for h in _NEG_HINTS)
+            ins["text"] = negative if is_neg else prompt
+        elif ct == "WanImageToVideo":
+            ins["width"], ins["height"], ins["length"] = width, height, length
+        elif ct == "LoadImage":
+            ins["image"] = img_name
+        if "seed" in ins:
+            ins["seed"] = seed
+        if "noise_seed" in ins:
+            ins["noise_seed"] = seed
 
     payload = {"prompt": wf, "client_id": f"plant-{random.randint(1000, 9999)}"}
     r = requests.post(f"{url}/prompt", json=payload, timeout=30)
