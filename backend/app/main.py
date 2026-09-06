@@ -1694,12 +1694,15 @@ def reels_delete(reel_id: str) -> dict:
 
 @app.post("/api/reels/{reel_id}/hook")
 def reel_hook(reel_id: str) -> dict:
-    from .services.reel_engine import hook_text
+    from .services.reel_engine import hook_text, content_text
     reel = db.get_reel(reel_id)
     if not reel:
         raise HTTPException(status_code=404, detail="Generación no encontrada.")
     try:
-        return {"hook": hook_text(reel.get("script") or reel.get("trigger") or "")}
+        text = content_text(reel, ROOT_DIR)  # transcribe si el guion está vacío (recuperados)
+        if text and not (reel.get("script") or "").strip():
+            db.update_reel(reel_id, {"script": text})  # backfill para futuras operaciones
+        return {"hook": hook_text(text)}
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Fallo generando el gancho: {exc}") from exc
 

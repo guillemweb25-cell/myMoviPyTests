@@ -56,6 +56,41 @@ def generate_script(trigger: str, angle: str = "", seconds: int = 40,
     return script
 
 
+def content_text(reel: dict, root) -> str:
+    """Texto REAL de lo que dice el reel, para anclar gancho e imagen. Prefiere el
+    guion guardado; si está vacío (p. ej. generaciones «recuperadas» que solo tienen
+    vídeo/audio), transcribe el audio con AssemblyAI y lo cachea. Última opción: el
+    disparador. Así una miniatura de un reel de fútbol sale de fútbol, no inventada."""
+    from pathlib import Path
+
+    script = (reel.get("script") or "").strip()
+    if script:
+        return script
+    audio_rel = (reel.get("audio") or "").strip()
+    audio = Path(root) / audio_rel if audio_rel else None
+    if audio and audio.exists():
+        cache = audio.with_name(audio.stem + "_transcript.txt")
+        if cache.exists():
+            cached = cache.read_text(encoding="utf-8").strip()
+            if cached:
+                return cached
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+        try:
+            from subtitle_engine import SubtitleEngine  # noqa: E402
+            words = SubtitleEngine().transcribe_words(audio)
+            text = " ".join(str(w.get("text", "")) for w in words).strip()
+        except Exception:  # noqa: BLE001
+            text = ""
+        if text:
+            try:
+                cache.write_text(text, encoding="utf-8")
+            except Exception:  # noqa: BLE001
+                pass
+            return text
+    return (reel.get("trigger") or "").strip()
+
+
 def hook_text(script: str, model: str | None = None) -> str:
     """Gancho corto y potente para la miniatura (3-6 palabras, en el idioma del
     guion), estilo título de Short. ANCLADO al tema concreto del guion (nombra la

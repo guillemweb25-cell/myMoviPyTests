@@ -203,11 +203,16 @@ def main() -> None:
         image = thumbimg  # reusar la imagen ya generada (solo re-quemar el texto)
     else:
         from app.services import comfy_client  # noqa: E402
-        from app.services.reel_engine import thumbnail_prompt  # noqa: E402
+        from app.services.reel_engine import thumbnail_prompt, content_text  # noqa: E402
         if not comfy_client.is_up():
             raise SystemExit("ComfyUI no responde (para generar la imagen de la miniatura).")
-        # Imagen ANCLADA al guion (el contenido real), no al gancho clickbait.
-        script = (reel.get("script") or "").strip()
+        # Imagen ANCLADA a lo que REALMENTE dice el reel (transcribe si el guion está
+        # vacío, p. ej. generaciones recuperadas), no al gancho clickbait.
+        if not (reel.get("script") or "").strip():
+            print("Sin guion guardado: transcribiendo el audio para anclar la imagen...", flush=True)
+        script = content_text(reel, root)
+        if script and not (reel.get("script") or "").strip():
+            db.update_reel(args.reel, {"script": script})  # backfill
         prompt = thumbnail_prompt(script or args.hook)
         print(f"Generando imagen de miniatura: {prompt[:70]}...", flush=True)
         comfy_client.generate_image(prompt, thumbimg)
