@@ -1,8 +1,8 @@
 {
   "1": {
-    "inputs": { "unet_name": "Wan2.2-TI2V-5B-Q8_0.gguf" },
-    "class_type": "UnetLoaderGGUF",
-    "_meta": { "title": "Unet Loader (GGUF)" }
+    "inputs": { "unet_name": "wan2.2_ti2v_5B_fp16.safetensors", "weight_dtype": "default" },
+    "class_type": "UNETLoader",
+    "_meta": { "title": "Load Diffusion Model (fp16)" }
   },
   "2": {
     "inputs": { "clip_name": "umt5-xxl-encoder-Q8_0.gguf", "type": "wan" },
