@@ -82,6 +82,8 @@ export const api = {
     postJson<{ video: string }>('/api/reels/compose', payload),
   reelBroll: (payload: { reelId: string; subtitles?: boolean; title?: string }) =>
     postJson<{ video: string; images: string[] }>('/api/reels/broll', payload),
+  reelMatch: (payload: { url: string; voiceId: string; lang?: string; moments?: number; seconds?: number }) =>
+    postJson<{ job: Job; reelId: string }>('/api/reels/match', payload),
   reelUpload: (reelId: string, payload: { channelId: number; privacy?: string }) =>
     postJson<{ job: Job }>(`/api/reels/${reelId}/upload`, payload),
   reelHook: (reelId: string) => postJson<{ hook: string }>(`/api/reels/${reelId}/hook`, {}),

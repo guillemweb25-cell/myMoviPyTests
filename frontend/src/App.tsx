@@ -135,7 +135,8 @@ export default function App() {
   const [reelVideo, setReelVideo] = useState('')
   const [reelId, setReelId] = useState('')
   const [reels, setReels] = useState<import('./types').ReelItem[]>([])
-  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose' | 'broll' | 'upload' | 'thumb'>('')
+  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose' | 'broll' | 'upload' | 'thumb' | 'match'>('')
+  const [reelMatchUrl, setReelMatchUrl] = useState('')
   const [reelChannelId, setReelChannelId] = useState<number | null>(null)
   const [reelPrivacy, setReelPrivacy] = useState('public')
   const [reelYoutubeUrl, setReelYoutubeUrl] = useState('')
@@ -602,6 +603,31 @@ export default function App() {
         window.setTimeout(poll, 5000)
       }
       window.setTimeout(poll, 5000)
+    } catch (e) { handleApiError(e); setReelBusy('') }
+  }
+
+  async function handleMatchReel() {
+    if (!reelMatchUrl.trim()) { setError('Pega el enlace de YouTube del resumen del partido.'); return }
+    if (!reelVoiceId) { setError('Elige una voz para la narración (arranca el TTS del Windows si la lista está vacía).'); return }
+    setReelBusy('match'); setError('')
+    try {
+      const { reelId: newId } = await api.reelMatch({ url: reelMatchUrl.trim(), voiceId: reelVoiceId, seconds: reelSeconds })
+      setReelMatchUrl('')
+      api.reelsList().then((d) => setReels(d.reels)).catch(() => {})
+      const started = Date.now()
+      const poll = async () => {
+        try {
+          const { reels: list } = await api.reelsList()
+          setReels(list)
+          const me = list.find((r) => r.id === newId)
+          if (me?.video) { handleOpenReel(me); setReelBusy(''); return }
+        } catch { /* reintenta */ }
+        if (Date.now() - started > 15 * 60 * 1000) {
+          setReelBusy(''); setError('El partido tarda más de lo normal; revisa el Historial (job reel_match).'); return
+        }
+        window.setTimeout(poll, 6000)
+      }
+      window.setTimeout(poll, 6000)
     } catch (e) { handleApiError(e); setReelBusy('') }
   }
 
@@ -2662,6 +2688,31 @@ export default function App() {
               Contenido propio con IA. Fase 1: de un disparador → guion → tu voz clonada (XTTS local) → vídeo con karaoke.
               El avatar (HeyGen) y el b-roll generado llegan en fases siguientes.
             </p>
+
+            <div className="seo-box" style={{ marginBottom: 14 }}>
+              <div className="seo-head"><span>⚽ Reel desde un resumen de partido (YouTube)</span></div>
+              <p className="help" style={{ marginTop: 0 }}>
+                Pega el enlace del resumen: transcribe, saca los momentos clave (como en Clipping), redacta un guion
+                explicativo con tu voz y monta el vídeo con <b>fotogramas reales del partido</b> recortados a vertical.
+              </p>
+              <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <label className="field" style={{ flex: 1, minWidth: 220 }}>
+                  <span>Enlace de YouTube del resumen</span>
+                  <input value={reelMatchUrl} onChange={(e) => setReelMatchUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." />
+                </label>
+                <label className="field" style={{ minWidth: 180 }}>
+                  <span>Voz {reelVoices.length === 0 && '(⚠️ arranca el TTS)'}</span>
+                  <select value={reelVoiceId} onChange={(e) => setReelVoiceId(e.target.value)}>
+                    {reelVoices.length === 0 && <option value="">— sin voces —</option>}
+                    {reelVoices.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </label>
+                <button className="primary" disabled={reelBusy !== '' || !reelMatchUrl.trim() || !reelVoiceId} onClick={handleMatchReel}>
+                  {reelBusy === 'match' ? 'Creando reel del partido…' : '⚽ Crear reel del partido'}
+                </button>
+              </div>
+              {reelBusy === 'match' && <p className="help">Descargando, transcribiendo, sacando momentos, voz y montaje… puede tardar varios minutos. Puedes seguir en otra pestaña; aparecerá en «Mis generaciones».</p>}
+            </div>
 
             <label className="field span-2">
               <span>Disparador (tema, noticia, tweet, idea)</span>

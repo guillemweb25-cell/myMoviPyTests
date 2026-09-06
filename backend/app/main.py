@@ -1678,6 +1678,34 @@ def reel_broll(payload: ReelBrollRequest) -> dict:
     return {"job": job}
 
 
+class ReelMatchRequest(BaseModel):
+    url: str
+    voiceId: str
+    lang: str = "auto"
+    moments: int = 6
+    seconds: int = 45
+
+
+@app.post("/api/reels/match")
+def reel_match(payload: ReelMatchRequest) -> dict:
+    """Encola un JOB que crea un reel explicativo a partir del resumen de un partido
+    (enlace de YouTube): descarga → transcribe → momentos clave → guion → voz →
+    fotogramas reales recortados a vertical → composición. Crea ya la generación
+    para verla en 'Mis generaciones' mientras se procesa."""
+    if not payload.url.strip():
+        raise HTTPException(status_code=400, detail="Falta el enlace del partido.")
+    if not payload.voiceId.strip():
+        raise HTTPException(status_code=400, detail="Elige una voz para la narración.")
+    reel_id = uuid.uuid4().hex[:12]
+    db.save_reel({"id": reel_id, "trigger": payload.url.strip(), "script": "",
+                  "voiceId": payload.voiceId, "audio": "", "createdAt": now_iso()})
+    args = ["--reel", reel_id, "--url", payload.url.strip(), "--voice", payload.voiceId,
+            "--lang", payload.lang or "auto", "--moments", str(max(3, min(12, payload.moments))),
+            "--seconds", str(max(20, min(90, payload.seconds)))]
+    job = enqueue_job("reel_match.py", args)
+    return {"job": job, "reelId": reel_id}
+
+
 @app.delete("/api/reels/{reel_id}")
 def reels_delete(reel_id: str) -> dict:
     reel = db.get_reel(reel_id)

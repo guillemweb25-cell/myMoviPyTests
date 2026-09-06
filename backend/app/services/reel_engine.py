@@ -56,6 +56,41 @@ def generate_script(trigger: str, angle: str = "", seconds: int = 40,
     return script
 
 
+def match_script(moments: list[str], seconds: int = 45, model: str | None = None) -> str:
+    """Guion EXPLICATIVO de un reel a partir de los momentos más relevantes de un
+    partido (en orden cronológico; cada string es la narración/comentario de ese
+    momento). Redacta un resumen con ritmo — contexto, jugadas clave y desenlace —
+    para narrar con voz en off. En el idioma de los momentos. Solo el texto hablado."""
+    from openai import OpenAI
+
+    moments = [m.strip() for m in moments if m.strip()]
+    if not moments:
+        return ""
+    model = model or os.getenv("OPENAI_REEL_MODEL", "gpt-4o")
+    words = _target_words(seconds)
+    numbered = "\n".join(f"{i + 1}. {m}" for i, m in enumerate(moments))
+    sys_p = (
+        "Eres un narrador de resúmenes de fútbol para Shorts verticales. A partir de "
+        "los MOMENTOS CLAVE de un partido (en orden cronológico), escribe un GUION "
+        "HABLADO explicativo y con ritmo que cuente qué pasó de principio a fin: pon "
+        "en contexto, encadena las jugadas importantes y remata con el desenlace. "
+        "Primera frase = gancho que pare el scroll. Natural y enérgico, como un "
+        "comentarista contando el partido a un amigo. En el MISMO idioma de los "
+        "momentos. Solo el texto a narrar: sin encabezados, sin acotaciones, sin "
+        "emojis ni hashtags."
+    )
+    user = (f"Momentos clave (en orden):\n{numbered}\n\n"
+            f"Escribe el guion hablado para ~{seconds}s (aprox. {words} palabras).")
+    resp = OpenAI().chat.completions.create(
+        model=model, temperature=0.7,
+        messages=[{"role": "system", "content": sys_p}, {"role": "user", "content": user}],
+    )
+    script = (resp.choices[0].message.content or "").strip().strip("“”\"'")
+    script = re.sub(r"^\s*(gui[oó]n|script|texto)\s*:\s*", "", script, flags=re.IGNORECASE).strip()
+    script = re.sub(r"#\w+", "", script)
+    return re.sub(r"[ \t]+\n", "\n", script).strip()
+
+
 def content_text(reel: dict, root) -> str:
     """Texto REAL de lo que dice el reel, para anclar gancho e imagen. Prefiere el
     guion guardado; si está vacío (p. ej. generaciones «recuperadas» que solo tienen
