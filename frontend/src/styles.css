@@ -1150,18 +1150,48 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  /* Barra superior compacta: título + nav horizontal + canales horizontales,
+     para que el contenido no quede enterrado bajo un sidebar altísimo. */
   .sidebar {
-    border-radius: 0 0 18px 18px;
+    border-radius: 0;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .sidebar h1 { font-size: 20px; }
+  .sidebar p { display: none; }
+
+  nav {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 8px 12px;
   }
 
-  .jobs-layout {
-    grid-template-columns: 1fr;
+  .channels-block {
+    border-top: 0;
+    padding-top: 0;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    gap: 8px;
   }
+  .channels-head { flex: 0 0 auto; }
+  .channel-btn { flex: 0 0 auto; white-space: nowrap; }
+  .channel-name { max-width: 130px; }
+  .channels-empty { display: none; }
 
-  .files-layout {
-    grid-template-columns: 1fr;
-  }
+  .topbar { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+  .topbar h2 { font-size: 17px; }
+  .main-content { padding: 12px; }
 
+  .jobs-layout,
+  .files-layout,
   .form-grid {
     grid-template-columns: 1fr;
   }
@@ -1169,4 +1199,11 @@ pre {
   .span-2 {
     grid-column: span 1;
   }
+
+  /* Controles a lo ancho y apilados (formularios usables con el pulgar). */
+  .actions-row { gap: 8px; }
+  .actions-row .field { min-width: 0; flex: 1 1 100%; }
+  .actions-row .field select,
+  .actions-row .field input { width: 100%; }
+  .clip-media-row video { width: 100% !important; max-width: 320px; }
 }
