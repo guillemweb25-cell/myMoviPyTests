@@ -2773,10 +2773,6 @@ export default function App() {
                 <div className="seo-head"><span>🔊 Voz generada — compón el vídeo</span></div>
                 <audio controls src={api.fileUrl(reelAudio)} style={{ width: '100%' }} />
                 <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 10 }}>
-                  <label className="field" style={{ flex: 1, minWidth: 220 }}>
-                    <span>Título en pantalla (opcional)</span>
-                    <input value={reelTitle} onChange={(e) => setReelTitle(e.target.value)} placeholder="Ej: El mundial ahora es un videojuego" />
-                  </label>
                   <label className="field" style={{ maxWidth: 160 }}>
                     <span>Subtítulos karaoke</span>
                     <select value={reelSubs ? 'si' : 'no'} onChange={(e) => setReelSubs(e.target.value === 'si')}>
@@ -2792,6 +2788,26 @@ export default function App() {
                   </button>
                 </div>
                 <p className="help"><strong>Fondo simple</strong>: negro + karaoke (sin GPU). <strong>Con imágenes IA</strong>: b-roll generado con ComfyUI (usa tu GPU). El avatar (HeyGen) llega después.</p>
+              </div>
+            )}
+
+            {reelId && (reelAudio || reelScript) && (
+              <div className="seo-box" style={{ marginTop: 12 }}>
+                <div className="seo-head">
+                  <span>🔎 SEO para YouTube (título y descripción)</span>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button className="link-btn" disabled={reelBusy !== ''} onClick={handleGenReelTitle}>
+                      {reelBusy === 'seo' ? '…' : '✨ Generar título'}
+                    </button>
+                    <button className="link-btn" disabled={reelBusy !== ''} onClick={handleGenReelDesc}>
+                      {reelBusy === 'seo' ? '…' : '✨ Generar descripción'}
+                    </button>
+                  </div>
+                </div>
+                <input value={reelTitle} onChange={(e) => setReelTitle(e.target.value)} placeholder="Título del vídeo (SEO) — también se usa como título en pantalla" maxLength={100} style={{ width: '100%' }} />
+                <textarea rows={5} value={reelDescription} onChange={(e) => setReelDescription(e.target.value)}
+                          placeholder="Descripción SEO (pulsa «Generar descripción»; incluye el enlace de YouTube si el reel ya está publicado)" style={{ marginTop: 8, width: '100%' }} />
+                <p className="help">Se guardan y se usan al subir a YouTube. La descripción incluye el enlace ▶️ si el reel ya tiene URL de YouTube.</p>
               </div>
             )}
 
@@ -2841,24 +2857,6 @@ export default function App() {
                         </div>
                       )}
                       <p className="help">Imagen {reelThumbImg ? 'propia' : 'generada con IA'} + gancho, pegada al final para elegirla como portada en el móvil.</p>
-                    </div>
-
-                    <div className="seo-box" style={{ marginBottom: 10 }}>
-                      <div className="seo-head">
-                        <span>🔎 SEO (título y descripción)</span>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button className="link-btn" disabled={reelBusy !== ''} onClick={handleGenReelTitle}>
-                            {reelBusy === 'seo' ? '…' : '✨ Generar título'}
-                          </button>
-                          <button className="link-btn" disabled={reelBusy !== ''} onClick={handleGenReelDesc}>
-                            {reelBusy === 'seo' ? '…' : '✨ Generar descripción'}
-                          </button>
-                        </div>
-                      </div>
-                      <input value={reelTitle} onChange={(e) => setReelTitle(e.target.value)} placeholder="Título del vídeo (SEO)" maxLength={100} />
-                      <textarea rows={5} value={reelDescription} onChange={(e) => setReelDescription(e.target.value)}
-                                placeholder="Descripción SEO (se genera con IA; incluye el enlace de YouTube si el reel ya está publicado)" style={{ marginTop: 8, width: '100%' }} />
-                      <p className="help">Título y descripción se guardan y se usan al subir a YouTube. La descripción incluye el enlace si el reel ya tiene URL de YouTube.</p>
                     </div>
 
                     <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
