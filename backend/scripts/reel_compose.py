@@ -126,11 +126,33 @@ def build_slideshow(audio: Path, out: Path, dur: float, images: list[Path],
         raise SystemExit(f"ffmpeg falló al componer el slideshow (código {r.returncode})")
 
 
+def build_from_bgvideo(audio: Path, out: Path, dur: float, bgvideo: Path,
+                       title: str, ffmpeg: str) -> None:
+    """Usa un vídeo de fondo ya vertical (p. ej. fragmentos del partido concatenados)
+    como imagen del reel: su vídeo + el audio (voz), recortado a la duración del audio."""
+    vf = (f"scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+          f"crop={CANVAS_W}:{CANVAS_H},setsar=1,fps=30")
+    if title.strip():
+        safe = title.replace("\\", "\\\\").replace(":", "\\:").replace("'", "’")
+        vf += (f",drawtext=text='{safe}':fontcolor=white:fontsize=54:box=1:"
+               f"boxcolor=black@0.45:boxborderw=18:x=(w-text_w)/2:y=140")
+    cmd = [ffmpeg, "-y", "-stream_loop", "-1", "-i", str(bgvideo), "-i", str(audio),
+           "-vf", vf, "-map", "0:v", "-map", "1:a",
+           "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+           "-r", "30", "-movflags", "+faststart", "-c:a", "aac", "-b:a", "160k",
+           "-t", f"{dur:.3f}", str(out)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0 or not out.exists():
+        sys.stderr.write(r.stderr[-1500:])
+        raise SystemExit(f"ffmpeg falló al componer con vídeo de fondo (código {r.returncode})")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Compone un reel vertical desde el audio")
     ap.add_argument("--audio", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--background", default="", help="imagen de fondo opcional")
+    ap.add_argument("--bg-video", default="", help="vídeo de fondo ya vertical (fragmentos del partido)")
     ap.add_argument("--images", default="", help="imágenes b-roll (slideshow), separadas por comas")
     ap.add_argument("--durations", default="", help="duración (s) de cada imagen, separadas por comas")
     ap.add_argument("--title", default="")
@@ -154,7 +176,11 @@ def main() -> None:
 
     print(f"Componiendo reel ({dur:.1f}s)...", flush=True)
     images = [Path(p) for p in args.images.split(",") if p.strip() and Path(p).exists()]
-    if images:
+    bgvideo = Path(args.bg_video) if args.bg_video and Path(args.bg_video).exists() else None
+    if bgvideo:
+        print("Vídeo de fondo (fragmentos del partido).", flush=True)
+        build_from_bgvideo(audio, out, dur, bgvideo, args.title, args.ffmpeg)
+    elif images:
         durs = [float(x) for x in args.durations.split(",") if x.strip()] if args.durations else None
         print(f"Slideshow de {len(images)} imágenes b-roll.", flush=True)
         build_slideshow(audio, out, dur, images, args.title, args.ffmpeg, durations=durs)

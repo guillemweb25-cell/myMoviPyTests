@@ -48,6 +48,52 @@ def _segments(words: list[dict], n: int, dur: float) -> list[dict]:
     return segs
 
 
+_VF_VERTICAL = ("split[a][b];"
+                f"[a]scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
+                f"crop={CANVAS_W}:{CANVAS_H},boxblur=40[bg];"
+                f"[b]scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=decrease[fg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1")
+
+
+def _vertical_clip(video: Path, start: float, dur: float, src_dur: float, out: Path,
+                   ffmpeg: str = "ffmpeg") -> bool:
+    """Extrae un FRAGMENTO [start, start+dur] del vídeo y lo lleva a 1080x1920 vertical
+    (acción completa sobre fondo desenfocado), sin audio, a 30 fps. Movimiento real."""
+    dur = max(0.6, dur)
+    start = max(0.0, min(start, max(0.0, src_dur - dur - 0.05)))
+    r = subprocess.run([ffmpeg, "-y", "-ss", f"{start:.2f}", "-t", f"{dur:.3f}", "-i", str(video),
+                        "-vf", _VF_VERTICAL + ",fps=30", "-an",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                        "-pix_fmt", "yuv420p", "-r", "30", str(out)],
+                       capture_output=True, text=True)
+    return out.exists() and r.returncode == 0
+
+
+def _build_bgvideo(video: Path, starts: list, holds: list, src_dur: float, out_dir: Path,
+                   ffmpeg: str = "ffmpeg") -> "Path | None":
+    """Monta el vídeo de fondo: un fragmento vertical por tramo hablado, concatenados.
+    Devuelve el mp4 concatenado o None si no se pudo extraer ningún fragmento."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    clips = []
+    for i, (s, h) in enumerate(zip(starts, holds)):
+        cp = out_dir / f"clip_{i:02d}.mp4"
+        if _vertical_clip(video, float(s), float(h), src_dur, cp, ffmpeg):
+            clips.append(cp)
+    if not clips:
+        return None
+    listfile = out_dir / "bg.concat.txt"
+    lines = ["ffconcat version 1.0"] + [f"file '{c.resolve()}'" for c in clips]
+    listfile.write_text("\n".join(lines), encoding="utf-8")
+    bg = out_dir / "bg.mp4"
+    r = subprocess.run([ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
+                        "-c", "copy", str(bg)], capture_output=True, text=True)
+    if r.returncode != 0 or not bg.exists():  # reencodea si el copy falla
+        subprocess.run([ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                        "-pix_fmt", "yuv420p", "-r", "30", str(bg)], capture_output=True, text=True)
+    return bg if bg.exists() else None
+
+
 def _vertical_frame(video: Path, t: float, out: Path, ffmpeg: str = "ffmpeg") -> bool:
     """Extrae el fotograma del instante t y lo lleva a 1080x1920 con la acción
     completa visible (encaje) sobre un fondo del propio fotograma desenfocado."""
@@ -64,28 +110,21 @@ def _vertical_frame(video: Path, t: float, out: Path, ffmpeg: str = "ffmpeg") ->
 
 def _compose_from_source(reel_id: str, source_video: Path, audio: Path, root: Path,
                          moments: list, ffmpeg: str) -> Path:
-    """Extrae un fotograma vertical por tramo hablado y compone el reel (slideshow +
-    karaoke + música). `moments` es una lista de instantes (s) del vídeo fuente para
-    los fotogramas; si va vacía, se reparten uniformemente por el vídeo fuente."""
+    """Monta el reel con FRAGMENTOS de vídeo reales del partido (uno por tramo hablado,
+    con movimiento), sincronizados a la voz + karaoke + música. `moments` = instantes
+    (s) del vídeo fuente; si va vacío, se reparten uniformemente. Si no se pueden
+    extraer fragmentos, cae a fotogramas estáticos."""
     from subtitle_engine import SubtitleEngine  # noqa: E402
     words = SubtitleEngine().transcribe_words(audio)
     dur = _duration(audio, ffmpeg)
     src_dur = _duration(source_video, ffmpeg)
     n = len(moments) if moments else max(4, min(10, round(dur / 6)))
     segs = _segments(words, n, dur)
-    if not moments:  # reparte fotogramas uniformemente por el vídeo fuente
+    if not moments:  # reparte por el vídeo fuente
         moments = [src_dur * (i + 0.5) / n for i in range(n)]
-
-    frames_dir = audio.parent / (audio.stem + "_frames")
-    frames_dir.mkdir(parents=True, exist_ok=True)
-    images, durations = [], []
-    for i, t in enumerate(moments):
-        fp = frames_dir / f"f_{i:02d}.jpg"
-        if _vertical_frame(source_video, float(t), fp, ffmpeg):
-            images.append(str(fp))
-            durations.append(segs[i]["hold"] if i < len(segs) else round(dur / n, 3))
-    if not images:
-        raise SystemExit("No se pudieron extraer fotogramas del vídeo del partido.")
+    holds = [segs[i]["hold"] if i < len(segs) else round(dur / n, 3) for i in range(n)]
+    # Los fragmentos empiezan un poco antes del instante clave para "entrar" a la jugada.
+    starts = [max(0.0, float(moments[i]) - min(1.0, holds[i] * 0.3)) for i in range(n)]
 
     out = audio.with_name(audio.stem + "_video.mp4")
     cache_dir = out.parent / f".sub_{out.stem}"
@@ -93,10 +132,26 @@ def _compose_from_source(reel_id: str, source_video: Path, audio: Path, root: Pa
     (cache_dir / "subtitle_words.json").write_text(json.dumps(words), encoding="utf-8")
 
     cmd = [sys.executable, str(Path(__file__).with_name("reel_compose.py")),
-           "--audio", str(audio), "--out", str(out),
-           "--images", ",".join(images),
-           "--durations", ",".join(f"{d:.3f}" for d in durations),
-           "--subtitles"]
+           "--audio", str(audio), "--out", str(out), "--subtitles"]
+
+    print("Extrayendo fragmentos de vídeo del partido...", flush=True)
+    bg = _build_bgvideo(source_video, starts, holds, src_dur, audio.parent / (audio.stem + "_frag"), ffmpeg)
+    if bg:
+        cmd += ["--bg-video", str(bg)]
+    else:  # fallback: fotogramas estáticos
+        print("No se pudieron extraer fragmentos; uso fotogramas estáticos.", flush=True)
+        frames_dir = audio.parent / (audio.stem + "_frames")
+        frames_dir.mkdir(parents=True, exist_ok=True)
+        images, durations = [], []
+        for i, t in enumerate(moments):
+            fp = frames_dir / f"f_{i:02d}.jpg"
+            if _vertical_frame(source_video, float(t), fp, ffmpeg):
+                images.append(str(fp)); durations.append(holds[i])
+        if not images:
+            raise SystemExit("No se pudieron extraer imágenes del vídeo del partido.")
+        cmd += ["--images", ",".join(images), "--durations", ",".join(f"{d:.3f}" for d in durations)]
+
+    print("Componiendo (voz + karaoke + música)...", flush=True)
     rc = subprocess.run(cmd, cwd=str(root)).returncode
     if rc != 0 or not out.exists():
         raise SystemExit(f"Fallo componiendo el reel (rc={rc}).")
