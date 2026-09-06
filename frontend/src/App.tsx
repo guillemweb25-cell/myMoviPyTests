@@ -138,6 +138,7 @@ export default function App() {
   const [reels, setReels] = useState<import('./types').ReelItem[]>([])
   const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose' | 'broll' | 'upload' | 'thumb' | 'match' | 'seo'>('')
   const [reelMatchUrl, setReelMatchUrl] = useState('')
+  const [reelSourceVideo, setReelSourceVideo] = useState('')
   const [reelChannelId, setReelChannelId] = useState<number | null>(null)
   const [reelPrivacy, setReelPrivacy] = useState('public')
   const [reelYoutubeUrl, setReelYoutubeUrl] = useState('')
@@ -584,6 +585,27 @@ export default function App() {
     } catch (e) { handleApiError(e) } finally { setReelBusy('') }
   }
 
+  async function handleRenderReel() {
+    if (!reelId) return
+    setReelBusy('compose'); setError('')
+    const cur = reelId
+    try {
+      await api.reelRender(cur)  // job: re-monta con los fotogramas del partido
+      const started = Date.now()
+      const poll = async () => {
+        try {
+          const { reels: list } = await api.reelsList()
+          setReels(list)
+          const me = list.find((r) => r.id === cur)
+          if (me?.video) { setReelVideo(me.video); setReelVideoV((v) => v + 1); setReelBusy(''); return }
+        } catch { /* reintenta */ }
+        if (Date.now() - started > 10 * 60 * 1000) { setReelBusy(''); setError('El montaje tarda; revisa el Historial (reel_match).'); return }
+        window.setTimeout(poll, 5000)
+      }
+      window.setTimeout(poll, 5000)
+    } catch (e) { handleApiError(e); setReelBusy('') }
+  }
+
   async function handleGenBroll() {
     if (!reelId || !reelAudio) { setError('Primero genera la voz.'); return }
     setReelBusy('broll'); setError('')
@@ -719,12 +741,14 @@ export default function App() {
     setReelAudio(r.audio); setReelVideo(r.video); setReelYoutubeUrl(r.youtubeUrl || '')
     setReelHook(r.hook || ''); setReelThumbPos((r.thumbPosition as 'top' | 'center' | 'bottom') || 'bottom')
     setReelThumb(''); setReelThumbImg(''); setReelDescription(r.seoDescription || '')
+    setReelSourceVideo(r.sourceVideo || '')
   }
 
   function handleNewReel() {
     setReelId(''); setReelTrigger(''); setReelAngle(''); setReelScript('')
     setReelTitle(''); setReelAudio(''); setReelVideo('')
     setReelHook(''); setReelThumb(''); setReelThumbImg(''); setReelThumbPos('bottom'); setReelDescription('')
+    setReelSourceVideo('')
   }
 
   async function handleDeleteReel(r: import('./types').ReelItem) {
@@ -2780,14 +2804,25 @@ export default function App() {
                       <option value="no">No</option>
                     </select>
                   </label>
-                  <button className="primary" disabled={reelBusy !== ''} onClick={handleComposeReel}>
-                    {reelBusy === 'compose' ? 'Componiendo…' : '🎬 Fondo simple'}
+                  {reelSourceVideo && (
+                    <button className="primary" disabled={reelBusy !== ''} onClick={handleRenderReel}
+                            title="Re-monta el vídeo con los fotogramas reales del partido (reusa guion+voz).">
+                      {reelBusy === 'compose' ? 'Renderizando…' : '🎬 Renderizar (fotogramas del partido)'}
+                    </button>
+                  )}
+                  <button disabled={reelBusy !== ''} onClick={handleComposeReel}>
+                    {reelBusy === 'compose' ? 'Componiendo…' : '⬛ Fondo simple'}
                   </button>
-                  <button className="primary" disabled={reelBusy !== ''} onClick={handleGenBroll} title="Genera imágenes con IA (ComfyUI) que ilustran el guion. Usa la GPU del Windows.">
+                  <button disabled={reelBusy !== ''} onClick={handleGenBroll} title="Genera imágenes con IA (ComfyUI) que ilustran el guion. Usa la GPU del Windows.">
                     {reelBusy === 'broll' ? 'Generando imágenes… (1-3 min)' : '🎨 Con imágenes IA'}
                   </button>
                 </div>
-                <p className="help"><strong>Fondo simple</strong>: negro + karaoke (sin GPU). <strong>Con imágenes IA</strong>: b-roll generado con ComfyUI (usa tu GPU). El avatar (HeyGen) llega después.</p>
+                <p className="help">
+                  {reelSourceVideo
+                    ? <><strong>Renderizar</strong>: monta el vídeo con los fotogramas reales del partido (recomendado). </>
+                    : null}
+                  <strong>Fondo simple</strong>: negro + karaoke (sin GPU). <strong>Con imágenes IA</strong>: b-roll con ComfyUI (usa tu GPU).
+                </p>
               </div>
             )}
 

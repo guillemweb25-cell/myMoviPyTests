@@ -140,6 +140,7 @@ export type ReelItem = {
   hook?: string
   thumbPosition?: string
   seoDescription?: string
+  sourceVideo?: string
 }
 
 export type DetectClipsResponse = {

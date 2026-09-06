@@ -1706,6 +1706,22 @@ def reel_match(payload: ReelMatchRequest) -> dict:
     return {"job": job, "reelId": reel_id}
 
 
+@app.post("/api/reels/{reel_id}/render")
+def reel_render(reel_id: str) -> dict:
+    """Re-monta el vídeo de un reel de partido reusando el guion+voz ya generados y el
+    vídeo del partido descargado (solo fotogramas + composición). No rehace descarga/
+    transcripción/guion/voz. Job asíncrono; el frontend refresca al terminar."""
+    reel = db.get_reel(reel_id)
+    if not reel:
+        raise HTTPException(status_code=404, detail="Generación no encontrada.")
+    if not reel.get("audio") or not (ROOT_DIR / reel["audio"]).exists():
+        raise HTTPException(status_code=400, detail="El reel no tiene voz generada todavía.")
+    if not reel.get("sourceVideo") or not (ROOT_DIR / reel["sourceVideo"]).exists():
+        raise HTTPException(status_code=400, detail="No hay vídeo del partido guardado; usa «Crear reel del partido».")
+    job = enqueue_job("reel_match.py", ["--reel", reel_id, "--render-only"])
+    return {"job": job}
+
+
 @app.delete("/api/reels/{reel_id}")
 def reels_delete(reel_id: str) -> dict:
     reel = db.get_reel(reel_id)

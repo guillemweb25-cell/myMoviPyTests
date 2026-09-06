@@ -62,14 +62,58 @@ def _vertical_frame(video: Path, t: float, out: Path, ffmpeg: str = "ffmpeg") ->
     return out.exists()
 
 
+def _compose_from_source(reel_id: str, source_video: Path, audio: Path, root: Path,
+                         moments: list, ffmpeg: str) -> Path:
+    """Extrae un fotograma vertical por tramo hablado y compone el reel (slideshow +
+    karaoke + música). `moments` es una lista de instantes (s) del vídeo fuente para
+    los fotogramas; si va vacía, se reparten uniformemente por el vídeo fuente."""
+    from subtitle_engine import SubtitleEngine  # noqa: E402
+    words = SubtitleEngine().transcribe_words(audio)
+    dur = _duration(audio, ffmpeg)
+    src_dur = _duration(source_video, ffmpeg)
+    n = len(moments) if moments else max(4, min(10, round(dur / 6)))
+    segs = _segments(words, n, dur)
+    if not moments:  # reparte fotogramas uniformemente por el vídeo fuente
+        moments = [src_dur * (i + 0.5) / n for i in range(n)]
+
+    frames_dir = audio.parent / (audio.stem + "_frames")
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    images, durations = [], []
+    for i, t in enumerate(moments):
+        fp = frames_dir / f"f_{i:02d}.jpg"
+        if _vertical_frame(source_video, float(t), fp, ffmpeg):
+            images.append(str(fp))
+            durations.append(segs[i]["hold"] if i < len(segs) else round(dur / n, 3))
+    if not images:
+        raise SystemExit("No se pudieron extraer fotogramas del vídeo del partido.")
+
+    out = audio.with_name(audio.stem + "_video.mp4")
+    cache_dir = out.parent / f".sub_{out.stem}"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "subtitle_words.json").write_text(json.dumps(words), encoding="utf-8")
+
+    cmd = [sys.executable, str(Path(__file__).with_name("reel_compose.py")),
+           "--audio", str(audio), "--out", str(out),
+           "--images", ",".join(images),
+           "--durations", ",".join(f"{d:.3f}" for d in durations),
+           "--subtitles"]
+    rc = subprocess.run(cmd, cwd=str(root)).returncode
+    if rc != 0 or not out.exists():
+        raise SystemExit(f"Fallo componiendo el reel (rc={rc}).")
+    db.update_reel(reel_id, {"video_path": str(out.relative_to(root))})
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Reel explicativo desde el resumen de un partido")
     ap.add_argument("--reel", required=True)
-    ap.add_argument("--url", required=True)
-    ap.add_argument("--voice", required=True)
+    ap.add_argument("--url", default="")
+    ap.add_argument("--voice", default="")
     ap.add_argument("--lang", default="auto")
     ap.add_argument("--moments", type=int, default=6)
     ap.add_argument("--seconds", type=int, default=45)
+    ap.add_argument("--render-only", action="store_true",
+                    help="reusa guion+voz+vídeo fuente ya existentes; solo re-monta el vídeo")
     ap.add_argument("--ffmpeg", default="ffmpeg")
     args = ap.parse_args()
 
@@ -78,6 +122,22 @@ def main() -> None:
     reel = db.get_reel(args.reel)
     if not reel:
         raise SystemExit(f"Reel {args.reel} no encontrado.")
+
+    # RENDER-ONLY: ya hay voz y vídeo fuente → solo re-monta (fotogramas + composición).
+    if args.render_only:
+        audio = root / (reel.get("audio") or "")
+        source = root / (reel.get("sourceVideo") or "")
+        if not reel.get("audio") or not audio.exists():
+            raise SystemExit("El reel no tiene voz generada.")
+        if not reel.get("sourceVideo") or not source.exists():
+            raise SystemExit("No hay vídeo del partido guardado; usa 'Crear reel del partido'.")
+        print("Re-montando el reel con los fotogramas del partido...", flush=True)
+        out = _compose_from_source(args.reel, source, audio, root, [], args.ffmpeg)
+        print(f"✅ Reel re-montado: {out}", flush=True)
+        return
+
+    if not args.url or not args.voice:
+        raise SystemExit("Faltan --url y --voice para crear el reel del partido.")
 
     # 1) Descargar el resumen del partido.
     print("1/6 Descargando el resumen del partido...", flush=True)
@@ -88,6 +148,10 @@ def main() -> None:
     if not res or not res[0]:
         raise SystemExit("No se pudo descargar el vídeo del partido.")
     match_video = Path(res[0])
+    try:
+        db.update_reel(args.reel, {"source_video": str(match_video.relative_to(root))})
+    except ValueError:
+        pass  # fuera del root: no lo guardamos, seguimos igual
 
     # 2) Transcribir el partido → subtítulos con tiempos.
     print("2/6 Transcribiendo el partido...", flush=True)
@@ -120,41 +184,10 @@ def main() -> None:
     tts_client.synthesize(script, args.voice, audio)
     db.update_reel(args.reel, {"audio_path": str(audio.relative_to(root)), "voice_id": args.voice})
 
-    # 6) Un fotograma real del partido por tramo hablado + composición + karaoke.
+    # 6) Un fotograma real del partido por momento clave + composición + karaoke.
     print("6/6 Recortando fotogramas del partido y componiendo...", flush=True)
-    from subtitle_engine import SubtitleEngine  # noqa: E402
-    words = SubtitleEngine().transcribe_words(audio)
-    dur = _duration(audio, args.ffmpeg)
-    segs = _segments(words, len(top), dur)
-
-    frames_dir = audio.parent / (audio.stem + "_frames")
-    frames_dir.mkdir(parents=True, exist_ok=True)
-    images, durations = [], []
-    for i, c in enumerate(top):
-        mid = (c.start + c.end) / 2.0
-        fp = frames_dir / f"f_{i:02d}.jpg"
-        if _vertical_frame(match_video, mid, fp, args.ffmpeg):
-            images.append(str(fp))
-            durations.append(segs[i]["hold"] if i < len(segs) else round(dur / len(top), 3))
-    if not images:
-        raise SystemExit("No se pudieron extraer fotogramas del partido.")
-
-    out = audio.with_name(audio.stem + "_video.mp4")
-    # Caché de subtítulos PROPIA de este reel (evita subtítulos cruzados).
-    cache_dir = out.parent / f".sub_{out.stem}"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    (cache_dir / "subtitle_words.json").write_text(json.dumps(words), encoding="utf-8")
-
-    cmd = [sys.executable, str(Path(__file__).with_name("reel_compose.py")),
-           "--audio", str(audio), "--out", str(out),
-           "--images", ",".join(images),
-           "--durations", ",".join(f"{d:.3f}" for d in durations),
-           "--subtitles"]
-    rc = subprocess.run(cmd, cwd=str(root)).returncode
-    if rc != 0 or not out.exists():
-        raise SystemExit(f"Fallo componiendo el reel (rc={rc}).")
-
-    db.update_reel(args.reel, {"video_path": str(out.relative_to(root))})
+    moments = [(c.start + c.end) / 2.0 for c in top]
+    out = _compose_from_source(args.reel, match_video, audio, root, moments, args.ffmpeg)
     print(f"✅ Reel del partido listo: {out}", flush=True)
 
 
