@@ -143,6 +143,21 @@ export type ReelItem = {
   sourceVideo?: string
 }
 
+export type PlantItem = {
+  id: string
+  plant: string
+  aspect: string
+  imagePrompt?: string
+  clips?: string[]
+  image?: string
+  video?: string
+  title?: string
+  seoDescription?: string
+  createdAt: string
+  channelId?: number | null
+  youtubeUrl?: string
+}
+
 export type DetectClipsResponse = {
   videoPath: string | null
   clips: ClipCandidate[]

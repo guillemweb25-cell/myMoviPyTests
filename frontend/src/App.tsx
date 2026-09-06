@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, clearToken, getToken, setToken, UnauthorizedError } from './api'
 import type { Campaign, Channel, ClipCandidate, ClipSource, ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
 
-type Section = 'dashboard' | 'content' | 'clipping' | 'reels' | 'channel' | 'execute' | 'jobs' | 'files'
+type Section = 'dashboard' | 'content' | 'clipping' | 'reels' | 'plants' | 'channel' | 'execute' | 'jobs' | 'files'
 
 const sections: { id: Section; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'content', label: 'Contenido Web' },
   { id: 'clipping', label: 'Clipping' },
   { id: 'reels', label: '🎬 Avatar Reel' },
+  { id: 'plants', label: '🪴 Macetas' },
   { id: 'execute', label: 'Ejecutar Scripts' },
   { id: 'jobs', label: 'Historial' },
   { id: 'files', label: 'Explorador Output' },
@@ -148,6 +149,12 @@ export default function App() {
   const [reelThumb, setReelThumb] = useState('')
   const [reelThumbV, setReelThumbV] = useState(0)
   const [reelVideoV, setReelVideoV] = useState(0)
+  // Vídeos de macetas (WAN)
+  const [plantName, setPlantName] = useState('')
+  const [plantAspect, setPlantAspect] = useState<'9:16' | '16:9'>('9:16')
+  const [plantIdeasList, setPlantIdeasList] = useState<{ name: string; note: string }[]>([])
+  const [plants, setPlants] = useState<import('./types').PlantItem[]>([])
+  const [plantBusy, setPlantBusy] = useState<'' | 'ideas' | 'create'>('')
   const [facecamEditor, setFacecamEditor] = useState<{ campaignId: number; frame: string; rect: Rect | null; zoom: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow' | 'facecam'>('center')
@@ -583,6 +590,39 @@ export default function App() {
       setReelVideo(video)
       api.reelsList().then((d) => setReels(d.reels)).catch(() => {})
     } catch (e) { handleApiError(e) } finally { setReelBusy('') }
+  }
+
+  async function handlePlantIdeas() {
+    setPlantBusy('ideas'); setError('')
+    try { const { ideas } = await api.plantIdeas(); setPlantIdeasList(ideas) }
+    catch (e) { handleApiError(e) } finally { setPlantBusy('') }
+  }
+
+  async function handleCreatePlant() {
+    if (!plantName.trim()) { setError('Escribe una planta (o elige una idea).'); return }
+    setPlantBusy('create'); setError('')
+    try {
+      const { plantId } = await api.plantCreate({ plant: plantName.trim(), aspect: plantAspect })
+      api.plantsList().then((d) => setPlants(d.plants)).catch(() => {})
+      const started = Date.now()
+      const poll = async () => {
+        try {
+          const { plants: list } = await api.plantsList()
+          setPlants(list)
+          const me = list.find((p) => p.id === plantId)
+          if (me?.video) { setPlantBusy(''); return }
+        } catch { /* reintenta */ }
+        if (Date.now() - started > 30 * 60 * 1000) { setPlantBusy(''); setError('El vídeo de maceta tarda; revisa el Historial (plant_video).'); return }
+        window.setTimeout(poll, 8000)
+      }
+      window.setTimeout(poll, 8000)
+    } catch (e) { handleApiError(e); setPlantBusy('') }
+  }
+
+  async function handleDeletePlant(p: import('./types').PlantItem) {
+    if (!window.confirm('¿Borrar este vídeo de maceta (imágenes y clips incluidos)?')) return
+    try { await api.plantDelete(p.id); setPlants((prev) => prev.filter((x) => x.id !== p.id)) }
+    catch (e) { handleApiError(e) }
   }
 
   async function handleRenderReel() {
@@ -1474,6 +1514,12 @@ export default function App() {
     api.reelsList().then((d) => setReels(d.reels)).catch(() => {})
     setReelChannelId((cur) => cur ?? (channels[0]?.id ?? null))
   }, [activeSection, authState, channels])
+
+  // Carga los vídeos de macetas al abrir la sección.
+  useEffect(() => {
+    if (activeSection !== 'plants' || authState !== 'authed') return
+    api.plantsList().then((d) => setPlants(d.plants)).catch(() => {})
+  }, [activeSection, authState])
 
   // Duración del vídeo de la campaña activa (para el mapa de cobertura).
   useEffect(() => {
@@ -2948,6 +2994,72 @@ export default function App() {
                 </div>
               </div>
             )}
+          </section>
+        )}
+
+        {activeSection === 'plants' && (
+          <section className="panel">
+            <div className="viewer-header">
+              <h3 style={{ margin: 0 }}>🪴 Macetas — crecimiento en time-lapse (WAN)</h3>
+            </div>
+            <p className="description">
+              Vídeo satisfactorio de una planta creciendo de semilla a cosecha. El motor escribe el plan,
+              genera la primera imagen (maceta vacía) y monta 3 clips de vídeo IA (WAN 2.2) encadenados.
+              Todo generado → sin problemas de copyright. Usa la GPU del Windows.
+            </p>
+
+            <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <label className="field" style={{ flex: 1, minWidth: 220 }}>
+                <span>Planta (fruta, flor, verdura…)</span>
+                <input value={plantName} onChange={(e) => setPlantName(e.target.value)} placeholder="Ej: limón, girasol, tomate, fresa…" />
+              </label>
+              <label className="field" style={{ maxWidth: 140 }}>
+                <span>Formato</span>
+                <select value={plantAspect} onChange={(e) => setPlantAspect(e.target.value as '9:16' | '16:9')}>
+                  <option value="9:16">9:16 (Short)</option>
+                  <option value="16:9">16:9 (largo)</option>
+                </select>
+              </label>
+              <button disabled={plantBusy !== ''} onClick={handlePlantIdeas}>
+                {plantBusy === 'ideas' ? '…' : '💡 Ideas'}
+              </button>
+              <button className="primary" disabled={plantBusy !== '' || !plantName.trim()} onClick={handleCreatePlant}>
+                {plantBusy === 'create' ? 'Generando vídeo…' : '🪴 Crear vídeo'}
+              </button>
+            </div>
+            {plantBusy === 'create' && <p className="help">Plan → primera imagen → 3 clips de WAN (cada uno tarda unos minutos en la GPU) → montaje. Puedes seguir en otra pestaña; aparecerá abajo.</p>}
+
+            {plantIdeasList.length > 0 && (
+              <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {plantIdeasList.map((idea) => (
+                  <button key={idea.name} className={plantName === idea.name ? 'primary' : ''} title={idea.note}
+                          style={{ padding: '6px 10px', borderRadius: 999 }} onClick={() => setPlantName(idea.name)}>
+                    {idea.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="seo-box" style={{ marginTop: 16 }}>
+              <div className="seo-head"><span>📁 Mis vídeos de macetas ({plants.length})</span></div>
+              {plants.length === 0 && <p className="help">Aún no hay vídeos. Escribe una planta y pulsa «Crear vídeo».</p>}
+              {plants.map((p) => (
+                <div key={p.id} className="clip-media-row" style={{ alignItems: 'flex-start', marginTop: 10, gap: 12 }}>
+                  {p.video
+                    ? <video controls src={api.fileUrl(p.video)} style={{ width: 160, borderRadius: 10, background: '#000' }} />
+                    : p.image
+                      ? <img src={api.fileUrl(p.image)} alt="frame" style={{ width: 160, borderRadius: 10 }} />
+                      : <div style={{ width: 160, height: 90, borderRadius: 10, background: '#0b1120', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="help">⏳</div>}
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontWeight: 600 }}>🪴 {p.plant} · {p.aspect}</div>
+                    <p className="help" style={{ margin: '2px 0' }}>
+                      {p.video ? '✅ Listo' : '⏳ Procesando… (plan → imagen → 3 clips WAN)'} · {new Date(p.createdAt).toLocaleString()}
+                    </p>
+                    <button className="link-btn" onClick={() => handleDeletePlant(p)}>Borrar</button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
         )}
 

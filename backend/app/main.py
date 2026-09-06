@@ -1925,6 +1925,57 @@ def reel_compose(payload: ReelComposeRequest) -> dict:
     return {"video": video_rel}
 
 
+# ===== Vídeos de macetas (WAN plant time-lapse) =====
+
+@app.post("/api/plants/ideas")
+def plant_ideas_endpoint() -> dict:
+    from .services.plant_engine import plant_ideas
+    try:
+        return {"ideas": plant_ideas()}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo generando ideas: {exc}") from exc
+
+
+class PlantCreateRequest(BaseModel):
+    plant: str
+    aspect: str = "9:16"
+
+
+@app.post("/api/plants")
+def plant_create(payload: PlantCreateRequest) -> dict:
+    """Crea un vídeo de maceta (job WAN): plan → primera imagen → 3 clips → montaje."""
+    if not payload.plant.strip():
+        raise HTTPException(status_code=400, detail="Escribe una planta.")
+    from .services import wan_client
+    if not wan_client.is_up():
+        raise HTTPException(status_code=502, detail="ComfyUI no responde (¿encendido en el Windows y la GPU libre?).")
+    aspect = payload.aspect if payload.aspect in ("9:16", "16:9") else "9:16"
+    plant_id = uuid.uuid4().hex[:12]
+    db.save_plant({"id": plant_id, "plant": payload.plant.strip(), "aspect": aspect, "createdAt": now_iso()})
+    job = enqueue_job("plant_video.py", ["--plant", plant_id])
+    return {"job": job, "plantId": plant_id}
+
+
+@app.get("/api/plants")
+def plants_list() -> dict:
+    return {"plants": db.list_plants()}
+
+
+@app.delete("/api/plants/{plant_id}")
+def plant_delete(plant_id: str) -> dict:
+    rec = db.get_plant(plant_id)
+    if rec:
+        import shutil
+        folder = ROOT_DIR / "output" / "plants" / plant_id
+        try:
+            if folder.exists():
+                shutil.rmtree(folder)
+        except Exception:
+            pass
+        db.delete_plant(plant_id)
+    return {"deleted": plant_id}
+
+
 @app.post("/api/clips/{clip_id}/seo")
 def generate_clip_seo_endpoint(clip_id: str) -> dict:
     from .services.clip_seo import generate_clip_seo

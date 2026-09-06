@@ -97,6 +97,20 @@ CREATE TABLE IF NOT EXISTS reels (
     channel_id  INTEGER,
     youtube_url TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS plant_videos (
+    id           TEXT PRIMARY KEY,
+    plant        TEXT DEFAULT '',
+    aspect       TEXT DEFAULT '9:16',
+    image_prompt TEXT DEFAULT '',
+    clips_json   TEXT DEFAULT '',
+    image_path   TEXT DEFAULT '',
+    video_path   TEXT DEFAULT '',
+    title        TEXT DEFAULT '',
+    seo_description TEXT DEFAULT '',
+    created_at   TEXT,
+    channel_id   INTEGER,
+    youtube_url  TEXT DEFAULT ''
+);
 """
 
 REEL_MIGRATIONS = [
@@ -557,3 +571,72 @@ def list_reels() -> list[dict]:
 def delete_reel(reel_id: str) -> None:
     with _db_lock, _connect() as conn:
         conn.execute("DELETE FROM reels WHERE id = ?", (reel_id,))
+
+
+# ---- Vídeos de macetas (WAN plant time-lapse) ----
+
+def _plant_to_dict(row: sqlite3.Row) -> dict:
+    import json as _json
+    try:
+        clips = _json.loads(row["clips_json"] or "[]")
+    except Exception:  # noqa: BLE001
+        clips = []
+    return {
+        "id": row["id"],
+        "plant": row["plant"] or "",
+        "aspect": row["aspect"] or "9:16",
+        "imagePrompt": row["image_prompt"] or "",
+        "clips": clips,
+        "image": row["image_path"] or "",
+        "video": row["video_path"] or "",
+        "title": row["title"] or "",
+        "seoDescription": (row["seo_description"] if "seo_description" in row.keys() else "") or "",
+        "createdAt": row["created_at"],
+        "channelId": (row["channel_id"] if "channel_id" in row.keys() else None),
+        "youtubeUrl": (row["youtube_url"] if "youtube_url" in row.keys() else "") or "",
+    }
+
+
+def save_plant(plant: dict) -> dict:
+    import json as _json
+    with _db_lock, _connect() as conn:
+        conn.execute(
+            """INSERT INTO plant_videos (id, plant, aspect, image_prompt, clips_json, image_path,
+                video_path, title, created_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+            (plant["id"], plant.get("plant", ""), plant.get("aspect", "9:16"),
+             plant.get("imagePrompt", ""), _json.dumps(plant.get("clips", [])),
+             plant.get("image", ""), plant.get("video", ""), plant.get("title", ""),
+             plant.get("createdAt", "")),
+        )
+    return get_plant(plant["id"])
+
+
+def update_plant(plant_id: str, fields: dict) -> dict | None:
+    import json as _json
+    allowed = {"plant", "aspect", "image_prompt", "clips_json", "image_path", "video_path",
+               "title", "seo_description", "channel_id", "youtube_url"}
+    if "clips" in fields:
+        fields["clips_json"] = _json.dumps(fields.pop("clips"))
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if updates:
+        assignments = ", ".join(f"{k} = ?" for k in updates)
+        with _db_lock, _connect() as conn:
+            conn.execute(f"UPDATE plant_videos SET {assignments} WHERE id = ?", (*updates.values(), plant_id))
+    return get_plant(plant_id)
+
+
+def get_plant(plant_id: str) -> dict | None:
+    with _db_lock, _connect() as conn:
+        row = conn.execute("SELECT * FROM plant_videos WHERE id = ?", (plant_id,)).fetchone()
+    return _plant_to_dict(row) if row else None
+
+
+def list_plants() -> list[dict]:
+    with _db_lock, _connect() as conn:
+        rows = conn.execute("SELECT * FROM plant_videos ORDER BY created_at DESC").fetchall()
+    return [_plant_to_dict(r) for r in rows]
+
+
+def delete_plant(plant_id: str) -> None:
+    with _db_lock, _connect() as conn:
+        conn.execute("DELETE FROM plant_videos WHERE id = ?", (plant_id,))
