@@ -1692,6 +1692,24 @@ def reels_delete(reel_id: str) -> dict:
     return {"deleted": reel_id}
 
 
+class ReelUploadRequest(BaseModel):
+    channelId: int
+    privacy: str = "public"
+
+
+@app.post("/api/reels/{reel_id}/upload")
+def reel_upload(reel_id: str, payload: ReelUploadRequest) -> dict:
+    """Sube el reel al canal elegido (job). Genera SEO desde el guion."""
+    reel = db.get_reel(reel_id)
+    if not reel or not reel.get("video") or not (ROOT_DIR / reel["video"]).exists():
+        raise HTTPException(status_code=400, detail="El reel no tiene vídeo compuesto.")
+    if not db.get_channel(payload.channelId):
+        raise HTTPException(status_code=404, detail="Canal no encontrado.")
+    privacy = payload.privacy if payload.privacy in ("private", "unlisted", "public") else "public"
+    job = enqueue_job("reel_upload.py", ["--reel", reel_id, "--channel", str(payload.channelId), "--privacy", privacy])
+    return {"job": job}
+
+
 class ReelComposeRequest(BaseModel):
     audio: str
     title: str = ""

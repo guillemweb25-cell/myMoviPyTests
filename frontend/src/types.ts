@@ -135,6 +135,8 @@ export type ReelItem = {
   video: string
   title: string
   createdAt: string
+  channelId?: number | null
+  youtubeUrl?: string
 }
 
 export type DetectClipsResponse = {

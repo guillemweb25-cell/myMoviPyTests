@@ -93,9 +93,16 @@ CREATE TABLE IF NOT EXISTS reels (
     audio_path  TEXT DEFAULT '',
     video_path  TEXT DEFAULT '',
     title       TEXT DEFAULT '',
-    created_at  TEXT
+    created_at  TEXT,
+    channel_id  INTEGER,
+    youtube_url TEXT DEFAULT ''
 );
 """
+
+REEL_MIGRATIONS = [
+    "ALTER TABLE reels ADD COLUMN channel_id INTEGER",
+    "ALTER TABLE reels ADD COLUMN youtube_url TEXT DEFAULT ''",
+]
 
 CAMPAIGN_MIGRATIONS = [
     "ALTER TABLE campaigns ADD COLUMN brief_url TEXT DEFAULT ''",
@@ -143,7 +150,7 @@ def init(db_path: Path) -> None:
     with _db_lock, _connect() as conn:
         conn.executescript(SCHEMA)
         # Migraciones para BD antiguas: anade columnas nuevas si faltan.
-        for statement in CLIP_MIGRATIONS + CAMPAIGN_MIGRATIONS:
+        for statement in CLIP_MIGRATIONS + CAMPAIGN_MIGRATIONS + REEL_MIGRATIONS:
             try:
                 conn.execute(statement)
             except sqlite3.OperationalError:
@@ -500,6 +507,8 @@ def _reel_to_dict(row: sqlite3.Row) -> dict:
         "video": row["video_path"] or "",
         "title": row["title"] or "",
         "createdAt": row["created_at"],
+        "channelId": (row["channel_id"] if "channel_id" in row.keys() else None),
+        "youtubeUrl": (row["youtube_url"] if "youtube_url" in row.keys() else "") or "",
     }
 
 
@@ -515,7 +524,7 @@ def save_reel(reel: dict) -> dict:
 
 
 def update_reel(reel_id: str, fields: dict) -> dict | None:
-    allowed = {"trigger", "script", "voice_id", "audio_path", "video_path", "title"}
+    allowed = {"trigger", "script", "voice_id", "audio_path", "video_path", "title", "channel_id", "youtube_url"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if updates:
         assignments = ", ".join(f"{k} = ?" for k in updates)

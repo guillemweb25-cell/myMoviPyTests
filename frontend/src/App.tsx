@@ -135,7 +135,10 @@ export default function App() {
   const [reelVideo, setReelVideo] = useState('')
   const [reelId, setReelId] = useState('')
   const [reels, setReels] = useState<import('./types').ReelItem[]>([])
-  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose' | 'broll'>('')
+  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose' | 'broll' | 'upload'>('')
+  const [reelChannelId, setReelChannelId] = useState<number | null>(null)
+  const [reelPrivacy, setReelPrivacy] = useState('public')
+  const [reelYoutubeUrl, setReelYoutubeUrl] = useState('')
   const [facecamEditor, setFacecamEditor] = useState<{ campaignId: number; frame: string; rect: Rect | null; zoom: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow' | 'facecam'>('center')
@@ -596,10 +599,32 @@ export default function App() {
     } catch (e) { handleApiError(e); setReelBusy('') }
   }
 
+  async function handleUploadReel() {
+    if (!reelId || !reelVideo) { setError('Primero compón el vídeo.'); return }
+    if (!reelChannelId) { setError('Elige un canal.'); return }
+    setReelBusy('upload'); setError(''); setReelYoutubeUrl('')
+    const cur = reelId
+    try {
+      await api.reelUpload(cur, { channelId: reelChannelId, privacy: reelPrivacy })
+      const started = Date.now()
+      const poll = async () => {
+        try {
+          const { reels: list } = await api.reelsList()
+          setReels(list)
+          const me = list.find((r) => r.id === cur)
+          if (me?.youtubeUrl) { setReelYoutubeUrl(me.youtubeUrl); setReelBusy(''); return }
+        } catch { /* reintenta */ }
+        if (Date.now() - started > 8 * 60 * 1000) { setReelBusy(''); setError('La subida tarda; revisa el Historial (reel_upload).'); return }
+        window.setTimeout(poll, 4000)
+      }
+      window.setTimeout(poll, 4000)
+    } catch (e) { handleApiError(e); setReelBusy('') }
+  }
+
   function handleOpenReel(r: import('./types').ReelItem) {
     setReelId(r.id); setReelTrigger(r.trigger); setReelScript(r.script)
     setReelVoiceId(r.voiceId || reelVoiceId); setReelTitle(r.title)
-    setReelAudio(r.audio); setReelVideo(r.video)
+    setReelAudio(r.audio); setReelVideo(r.video); setReelYoutubeUrl(r.youtubeUrl || '')
   }
 
   function handleNewReel() {
@@ -1328,7 +1353,8 @@ export default function App() {
       setReelVoiceId((cur) => cur || d.voices[0] || '')
     }).catch(() => {})
     api.reelsList().then((d) => setReels(d.reels)).catch(() => {})
-  }, [activeSection, authState])
+    setReelChannelId((cur) => cur ?? (channels[0]?.id ?? null))
+  }, [activeSection, authState, channels])
 
   // Duración del vídeo de la campaña activa (para el mapa de cobertura).
   useEffect(() => {
@@ -2652,10 +2678,38 @@ export default function App() {
             {reelVideo && (
               <div className="seo-box" style={{ marginTop: 12 }}>
                 <div className="seo-head">
-                  <span>✅ Reel compuesto</span>
+                  <span>✅ Reel compuesto — súbelo a un canal</span>
                   <a className="link-btn" href={api.fileUrl(reelVideo)} target="_blank" rel="noreferrer">Descargar</a>
                 </div>
-                <video controls src={api.fileUrl(reelVideo)} style={{ width: 240, borderRadius: 10, background: '#000' }} />
+                <div className="clip-media-row" style={{ alignItems: 'flex-start' }}>
+                  <video controls src={api.fileUrl(reelVideo)} style={{ width: 200, borderRadius: 10, background: '#000' }} />
+                  <div style={{ flex: 1, minWidth: 240 }}>
+                    <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                      <label className="field" style={{ minWidth: 180 }}>
+                        <span>Canal de YouTube</span>
+                        <select value={reelChannelId ?? ''} onChange={(e) => setReelChannelId(Number(e.target.value) || null)}>
+                          {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </label>
+                      <label className="field" style={{ maxWidth: 140 }}>
+                        <span>Visibilidad</span>
+                        <select value={reelPrivacy} onChange={(e) => setReelPrivacy(e.target.value)}>
+                          <option value="public">Público</option>
+                          <option value="unlisted">Oculto</option>
+                          <option value="private">Privado</option>
+                        </select>
+                      </label>
+                      <button className="primary" disabled={reelBusy !== '' || !reelChannelId} onClick={handleUploadReel}>
+                        {reelBusy === 'upload' ? 'Subiendo…' : '📤 Subir a YouTube'}
+                      </button>
+                    </div>
+                    {reelYoutubeUrl && (
+                      <p className="help" style={{ marginTop: 8 }}>
+                        ✅ Subido: <a className="panel-link" href={reelYoutubeUrl} target="_blank" rel="noreferrer">{reelYoutubeUrl}</a>
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 

@@ -82,6 +82,8 @@ export const api = {
     postJson<{ video: string }>('/api/reels/compose', payload),
   reelBroll: (payload: { reelId: string; subtitles?: boolean; title?: string }) =>
     postJson<{ video: string; images: string[] }>('/api/reels/broll', payload),
+  reelUpload: (reelId: string, payload: { channelId: number; privacy?: string }) =>
+    postJson<{ job: Job }>(`/api/reels/${reelId}/upload`, payload),
   reelsList: () => getJson<{ reels: ReelItem[] }>('/api/reels'),
   reelDelete: (id: string) => del<{ deleted: string }>(`/api/reels/${id}`),
   scripts: () => getJson<ScriptInfo[]>('/api/scripts'),
