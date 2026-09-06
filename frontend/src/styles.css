@@ -1160,30 +1160,33 @@ pre {
   .sidebar h1 { font-size: 20px; }
   .sidebar p { display: none; }
 
+  /* Nav en varias filas (chips) para ver TODAS las secciones sin scroll. */
   nav {
     flex-direction: row;
-    overflow-x: auto;
-    gap: 8px;
-    padding-bottom: 4px;
-    -webkit-overflow-scrolling: touch;
+    flex-wrap: wrap;
+    gap: 6px;
   }
   .nav-btn {
     flex: 0 0 auto;
     white-space: nowrap;
-    padding: 8px 12px;
+    text-align: center;
+    padding: 7px 11px;
+    font-size: 13px;
+    border-radius: 999px;
   }
 
   .channels-block {
-    border-top: 0;
-    padding-top: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 8px;
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
-    overflow-x: auto;
-    gap: 8px;
+    gap: 6px;
   }
-  .channels-head { flex: 0 0 auto; }
-  .channel-btn { flex: 0 0 auto; white-space: nowrap; }
-  .channel-name { max-width: 130px; }
+  .channels-head { flex: 0 0 auto; margin-right: 4px; }
+  .channel-btn { flex: 0 0 auto; white-space: nowrap; padding: 6px 10px; }
+  .channel-avatar { width: 22px; height: 22px; font-size: 12px; }
+  .channel-name { max-width: 110px; font-size: 13px; }
   .channels-empty { display: none; }
 
   .topbar { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
