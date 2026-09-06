@@ -10,12 +10,49 @@ imagen y las subtítulos mandan visualmente.
 from __future__ import annotations
 
 import argparse
+import random
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 CANVAS_W, CANVAS_H = 1080, 1920
+MUSIC_DIR = Path(__file__).resolve().parents[1] / "assets" / "music"
+
+
+def pick_music(explicit: str = "") -> Path | None:
+    """Devuelve una pista de música de fondo: la indicada o una aleatoria del banco
+    (backend/assets/music). None si no hay ninguna."""
+    if explicit:
+        p = Path(explicit)
+        return p if p.exists() else None
+    if MUSIC_DIR.exists():
+        tracks = sorted(MUSIC_DIR.glob("*.mp3"))
+        if tracks:
+            return random.choice(tracks)
+    return None
+
+
+def add_background_music(video: Path, music: Path, dur: float, ffmpeg: str,
+                         volume: float = 0.10) -> None:
+    """Mezcla `music` (en bucle, a bajo volumen y con fade-out) por debajo del audio
+    del vídeo. Re-encoda solo el audio (el vídeo se copia). Si algo falla, deja el
+    vídeo tal cual (la música es opcional)."""
+    tmp = video.with_name(video.stem + "_bgm.mp4")
+    fade = max(0.0, dur - 2.0)
+    fc = (f"[1:a]volume={volume},afade=t=out:st={fade:.2f}:d=2,"
+          f"aformat=sample_rates=44100:channel_layouts=stereo[m];"
+          f"[0:a][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]")
+    cmd = [ffmpeg, "-y", "-i", str(video), "-stream_loop", "-1", "-i", str(music),
+           "-filter_complex", fc, "-map", "0:v", "-map", "[a]",
+           "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-shortest", str(tmp)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode == 0 and tmp.exists():
+        tmp.replace(video)
+    else:
+        sys.stderr.write(r.stderr[-800:])
+        tmp.unlink(missing_ok=True)
+        print("No se pudo añadir la música de fondo; se deja el reel sin ella.", flush=True)
 
 
 def audio_duration(audio: Path, ffmpeg: str = "ffmpeg") -> float:
@@ -99,6 +136,9 @@ def main() -> None:
     ap.add_argument("--title", default="")
     ap.add_argument("--subtitles", action="store_true")
     ap.add_argument("--lang", default="es")
+    ap.add_argument("--music", default="", help="pista de música concreta; por defecto una aleatoria del banco")
+    ap.add_argument("--no-music", action="store_true", help="no añadir música de fondo")
+    ap.add_argument("--music-volume", type=float, default=0.10)
     ap.add_argument("--ffmpeg", default="ffmpeg")
     args = ap.parse_args()
 
@@ -134,6 +174,15 @@ def main() -> None:
             SubtitleEngine().add_subtitles_to_video(out, audio, (CANVAS_W, CANVAS_H), cache_dir=cache_dir)
         except Exception as exc:  # noqa: BLE001
             print(f"No se pudieron añadir subtítulos ({exc}); se deja el reel sin ellos.", flush=True)
+
+    # Música de fondo (aleatoria del banco) por debajo de la voz, salvo --no-music.
+    if not args.no_music:
+        music = pick_music(args.music)
+        if music:
+            print(f"Añadiendo música de fondo: {music.name}", flush=True)
+            add_background_music(out, music, dur, args.ffmpeg, volume=args.music_volume)
+        else:
+            print("Sin banco de música (backend/assets/music); reel sin música.", flush=True)
 
     print(f"Reel final: {out}", flush=True)
 
