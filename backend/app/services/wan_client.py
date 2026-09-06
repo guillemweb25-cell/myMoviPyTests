@@ -69,11 +69,16 @@ def generate_video(start_image: Path, out_path: Path, prompt: str,
     deadline = time.time() + timeout_s
     hist = None
     while time.time() < deadline:
-        h = requests.get(f"{url}/history/{pid}", timeout=15).json()
-        if pid in h and h[pid].get("status", {}).get("completed"):
-            hist = h[pid]
-            break
-        time.sleep(2.0)
+        try:
+            # Timeout amplio: ComfyUI, con la GPU saturada generando, tarda en
+            # responder a /history. Un fallo transitorio NO debe tumbar el job.
+            h = requests.get(f"{url}/history/{pid}", timeout=120).json()
+            if pid in h and h[pid].get("status", {}).get("completed"):
+                hist = h[pid]
+                break
+        except Exception:  # noqa: BLE001 (timeout/red transitorio → reintenta)
+            pass
+        time.sleep(3.0)
     if not hist:
         raise RuntimeError("WAN no terminó a tiempo (¿GPU ocupada o modelo cargando?).")
 
