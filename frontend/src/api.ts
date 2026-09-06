@@ -84,6 +84,15 @@ export const api = {
     postJson<{ video: string; images: string[] }>('/api/reels/broll', payload),
   reelUpload: (reelId: string, payload: { channelId: number; privacy?: string }) =>
     postJson<{ job: Job }>(`/api/reels/${reelId}/upload`, payload),
+  reelHook: (reelId: string) => postJson<{ hook: string }>(`/api/reels/${reelId}/hook`, {}),
+  reelThumbnail: (reelId: string, payload: { hook: string; position: string; image?: string }) =>
+    postJson<{ job: Job }>(`/api/reels/${reelId}/thumbnail`, payload),
+  reelThumbnailImage: async (reelId: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await fetch(`/api/reels/${reelId}/thumbnail-image`, { method: 'POST', headers: authHeaders(), body: formData })
+    return handle<{ image: string }>(response)
+  },
   reelsList: () => getJson<{ reels: ReelItem[] }>('/api/reels'),
   reelDelete: (id: string) => del<{ deleted: string }>(`/api/reels/${id}`),
   scripts: () => getJson<ScriptInfo[]>('/api/scripts'),

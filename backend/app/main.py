@@ -1692,6 +1692,53 @@ def reels_delete(reel_id: str) -> dict:
     return {"deleted": reel_id}
 
 
+@app.post("/api/reels/{reel_id}/hook")
+def reel_hook(reel_id: str) -> dict:
+    from .services.reel_engine import hook_text
+    reel = db.get_reel(reel_id)
+    if not reel:
+        raise HTTPException(status_code=404, detail="Generación no encontrada.")
+    try:
+        return {"hook": hook_text(reel.get("script") or reel.get("trigger") or "")}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo generando el gancho: {exc}") from exc
+
+
+@app.post("/api/reels/{reel_id}/thumbnail-image")
+async def reel_thumbnail_image(reel_id: str, file: UploadFile = File(...)) -> dict:
+    """Sube una imagen propia para la miniatura del reel."""
+    reel = db.get_reel(reel_id)
+    if not reel or not reel.get("audio"):
+        raise HTTPException(status_code=404, detail="Generación no encontrada.")
+    folder = (ROOT_DIR / reel["audio"]).parent
+    out = folder / f"{reel_id}_thumbimg_own.jpg"
+    out.write_bytes(await file.read())
+    return {"image": str(out.relative_to(ROOT_DIR))}
+
+
+class ReelThumbnailRequest(BaseModel):
+    hook: str
+    position: str = "bottom"
+    image: str = ""
+
+
+@app.post("/api/reels/{reel_id}/thumbnail")
+def reel_thumbnail(reel_id: str, payload: ReelThumbnailRequest) -> dict:
+    """Encola el job de miniatura (imagen IA o propia + gancho) que la añade al
+    final del reel para poder elegirla como portada del Short."""
+    reel = db.get_reel(reel_id)
+    if not reel or not reel.get("video") or not (ROOT_DIR / reel["video"]).exists():
+        raise HTTPException(status_code=400, detail="El reel no tiene vídeo compuesto.")
+    if not payload.hook.strip():
+        raise HTTPException(status_code=400, detail="Escribe un gancho para la miniatura.")
+    pos = payload.position if payload.position in ("top", "center", "bottom") else "bottom"
+    args = ["--reel", reel_id, "--hook", payload.hook.strip(), "--position", pos]
+    if payload.image.strip():
+        args += ["--image", payload.image.strip()]
+    job = enqueue_job("reel_thumbnail.py", args)
+    return {"job": job}
+
+
 class ReelUploadRequest(BaseModel):
     channelId: int
     privacy: str = "public"

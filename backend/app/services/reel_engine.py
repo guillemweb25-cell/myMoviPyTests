@@ -56,6 +56,23 @@ def generate_script(trigger: str, angle: str = "", seconds: int = 40,
     return script
 
 
+def hook_text(script: str, model: str | None = None) -> str:
+    """Gancho corto y potente para la miniatura (3-6 palabras, en el idioma del
+    guion), estilo título de Short. Sin comillas ni emojis."""
+    from openai import OpenAI
+
+    model = model or os.getenv("OPENAI_REEL_MODEL", "gpt-4o")
+    resp = OpenAI().chat.completions.create(
+        model=model, temperature=0.8,
+        messages=[
+            {"role": "system", "content": "Escribe SOLO un gancho de 3-6 palabras para la portada "
+             "de un Short, en MAYÚSCULAS, en el idioma del texto, muy llamativo, sin comillas ni emojis."},
+            {"role": "user", "content": f"Texto:\n{script.strip()[:600]}\n\nGancho:"},
+        ],
+    )
+    return (resp.choices[0].message.content or "").strip().strip("\"'“”").upper()[:60]
+
+
 def broll_prompts(script: str, n: int, model: str | None = None) -> list[str]:
     """Convierte el guion en `n` prompts visuales EN INGLÉS (SDXL entiende inglés)
     para generar el b-roll: planos cinematográficos que ilustran cada tramo del

@@ -135,10 +135,14 @@ export default function App() {
   const [reelVideo, setReelVideo] = useState('')
   const [reelId, setReelId] = useState('')
   const [reels, setReels] = useState<import('./types').ReelItem[]>([])
-  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose' | 'broll' | 'upload'>('')
+  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose' | 'broll' | 'upload' | 'thumb'>('')
   const [reelChannelId, setReelChannelId] = useState<number | null>(null)
   const [reelPrivacy, setReelPrivacy] = useState('public')
   const [reelYoutubeUrl, setReelYoutubeUrl] = useState('')
+  const [reelHook, setReelHook] = useState('')
+  const [reelThumbPos, setReelThumbPos] = useState<'top' | 'center' | 'bottom'>('bottom')
+  const [reelThumbImg, setReelThumbImg] = useState('')
+  const [reelVideoV, setReelVideoV] = useState(0)
   const [facecamEditor, setFacecamEditor] = useState<{ campaignId: number; frame: string; rect: Rect | null; zoom: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow' | 'facecam'>('center')
@@ -596,6 +600,36 @@ export default function App() {
         window.setTimeout(poll, 5000)
       }
       window.setTimeout(poll, 5000)
+    } catch (e) { handleApiError(e); setReelBusy('') }
+  }
+
+  async function handleGenHook() {
+    if (!reelId) return
+    try { const { hook } = await api.reelHook(reelId); setReelHook(hook) } catch (e) { handleApiError(e) }
+  }
+
+  async function handleUploadThumbImg(file: File) {
+    if (!reelId) return
+    try { const { image } = await api.reelThumbnailImage(reelId, file); setReelThumbImg(image) } catch (e) { handleApiError(e) }
+  }
+
+  async function handleMakeThumbnail() {
+    if (!reelId || !reelVideo) { setError('Primero compón el vídeo.'); return }
+    if (!reelHook.trim()) { setError('Escribe un gancho para la miniatura.'); return }
+    setReelBusy('thumb'); setError('')
+    try {
+      const { job } = await api.reelThumbnail(reelId, { hook: reelHook, position: reelThumbPos, image: reelThumbImg })
+      const started = Date.now()
+      const poll = async () => {
+        try {
+          const j = await api.job(job.id)
+          if (j.status === 'completed') { setReelVideoV((v) => v + 1); setReelBusy(''); return }
+          if (j.status === 'failed') { setReelBusy(''); setError('Falló la miniatura; revisa el Historial (reel_thumbnail).'); return }
+        } catch { /* reintenta */ }
+        if (Date.now() - started > 8 * 60 * 1000) { setReelBusy(''); return }
+        window.setTimeout(poll, 4000)
+      }
+      window.setTimeout(poll, 4000)
     } catch (e) { handleApiError(e); setReelBusy('') }
   }
 
@@ -2682,8 +2716,32 @@ export default function App() {
                   <a className="link-btn" href={api.fileUrl(reelVideo)} target="_blank" rel="noreferrer">Descargar</a>
                 </div>
                 <div className="clip-media-row" style={{ alignItems: 'flex-start' }}>
-                  <video controls src={api.fileUrl(reelVideo)} style={{ width: 200, borderRadius: 10, background: '#000' }} />
+                  <video key={reelVideoV} controls src={`${api.fileUrl(reelVideo)}${reelVideoV ? `&_v=${reelVideoV}` : ''}`} style={{ width: 200, borderRadius: 10, background: '#000' }} />
                   <div style={{ flex: 1, minWidth: 240 }}>
+                    <div className="seo-box" style={{ marginBottom: 10 }}>
+                      <div className="seo-head">
+                        <span>🖼 Miniatura final (portada del Short)</span>
+                        <button className="link-btn" onClick={handleGenHook}>Generar gancho IA</button>
+                      </div>
+                      <input value={reelHook} onChange={(e) => setReelHook(e.target.value)} placeholder="Gancho en la miniatura (ej: EL SECRETO DEL MUNDIAL)" />
+                      <div className="actions-row" style={{ alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                        <span className="help">Texto:</span>
+                        {(['top', 'center', 'bottom'] as const).map((p) => (
+                          <button key={p} className={reelThumbPos === p ? 'primary' : ''} style={{ padding: '6px 10px', borderRadius: 8 }} onClick={() => setReelThumbPos(p)}>
+                            {p === 'top' ? 'Arriba' : p === 'center' ? 'Centro' : 'Abajo'}
+                          </button>
+                        ))}
+                        <label className="link-btn" style={{ cursor: 'pointer' }}>
+                          {reelThumbImg ? '✅ Imagen propia' : 'Subir propia'}
+                          <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadThumbImg(f); e.currentTarget.value = '' }} />
+                        </label>
+                        <button className="primary" disabled={reelBusy !== ''} onClick={handleMakeThumbnail}>
+                          {reelBusy === 'thumb' ? 'Añadiendo…' : '🖼 Añadir miniatura al final'}
+                        </button>
+                      </div>
+                      <p className="help">Imagen {reelThumbImg ? 'propia' : 'generada con IA'} + gancho, pegada al final para elegirla como portada en el móvil.</p>
+                    </div>
+
                     <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
                       <label className="field" style={{ minWidth: 180 }}>
                         <span>Canal de YouTube</span>
