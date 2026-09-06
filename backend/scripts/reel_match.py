@@ -82,7 +82,9 @@ def main() -> None:
     # 1) Descargar el resumen del partido.
     print("1/6 Descargando el resumen del partido...", flush=True)
     from download_video import download_video  # noqa: E402
-    res = download_video(args.url, args.ffmpeg, outbase="output/reels/matches")
+    # ffmpeg_path=None → yt-dlp usa el ffmpeg del PATH (lo necesita para fusionar
+    # vídeo+audio). Pasar "ffmpeg" lo trata como ruta de fichero y falla al mergear.
+    res = download_video(args.url, None, outbase="output/reels/matches")
     if not res or not res[0]:
         raise SystemExit("No se pudo descargar el vídeo del partido.")
     match_video = Path(res[0])
