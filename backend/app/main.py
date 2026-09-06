@@ -1717,25 +1717,38 @@ async def reel_thumbnail_image(reel_id: str, file: UploadFile = File(...)) -> di
 
 
 class ReelThumbnailRequest(BaseModel):
-    hook: str
+    hook: str = ""
     position: str = "bottom"
     image: str = ""
+    regenImage: bool = False
 
 
-@app.post("/api/reels/{reel_id}/thumbnail")
-def reel_thumbnail(reel_id: str, payload: ReelThumbnailRequest) -> dict:
-    """Encola el job de miniatura (imagen IA o propia + gancho) que la añade al
-    final del reel para poder elegirla como portada del Short."""
+@app.post("/api/reels/{reel_id}/thumbnail/preview")
+def reel_thumbnail_preview(reel_id: str, payload: ReelThumbnailRequest) -> dict:
+    """Genera la miniatura (imagen IA/propia + gancho) SIN añadirla al vídeo, para
+    previsualizarla. Devuelve el path del thumb (disponible al terminar el job)."""
     reel = db.get_reel(reel_id)
     if not reel or not reel.get("video") or not (ROOT_DIR / reel["video"]).exists():
         raise HTTPException(status_code=400, detail="El reel no tiene vídeo compuesto.")
-    if not payload.hook.strip():
-        raise HTTPException(status_code=400, detail="Escribe un gancho para la miniatura.")
+    video_abs = ROOT_DIR / reel["video"]
+    thumb_rel = str(video_abs.with_name(video_abs.stem + "_thumb.jpg").relative_to(ROOT_DIR))
     pos = payload.position if payload.position in ("top", "center", "bottom") else "bottom"
-    args = ["--reel", reel_id, "--hook", payload.hook.strip(), "--position", pos]
+    args = ["--reel", reel_id, "--mode", "preview", "--hook", payload.hook.strip(), "--position", pos]
     if payload.image.strip():
         args += ["--image", payload.image.strip()]
+    if payload.regenImage:
+        args.append("--regen-image")
     job = enqueue_job("reel_thumbnail.py", args)
+    return {"job": job, "thumbPath": thumb_rel}
+
+
+@app.post("/api/reels/{reel_id}/thumbnail/apply")
+def reel_thumbnail_apply(reel_id: str) -> dict:
+    """Añade la miniatura ya previsualizada al FINAL del reel."""
+    reel = db.get_reel(reel_id)
+    if not reel or not reel.get("video") or not (ROOT_DIR / reel["video"]).exists():
+        raise HTTPException(status_code=400, detail="El reel no tiene vídeo compuesto.")
+    job = enqueue_job("reel_thumbnail.py", ["--reel", reel_id, "--mode", "append"])
     return {"job": job}
 
 

@@ -85,8 +85,9 @@ export const api = {
   reelUpload: (reelId: string, payload: { channelId: number; privacy?: string }) =>
     postJson<{ job: Job }>(`/api/reels/${reelId}/upload`, payload),
   reelHook: (reelId: string) => postJson<{ hook: string }>(`/api/reels/${reelId}/hook`, {}),
-  reelThumbnail: (reelId: string, payload: { hook: string; position: string; image?: string }) =>
-    postJson<{ job: Job }>(`/api/reels/${reelId}/thumbnail`, payload),
+  reelThumbPreview: (reelId: string, payload: { hook: string; position: string; image?: string; regenImage?: boolean }) =>
+    postJson<{ job: Job; thumbPath: string }>(`/api/reels/${reelId}/thumbnail/preview`, payload),
+  reelThumbApply: (reelId: string) => postJson<{ job: Job }>(`/api/reels/${reelId}/thumbnail/apply`, {}),
   reelThumbnailImage: async (reelId: string, file: File) => {
     const formData = new FormData()
     formData.append('file', file)

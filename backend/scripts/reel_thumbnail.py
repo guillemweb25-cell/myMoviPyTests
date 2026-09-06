@@ -64,11 +64,13 @@ def _append(reel_video: Path, thumb: Path, ffmpeg: str) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Genera la miniatura del reel y la añade al final")
+    ap = argparse.ArgumentParser(description="Miniatura del reel (preview / añadir al final)")
     ap.add_argument("--reel", required=True)
-    ap.add_argument("--hook", required=True)
+    ap.add_argument("--hook", default="")
     ap.add_argument("--position", default="bottom", choices=["top", "center", "bottom"])
     ap.add_argument("--image", default="", help="imagen propia; si falta, se genera con ComfyUI")
+    ap.add_argument("--mode", default="preview", choices=["preview", "append"])
+    ap.add_argument("--regen-image", action="store_true", help="fuerza generar una imagen nueva")
     ap.add_argument("--ffmpeg", default="ffmpeg")
     args = ap.parse_args()
 
@@ -78,10 +80,22 @@ def main() -> None:
     if not reel or not reel.get("video") or not (root / reel["video"]).exists():
         raise SystemExit("El reel no tiene vídeo compuesto.")
     reel_video = root / reel["video"]
+    thumbimg = reel_video.with_name(reel_video.stem + "_thumbimg.jpg")  # imagen base
+    thumb = reel_video.with_name(reel_video.stem + "_thumb.jpg")        # miniatura final
 
-    # Imagen: propia, o generada con ComfyUI (prompt anclado al gancho/guion).
+    if args.mode == "append":
+        if not thumb.exists():
+            raise SystemExit("No hay miniatura previsualizada que añadir.")
+        print("Añadiendo la miniatura al final del reel...", flush=True)
+        _append(reel_video, thumb, args.ffmpeg)
+        print(f"Miniatura añadida: {reel_video}", flush=True)
+        return
+
+    # PREVIEW: decide la imagen base (propia / reusa la generada / genera nueva).
     if args.image and (root / args.image).exists():
         image = root / args.image
+    elif thumbimg.exists() and not args.regen_image:
+        image = thumbimg  # reusar la imagen ya generada (solo re-quemar el texto)
     else:
         from app.services import comfy_client  # noqa: E402
         from app.services.reel_engine import broll_prompts_for  # noqa: E402
@@ -90,15 +104,12 @@ def main() -> None:
         base = args.hook or (reel.get("script") or "")[:120]
         prompt = broll_prompts_for([base])[0]
         print(f"Generando imagen de miniatura: {prompt[:70]}...", flush=True)
-        image = reel_video.with_name(reel_video.stem + "_thumbimg.jpg")
-        comfy_client.generate_image(prompt, image)
+        comfy_client.generate_image(prompt, thumbimg)
+        image = thumbimg
 
-    thumb = reel_video.with_name(reel_video.stem + "_thumb.jpg")
     print("Componiendo miniatura (imagen + gancho)...", flush=True)
     _thumb_frame(image, args.hook, args.position, thumb, args.ffmpeg)
-    print("Añadiéndola al final del reel...", flush=True)
-    _append(reel_video, thumb, args.ffmpeg)
-    print(f"Miniatura añadida: {reel_video}", flush=True)
+    print(f"THUMB: {thumb.relative_to(root)}", flush=True)
 
 
 if __name__ == "__main__":

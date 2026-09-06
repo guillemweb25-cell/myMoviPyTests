@@ -142,6 +142,8 @@ export default function App() {
   const [reelHook, setReelHook] = useState('')
   const [reelThumbPos, setReelThumbPos] = useState<'top' | 'center' | 'bottom'>('bottom')
   const [reelThumbImg, setReelThumbImg] = useState('')
+  const [reelThumb, setReelThumb] = useState('')
+  const [reelThumbV, setReelThumbV] = useState(0)
   const [reelVideoV, setReelVideoV] = useState(0)
   const [facecamEditor, setFacecamEditor] = useState<{ campaignId: number; frame: string; rect: Rect | null; zoom: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
@@ -613,23 +615,38 @@ export default function App() {
     try { const { image } = await api.reelThumbnailImage(reelId, file); setReelThumbImg(image) } catch (e) { handleApiError(e) }
   }
 
-  async function handleMakeThumbnail() {
+  function pollJob(jobId: string, onDone: () => void, onFail?: () => void) {
+    const started = Date.now()
+    const tick = async () => {
+      try {
+        const j = await api.job(jobId)
+        if (j.status === 'completed') { onDone(); return }
+        if (j.status === 'failed') { setReelBusy(''); if (onFail) onFail(); else setError('El job falló; revisa el Historial.'); return }
+      } catch { /* reintenta */ }
+      if (Date.now() - started > 8 * 60 * 1000) { setReelBusy(''); return }
+      window.setTimeout(tick, 4000)
+    }
+    window.setTimeout(tick, 3000)
+  }
+
+  // Previsualiza la miniatura (genera imagen nueva o reusa la actual re-quemando el texto).
+  async function handlePreviewThumb(regenImage: boolean) {
     if (!reelId || !reelVideo) { setError('Primero compón el vídeo.'); return }
     if (!reelHook.trim()) { setError('Escribe un gancho para la miniatura.'); return }
     setReelBusy('thumb'); setError('')
     try {
-      const { job } = await api.reelThumbnail(reelId, { hook: reelHook, position: reelThumbPos, image: reelThumbImg })
-      const started = Date.now()
-      const poll = async () => {
-        try {
-          const j = await api.job(job.id)
-          if (j.status === 'completed') { setReelVideoV((v) => v + 1); setReelBusy(''); return }
-          if (j.status === 'failed') { setReelBusy(''); setError('Falló la miniatura; revisa el Historial (reel_thumbnail).'); return }
-        } catch { /* reintenta */ }
-        if (Date.now() - started > 8 * 60 * 1000) { setReelBusy(''); return }
-        window.setTimeout(poll, 4000)
-      }
-      window.setTimeout(poll, 4000)
+      const { job, thumbPath } = await api.reelThumbPreview(reelId, { hook: reelHook, position: reelThumbPos, image: reelThumbImg, regenImage })
+      pollJob(job.id, () => { setReelThumb(thumbPath); setReelThumbV((v) => v + 1); setReelBusy('') },
+              () => setError('Falló la miniatura; revisa el Historial (reel_thumbnail).'))
+    } catch (e) { handleApiError(e); setReelBusy('') }
+  }
+
+  async function handleApplyThumb() {
+    if (!reelId || !reelThumb) { setError('Primero genera la miniatura.'); return }
+    setReelBusy('thumb'); setError('')
+    try {
+      const { job } = await api.reelThumbApply(reelId)
+      pollJob(job.id, () => { setReelVideoV((v) => v + 1); setReelBusy('') })
     } catch (e) { handleApiError(e); setReelBusy('') }
   }
 
@@ -2735,10 +2752,25 @@ export default function App() {
                           {reelThumbImg ? '✅ Imagen propia' : 'Subir propia'}
                           <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadThumbImg(f); e.currentTarget.value = '' }} />
                         </label>
-                        <button className="primary" disabled={reelBusy !== ''} onClick={handleMakeThumbnail}>
-                          {reelBusy === 'thumb' ? 'Añadiendo…' : '🖼 Añadir miniatura al final'}
+                        <button disabled={reelBusy !== ''} onClick={() => handlePreviewThumb(true)}>
+                          {reelBusy === 'thumb' ? '…' : '🖼 Generar miniatura'}
+                        </button>
+                        <button disabled={reelBusy !== '' || !reelThumb} onClick={() => handlePreviewThumb(false)} title="Reusa la imagen y solo cambia el texto/posición">
+                          ✏️ Actualizar texto
                         </button>
                       </div>
+                      {reelThumb && (
+                        <div style={{ marginTop: 10, display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                          <img src={`${api.fileUrl(reelThumb)}${reelThumbV ? `&_v=${reelThumbV}` : ''}`} alt="miniatura"
+                               style={{ width: 120, borderRadius: 8, border: '1px solid #333' }} />
+                          <div style={{ flex: 1, minWidth: 180 }}>
+                            <p className="help" style={{ marginTop: 0 }}>Previsualización. Ajusta el texto/posición y pulsa «Actualizar texto», o «Generar miniatura» para otra imagen.</p>
+                            <button className="primary" disabled={reelBusy !== ''} onClick={handleApplyThumb}>
+                              {reelBusy === 'thumb' ? 'Añadiendo…' : '✅ Añadir al final del vídeo'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <p className="help">Imagen {reelThumbImg ? 'propia' : 'generada con IA'} + gancho, pegada al final para elegirla como portada en el móvil.</p>
                     </div>
 
