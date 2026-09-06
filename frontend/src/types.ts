@@ -139,6 +139,7 @@ export type ReelItem = {
   youtubeUrl?: string
   hook?: string
   thumbPosition?: string
+  seoDescription?: string
 }
 
 export type DetectClipsResponse = {

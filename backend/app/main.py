@@ -1735,6 +1735,63 @@ def reel_hook(reel_id: str) -> dict:
         raise HTTPException(status_code=502, detail=f"Fallo generando el gancho: {exc}") from exc
 
 
+class ReelSeoRequest(BaseModel):
+    channelId: int | None = None
+
+
+def _reel_seo_context(reel_id: str, channel_id: int | None):
+    """(texto del reel, reglas SEO del canal) para generar título/descripción. Transcribe
+    el audio si el guion está vacío (reels recuperados) y lo persiste."""
+    reel = db.get_reel(reel_id)
+    if not reel:
+        raise HTTPException(status_code=404, detail="Generación no encontrada.")
+    from .services.reel_engine import content_text
+    text = content_text(reel, ROOT_DIR)
+    if text and not (reel.get("script") or "").strip():
+        db.update_reel(reel_id, {"script": text})
+    ch_id = channel_id if channel_id is not None else reel.get("channelId")
+    rules = None
+    if ch_id:
+        ch = db.get_channel(int(ch_id))
+        rules = (ch or {}).get("seoRules") or None
+    return reel, text, rules
+
+
+@app.post("/api/reels/{reel_id}/seo/title")
+def reel_seo_title(reel_id: str, payload: ReelSeoRequest) -> dict:
+    """Genera un título SEO (alto CTR) con IA desde el contenido del reel y lo guarda."""
+    _, text, rules = _reel_seo_context(reel_id, payload.channelId)
+    from .services.seo_engine import SEOEngine
+    from .services.clip_seo import strip_wrapping_quotes, strip_markdown
+    try:
+        title = strip_wrapping_quotes(strip_markdown(SEOEngine().generate_video_title(text, custom_rules=rules)))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo generando el título: {exc}") from exc
+    db.update_reel(reel_id, {"title": title})
+    return {"title": title}
+
+
+@app.post("/api/reels/{reel_id}/seo/description")
+def reel_seo_description(reel_id: str, payload: ReelSeoRequest) -> dict:
+    """Genera una descripción SEO con IA desde el contenido del reel y la guarda. Si el
+    reel ya tiene enlace de YouTube publicado, lo incluye al final de la descripción."""
+    reel, text, rules = _reel_seo_context(reel_id, payload.channelId)
+    from .services.seo_engine import SEOEngine
+    from .services.clip_seo import strip_markdown
+    import re as _re
+    try:
+        desc = strip_markdown(SEOEngine().generate_description(text, custom_rules=rules))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo generando la descripción: {exc}") from exc
+    desc = _re.sub(r"^\s*(video\s+)?title:.*(?:\n|$)", "", desc, flags=_re.IGNORECASE)
+    desc = _re.sub(r"^\s*(video\s+)?description:\s*", "", desc, flags=_re.IGNORECASE).strip()
+    yt = (reel.get("youtubeUrl") or "").strip()
+    if yt:
+        desc = f"{desc}\n\n▶️ {yt}"
+    db.update_reel(reel_id, {"seo_description": desc})
+    return {"description": desc}
+
+
 @app.post("/api/reels/{reel_id}/thumbnail-image")
 async def reel_thumbnail_image(reel_id: str, file: UploadFile = File(...)) -> dict:
     """Sube una imagen propia para la miniatura del reel."""

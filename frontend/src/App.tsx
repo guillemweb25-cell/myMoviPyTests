@@ -131,11 +131,12 @@ export default function App() {
   const [reelVoiceId, setReelVoiceId] = useState('')
   const [reelAudio, setReelAudio] = useState('')
   const [reelTitle, setReelTitle] = useState('')
+  const [reelDescription, setReelDescription] = useState('')
   const [reelSubs, setReelSubs] = useState(true)
   const [reelVideo, setReelVideo] = useState('')
   const [reelId, setReelId] = useState('')
   const [reels, setReels] = useState<import('./types').ReelItem[]>([])
-  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose' | 'broll' | 'upload' | 'thumb' | 'match'>('')
+  const [reelBusy, setReelBusy] = useState<'' | 'script' | 'voice' | 'compose' | 'broll' | 'upload' | 'thumb' | 'match' | 'seo'>('')
   const [reelMatchUrl, setReelMatchUrl] = useState('')
   const [reelChannelId, setReelChannelId] = useState<number | null>(null)
   const [reelPrivacy, setReelPrivacy] = useState('public')
@@ -636,6 +637,20 @@ export default function App() {
     try { const { hook } = await api.reelHook(reelId); setReelHook(hook) } catch (e) { handleApiError(e) }
   }
 
+  async function handleGenReelTitle() {
+    if (!reelId) return
+    setReelBusy('seo'); setError('')
+    try { const { title } = await api.reelSeoTitle(reelId, reelChannelId); setReelTitle(title) }
+    catch (e) { handleApiError(e) } finally { setReelBusy('') }
+  }
+
+  async function handleGenReelDesc() {
+    if (!reelId) return
+    setReelBusy('seo'); setError('')
+    try { const { description } = await api.reelSeoDescription(reelId, reelChannelId); setReelDescription(description) }
+    catch (e) { handleApiError(e) } finally { setReelBusy('') }
+  }
+
   async function handleUploadThumbImg(file: File) {
     if (!reelId) return
     try { const { image } = await api.reelThumbnailImage(reelId, file); setReelThumbImg(image) } catch (e) { handleApiError(e) }
@@ -703,13 +718,13 @@ export default function App() {
     setReelVoiceId(r.voiceId || reelVoiceId); setReelTitle(r.title)
     setReelAudio(r.audio); setReelVideo(r.video); setReelYoutubeUrl(r.youtubeUrl || '')
     setReelHook(r.hook || ''); setReelThumbPos((r.thumbPosition as 'top' | 'center' | 'bottom') || 'bottom')
-    setReelThumb(''); setReelThumbImg('')
+    setReelThumb(''); setReelThumbImg(''); setReelDescription(r.seoDescription || '')
   }
 
   function handleNewReel() {
     setReelId(''); setReelTrigger(''); setReelAngle(''); setReelScript('')
     setReelTitle(''); setReelAudio(''); setReelVideo('')
-    setReelHook(''); setReelThumb(''); setReelThumbImg(''); setReelThumbPos('bottom')
+    setReelHook(''); setReelThumb(''); setReelThumbImg(''); setReelThumbPos('bottom'); setReelDescription('')
   }
 
   async function handleDeleteReel(r: import('./types').ReelItem) {
@@ -2826,6 +2841,24 @@ export default function App() {
                         </div>
                       )}
                       <p className="help">Imagen {reelThumbImg ? 'propia' : 'generada con IA'} + gancho, pegada al final para elegirla como portada en el móvil.</p>
+                    </div>
+
+                    <div className="seo-box" style={{ marginBottom: 10 }}>
+                      <div className="seo-head">
+                        <span>🔎 SEO (título y descripción)</span>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button className="link-btn" disabled={reelBusy !== ''} onClick={handleGenReelTitle}>
+                            {reelBusy === 'seo' ? '…' : '✨ Generar título'}
+                          </button>
+                          <button className="link-btn" disabled={reelBusy !== ''} onClick={handleGenReelDesc}>
+                            {reelBusy === 'seo' ? '…' : '✨ Generar descripción'}
+                          </button>
+                        </div>
+                      </div>
+                      <input value={reelTitle} onChange={(e) => setReelTitle(e.target.value)} placeholder="Título del vídeo (SEO)" maxLength={100} />
+                      <textarea rows={5} value={reelDescription} onChange={(e) => setReelDescription(e.target.value)}
+                                placeholder="Descripción SEO (se genera con IA; incluye el enlace de YouTube si el reel ya está publicado)" style={{ marginTop: 8, width: '100%' }} />
+                      <p className="help">Título y descripción se guardan y se usan al subir a YouTube. La descripción incluye el enlace si el reel ya tiene URL de YouTube.</p>
                     </div>
 
                     <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>

@@ -42,13 +42,15 @@ def main() -> None:
                  "title": reel.get("title") or "", "channelId": args.channel,
                  "videoPath": reel.get("video")}
     seo = generate_clip_seo(fake_clip, channel, root)
-    title = strip_wrapping_quotes(seo["title"])
+    # Respeta el título/descripción que el usuario ya generó/editó en la interfaz.
+    title = strip_wrapping_quotes(reel.get("title") or seo["title"])
+    description = (reel.get("seoDescription") or "").strip() or seo["description"]
     print(f"Título: {title}", flush=True)
 
     print(f"Subiendo a YouTube (canal {channel['name']})...", flush=True)
     service = YouTubeService(channel["id"], root / "youtube_creds")
     response = service.upload_video(video, {
-        "title": title, "description": seo["description"], "tags": seo["tags"],
+        "title": title, "description": description, "tags": seo["tags"],
         "privacy_status": args.privacy,
     })
     url = f"https://www.youtube.com/watch?v={response['id']}"
