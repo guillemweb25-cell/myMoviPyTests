@@ -167,14 +167,17 @@ export default function App() {
     plant: { title: '🪴 Macetas — crecimiento en time-lapse', subject: 'Planta (fruta, flor, verdura…)',
       ph: 'Ej: limón, girasol, tomate, fresa…', batch: 'limón\ngirasol\ntomate\nfresa\nlavanda',
       list: 'Mis vídeos de macetas', empty: 'una planta', create: '🪴 Crear vídeo',
+      d15: '15s · crecimiento', d30: '30s · mano + cosecha',
       desc: 'Vídeo satisfactorio de una planta creciendo de semilla a cosecha. Con 30s: la mano planta la semilla y al final recoge el fruto. Todo IA, sin copyright.' },
     egg: { title: '🥚 Huevos — animal gracioso eclosionando', subject: 'Animal (que salga del huevo)',
       ph: 'Ej: pollito, dinosaurio, dragón, pingüino…', batch: 'pollito\ndinosaurio\ndragón\npingüino\ntortuga',
       list: 'Mis vídeos de huevos', empty: 'un animal', create: '🥚 Crear vídeo',
+      d15: '15s · eclosión', d30: '30s · eclosión + gracia',
       desc: 'Vídeo tierno y gracioso de un animal (pollito, dinosaurio, dragón…) saliendo de un huevo. Con 30s: el huevo se rompe y el animalito sale y hace algo gracioso. Todo IA, sin copyright.' },
     butterfly: { title: '🦋 Mariposas — metamorfosis en time-lapse', subject: 'Mariposa (tipo/color)',
       ph: 'Ej: monarca, azul morpho, colorida…', batch: 'monarca\nazul morpho\ncolorida\namarilla\nnaranja',
       list: 'Mis vídeos de mariposas', empty: 'una mariposa', create: '🦋 Crear vídeo',
+      d15: '15s · metamorfosis', d30: '30s · crisálida + mariposa',
       desc: 'Metamorfosis satisfactoria: oruga → crisálida → mariposa que despliega sus alas. Con 30s: clip 1 oruga→crisálida, clip 2 emerge la mariposa. Todo IA, sin copyright.' },
   }[plantKind]
   const [plantIdeasList, setPlantIdeasList] = useState<{ name: string; note: string }[]>([])
@@ -3109,8 +3112,8 @@ export default function App() {
                 <label className="field" style={{ maxWidth: 200 }}>
                   <span>Duración</span>
                   <select value={plantDuration} onChange={(e) => setPlantDuration(Number(e.target.value))}>
-                    <option value={15}>15s · crecimiento</option>
-                    <option value={30}>30s · mano + cosecha</option>
+                    <option value={15}>{KIND_UI.d15}</option>
+                    <option value={30}>{KIND_UI.d30}</option>
                   </select>
                 </label>
               )}
