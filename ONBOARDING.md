@@ -22,8 +22,9 @@ con IA. Áreas principales:
 3. **Reels de partido** — a partir del enlace de YouTube de un resumen de fútbol: transcribe →
    momentos clave → guion explicativo → voz → **fragmentos de vídeo reales** recortados a vertical
    → karaoke + música. (⚠️ el metraje real da Content ID en YouTube; ver §11.)
-4. **🪴 Macetas** — vídeos de crecimiento de plantas en time-lapse **100% IA** (WAN 2.2 TI2V-5B
-   imagen→vídeo). Contenido sin copyright. **En desarrollo** (ver §10).
+4. **🪴 Macetas** — vídeos de crecimiento de plantas en time-lapse **100% IA** (sin copyright).
+   Motor activo: **Grok Imagine** (imagen maceta vacía + clip continuo 15s con día/noche); selector
+   Grok/Veo/WAN + cola de tandas. Funcionando (ver §10).
 
 ---
 
@@ -131,13 +132,15 @@ backend/
     reel_match.py        # reel de partido: descarga+transcribe+momentos+guion+voz+fragmentos+compose (+ --render-only)
     reel_thumbnail.py    # miniatura (PIL, fuente Anton): --mode preview|append
     reel_upload.py       # sube reel a YouTube con SEO (respeta title/seo_description guardados)
-    plant_video.py       # JOB Macetas: plan -> 1ª imagen (maceta vacía) -> 3 clips WAN encadenados -> montaje
+    plant_video.py       # JOB Macetas: plan -> 1ª imagen (maceta vacía) -> 1 clip continuo (grok/veo) o 3 WAN -> montaje
+    plant_batch.py       # JOB Macetas: genera una lista de plantas EN CADENA (tandas)
     subtitle_engine.py   # SubtitleEngine: transcribe_words (AssemblyAI) + karaoke .ass + burn
     download_video.py / download_and_transcribe_video.py  # yt-dlp (+deno) + AssemblyAI
     render_clip.py / make_vertical_clip.py / render_all.py  # render de clips de campaña
+  services/ (macetas):  grok_video.py (ACTIVO) · veo_video.py (sin probar) · plant_engine.py · wan_client.py (fallback)
   workflows/
-    reel_broll.json      # SDXL vertical (RealVisXL) para b-roll/imágenes
-    wan_ti2v.json        # WAN 2.2 TI2V-5B i2v (ACTIVO en Macetas): UNETLoader fp16 + Turbo LoRA 6 pasos
+    reel_broll.json      # SDXL vertical (RealVisXL) para b-roll/imágenes y (fallback) 1ª imagen WAN
+    wan_ti2v.json        # WAN 2.2 TI2V-5B i2v (fallback local, con saltos): UNETLoader fp16 + Turbo LoRA
     wan_i2v.json         # WAN 2.2 A14B i2v (referencia; NO usar: no cabe en 16GB)
   assets/
     fonts/Anton-Regular.ttf   # fuente miniaturas (estilo videos_automaticos)
@@ -195,38 +198,47 @@ subtítulos, SEO por clip y subida. Duración por defecto de campaña nueva: 40s
 
 ---
 
-## 10. 🪴 Macetas (WAN time-lapse) — EN DESARROLLO
+## 10. 🪴 Macetas (crecimiento en time-lapse) — FUNCIONANDO con Grok
 
 Objetivo (inspirado en `plant_growth.pdf` en la raíz): vídeos satisfactorios de una planta creciendo
 en una maceta, en time-lapse, 100% IA (sin copyright). Pipeline `plant_video.py`:
-**plan (LLM)** → **primera imagen** (maceta VACÍA, SDXL) → **3 clips WAN i2v encadenados por el último
-fotograma** → **montaje vertical** (ffmpeg concat).
+**plan (LLM `plant_engine.py`)** → **primera imagen** (maceta VACÍA) → **1 clip continuo imagen→vídeo**
+→ **normalizar a vertical 1080×1920** (ffmpeg). Job de tanda: `plant_batch.py` (genera una lista en cadena).
 
-### Estado y decisiones tomadas
-- Modelo: **WAN 2.2 TI2V-5B fp16** (`wan2.2_ti2v_5B_fp16.safetensors`, ~10 GB) + **Turbo LoRA**
-  (`Wan22_TI2V_5B_Turbo_rank64.safetensors`, 6 pasos) + VAE `wan2.2_vae.safetensors` + encoder
-  `umt5-xxl-encoder-Q8_0.gguf`. Workflow: `backend/workflows/wan_ti2v.json`. Todo ya descargado en el box.
-- **A14B NO** (30 GB, no cabe en 16 GB → swap → 20+ min/clip). El GGUF Q8 de 5B tampoco (offload por
-  capas, VRAM ~2.5 GB, lento). **fp16 residente** es lo correcto (VRAM ~12 GB, ~6 min/clip en caliente).
-- **Calidad de crecimiento: excelente y realista** (validado con clips de limón).
-- **WAN NO sabe** coreografiar "una mano planta la semilla" ni la cosecha (eso es Veo/Google Flow).
-  Decisión del usuario: **solo crecimiento** (tierra pelada → brote emerge → planta → flor/fruto,
-  sin manos). Motor `plant_engine.py` ya reenfocado a eso.
-- **Maceta vacía**: RealVisXL insistía en meter una planta; se fuerza con **negatives ponderados**
-  (`(plant:1.6),(leaves:1.6),(succulent:1.5)...`) vía `comfy_client.generate_image(..., negative=...)`.
+### Proveedor ACTIVO: Grok Imagine (xAI) — es el bueno
+- **`grok-imagine-image`** genera la **maceta vacía** (SDXL/ComfyUI NO lo lograba: metía plantas).
+- **`grok-imagine-video`** anima el crecimiento **continuo y fluido** anclado a esa imagen
+  (empieza en tierra → brote → planta → flores/fruto), con ciclo **día↔noche** visible. Máx **15 s/clip**.
+- Cliente: `backend/app/services/grok_video.py` (`generate_image` + `generate_video`, endpoint
+  `https://api.x.ai/v1/{images,videos}/generations`, poll de vídeo en `/v1/videos/{id}`).
+- **Duración por defecto 15 s** (8 s salía demasiado rápido y sin día/noche). Estilo un poco "render 3D"
+  pero coherente y satisfactorio.
+- **Coste ≈ $1–1.5/vídeo** (imagen ~$0.2 + vídeo 15 s ~$1). `plant_video` **reusa `frame_start.jpg`**
+  si ya existe (no re-paga la imagen en re-renders).
+- **GROK_API_KEY**: está en `.env` (media-ops). Origen: tabla `user_settings.grok_api_key` de la BD
+  de `videos_automaticos` (MariaDB `videos_automaticos-db-1` en el Windows, puerto 3307;
+  user `appuser`). Si hay que re-obtenerla: `docker exec videos_automaticos-db-1 mariadb -uappuser
+  -p<pass> videos_automaticos -N -e "SELECT grok_api_key FROM user_settings WHERE grok_api_key<>'' LIMIT 1;"`.
 
-### Pendiente (retomar aquí)
-1. Arrancar ComfyUI en el Windows (`start.bat`) — **la GPU/ComfyUI estaban apagados al cerrar**.
-2. Lanzar un vídeo completo de limón con el enfoque "solo crecimiento" y validar que el clip 1
-   arranca de tierra y el brote **emerge** (antes salía ya brotado en el frame 1 — vigilar).
-3. Si convence: montar una **cola/batch** (pegar varias plantas, generarlas secuencialmente de
-   noche — encaja con ~20-25 min/vídeo). El usuario generará "el arboretum por las noches".
-4. Ajuste fácil de velocidad si hace falta: bajar resolución (pedir 288×512 → sale ~576×1024).
+### Otros motores (selector en la UI: Grok / Veo / WAN)
+- **Google Veo** (`veo_video.py`, Gemini `predictLongRunning`, `veo-3.1-generate-preview`): **CÓDIGO
+  LISTO pero SIN PROBAR** — falta meter crédito a Google y confirmar que `GOOGLE_API_KEY` tiene Veo.
+  Al añadir crédito: probar 1 clip y verificar el parsing de la respuesta (hecho defensivo). Coste ~$2.5/clip.
+  (La 1ª imagen también la hace grok-imagine-image, así que Veo necesita AMBAS keys.)
+- **WAN 2.2 local** (GPU, `wan_client.py` + `wan_ti2v.json`): **descartado para producción** — no hace
+  crecimiento gradual (con Turbo salta de golpe; el cambio grande ocurre entre clips). Modelos ya
+  descargados (TI2V-5B fp16 + Turbo LoRA + umt5 + wan2.2_vae). Sirve de fallback gratis pero con saltos.
+  Nota: A14B (30 GB) NO cabe en la 4060 Ti (16 GB); el GGUF Q8 offloadea y va lento; el fp16 sí reside.
 
-Nota WAN: la salida sale al **doble** de la resolución pedida (VAE 2.2). Vídeos **mudos** (ASMR
-diegético, sin música — el PDF lo pide así). El polling a `/history` debe tener timeout amplio y
-reintentos (ComfyUI satura la GPU y tarda en responder). Tras un OOM, ComfyUI queda "colgado en CPU"
-(VRAM libre con job corriendo) → **hay que reiniciar ComfyUI**.
+### Cola / tanda
+`POST /api/plants/batch` crea N registros y encola `plant_batch.py`, que llama a `plant_video.py` por
+cada planta **secuencialmente** (una GPU/una API a la vez; si una falla, sigue). UI: bloque "Tanda (cola)"
+con textarea (una planta por línea), estimación de coste y "Encolar tanda". Pensado para tandas nocturnas.
+
+### Pendiente
+1. Verificar **Veo** cuando el usuario meta ~$10 a Google (probar 1 clip, ajustar `veo_video._find_video_uri`
+   si el nombre del campo difiere).
+2. (Opcional) Slider de duración ya está; podría añadirse selección de estilo/foto-realismo.
 
 ---
 
