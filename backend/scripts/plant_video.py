@@ -160,13 +160,20 @@ def _duration(media: Path, ffmpeg: str = "ffmpeg") -> float:
 
 
 def _finalize(src: Path, out: Path, w: int, h: int, ffmpeg: str = "ffmpeg",
-              music_volume: float = 0.5, src_audio_volume: float = 0.55, music_name: str = "") -> None:
+              music_volume: float = 0.5, src_audio_volume: float = 0.55, music_name: str = "",
+              fade: float = 2.0) -> None:
     """Normaliza `src` a vertical WxH y le añade MÚSICA de fondo (la elegida o aleatoria),
     mezclada con el audio original del clip (ambiente de Grok) si lo hay. Si no hay
-    música, deja el audio original (o mudo)."""
+    música, deja el audio original (o mudo). Al final aplica un fundido de salida del
+    audio (`fade` segundos) para que la música/ambiente baje suave en vez de cortarse."""
     music = _pick_music(music_name)
     dur = _duration(src, ffmpeg)  # las pistas duran minutos → sin -stream_loop (evita colgar ffmpeg)
     tbound = ["-t", f"{dur:.3f}"] if dur > 0 else []
+    # fundido de salida en los últimos `fade` s (si conocemos la duración y da margen).
+    fade_out = ""
+    if dur > 0 and fade > 0:
+        st = max(0.0, dur - fade)
+        fade_out = f"afade=t=out:st={st:.3f}:d={min(fade, dur):.3f}"
     vscale = f"[0:v:0]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,fps=30[v]"
     if music:
         has_src = _has_audio(src, ffmpeg)
@@ -174,10 +181,16 @@ def _finalize(src: Path, out: Path, w: int, h: int, ffmpeg: str = "ffmpeg",
         if has_src:
             afc = (f"[0:a]volume={src_audio_volume},aformat=sample_rates=44100:channel_layouts=stereo[a0];"
                    f"[1:a]volume={music_volume},aformat=sample_rates=44100:channel_layouts=stereo[m];"
-                   f"[a0][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]")
+                   f"[a0][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[amx]")
         else:
-            afc = f"[1:a]volume={music_volume},aformat=sample_rates=44100:channel_layouts=stereo[a]"
+            afc = f"[1:a]volume={music_volume},aformat=sample_rates=44100:channel_layouts=stereo[amx]"
+        afc += f";[amx]{fade_out}[a]" if fade_out else ";[amx]anull[a]"
         cmd = [ffmpeg, "-y", *inputs, "-filter_complex", f"{vscale};{afc}",
+               "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+               "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "160k",
+               *tbound, "-movflags", "+faststart", str(out)]
+    elif fade_out and _has_audio(src, ffmpeg):  # sin banco de música pero con audio propio: fundido
+        cmd = [ffmpeg, "-y", "-i", str(src), "-filter_complex", f"{vscale};[0:a]{fade_out}[a]",
                "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
                "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "160k",
                *tbound, "-movflags", "+faststart", str(out)]
