@@ -1939,20 +1939,29 @@ def plant_ideas_endpoint() -> dict:
 class PlantCreateRequest(BaseModel):
     plant: str
     aspect: str = "9:16"
+    provider: str = "grok"          # grok (1 clip continuo, xAI) | wan (3 clips locales)
+    duration: int = 8               # segundos (solo grok)
 
 
 @app.post("/api/plants")
 def plant_create(payload: PlantCreateRequest) -> dict:
-    """Crea un vídeo de maceta (job WAN): plan → primera imagen → 3 clips → montaje."""
+    """Crea un vídeo de maceta (job): plan → primera imagen → clip(s) → montaje.
+    provider=grok → 1 clip continuo con Grok Imagine; wan → 3 clips locales (GPU)."""
     if not payload.plant.strip():
         raise HTTPException(status_code=400, detail="Escribe una planta.")
-    from .services import wan_client
-    if not wan_client.is_up():
-        raise HTTPException(status_code=502, detail="ComfyUI no responde (¿encendido en el Windows y la GPU libre?).")
+    from .services import comfy_client, grok_video
+    provider = payload.provider if payload.provider in ("grok", "wan") else "grok"
+    if provider == "grok" and not grok_video.is_configured():
+        raise HTTPException(status_code=400, detail="Falta GROK_API_KEY en .env para usar Grok.")
+    if provider == "wan" and not comfy_client.is_up():
+        raise HTTPException(status_code=502, detail="ComfyUI no responde (necesario para WAN).")
     aspect = payload.aspect if payload.aspect in ("9:16", "16:9") else "9:16"
     plant_id = uuid.uuid4().hex[:12]
     db.save_plant({"id": plant_id, "plant": payload.plant.strip(), "aspect": aspect, "createdAt": now_iso()})
-    job = enqueue_job("plant_video.py", ["--plant", plant_id])
+    args = ["--plant", plant_id, "--provider", provider]
+    if provider == "grok":
+        args += ["--duration", str(max(4, min(12, payload.duration)))]
+    job = enqueue_job("plant_video.py", args)
     return {"job": job, "plantId": plant_id}
 
 
