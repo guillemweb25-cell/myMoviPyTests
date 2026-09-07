@@ -40,7 +40,7 @@ def main() -> None:
     ap.add_argument("--plant", required=True, help="id del registro en la BD")
     ap.add_argument("--provider", default="grok", choices=["grok", "wan"],
                     help="grok=1 clip continuo (xAI, de pago); wan=3 clips locales (GPU)")
-    ap.add_argument("--duration", type=int, default=8, help="segundos del clip (solo grok)")
+    ap.add_argument("--duration", type=int, default=15, help="segundos del clip (solo grok; máx 15)")
     ap.add_argument("--length", type=int, default=97, help="frames por clip (solo wan)")
     ap.add_argument("--ffmpeg", default="ffmpeg")
     args = ap.parse_args()
@@ -76,7 +76,9 @@ def main() -> None:
                   f"fresh dark brown bare soil, smooth flat empty soil surface, absolutely nothing "
                   f"growing, no plant, no sprout, {ar}, soft daylight, sharp focus, ultra detailed, no text")
     first = out_dir / "frame_start.jpg"
-    if args.provider == "grok":
+    if first.exists() and first.stat().st_size > 10000:
+        print("   (reuso la maceta vacía ya generada)", flush=True)
+    elif args.provider == "grok":
         from app.services import grok_video as _gv  # noqa: E402
         _gv.generate_image(img_prompt, first)   # grok-imagine-image (sí sale vacía)
     else:
@@ -97,12 +99,15 @@ def main() -> None:
         scene = plan.get("locked_scene", "")
         plant_name = rec.get("plant") or "plant"
         grow_prompt = (
-            f"{scene} Continuous smooth time-lapse: starting from the bare empty soil, a seed "
-            f"sprouts and the {plant_name} grows steadily and organically — the shoot rises, leaves "
-            f"unfurl one after another, the plant fills out and matures, then buds, flowers and "
-            f"(for a fruiting plant) ripe fruit appear on it by the end. The growth is gradual and "
-            f"continuous the whole time, never jumping. Locked static camera, no zoom or pan. Day "
-            f"and night light cycles pass, shadows sweep. NO hands, no people, nothing enters frame.")
+            f"{scene} Slow, continuous, satisfying time-lapse of a {plant_name} growing in this exact "
+            f"pot. It begins on the bare empty soil; a small sprout pushes up and then the plant grows "
+            f"GRADUALLY and steadily the WHOLE time — shoot rising, leaves unfurling one by one, stem "
+            f"thickening, branches spreading, then buds, flowers and finally ripe fruit, reaching full "
+            f"size only at the very end. Pace the growth evenly across the whole clip, never jumping or "
+            f"snapping to the final size early. The day-night cycle passes clearly about TWO times: the "
+            f"sky brightens to midday, warms to golden sunset, darkens to a deep starry night, then "
+            f"dawn again, with the light on the plant and the shadows sweeping across the table to match. "
+            f"Locked static camera, no zoom or pan. NO hands, no people, nothing enters the frame.")
         print(f"3/4 Generando el clip continuo con Grok ({args.duration}s)...", flush=True)
         raw = out_dir / "grok_raw.mp4"
         grok_video.generate_video(first, raw, grow_prompt, duration=args.duration)

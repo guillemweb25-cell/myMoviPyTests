@@ -1940,7 +1940,7 @@ class PlantCreateRequest(BaseModel):
     plant: str
     aspect: str = "9:16"
     provider: str = "grok"          # grok (1 clip continuo, xAI) | wan (3 clips locales)
-    duration: int = 8               # segundos (solo grok)
+    duration: int = 15              # segundos (solo grok; máx 15 en Grok)
 
 
 @app.post("/api/plants")
@@ -1960,7 +1960,7 @@ def plant_create(payload: PlantCreateRequest) -> dict:
     db.save_plant({"id": plant_id, "plant": payload.plant.strip(), "aspect": aspect, "createdAt": now_iso()})
     args = ["--plant", plant_id, "--provider", provider]
     if provider == "grok":
-        args += ["--duration", str(max(4, min(12, payload.duration)))]
+        args += ["--duration", str(max(4, min(15, payload.duration)))]
     job = enqueue_job("plant_video.py", args)
     return {"job": job, "plantId": plant_id}
 
