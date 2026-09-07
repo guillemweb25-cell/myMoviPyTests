@@ -152,6 +152,9 @@ export default function App() {
   // Vídeos de macetas (WAN)
   const [plantName, setPlantName] = useState('')
   const [plantAspect, setPlantAspect] = useState<'9:16' | '16:9'>('9:16')
+  const [plantProvider, setPlantProvider] = useState<'grok' | 'veo' | 'wan'>('grok')
+  const [plantDuration, setPlantDuration] = useState(15)
+  const [plantBatchText, setPlantBatchText] = useState('')
   const [plantIdeasList, setPlantIdeasList] = useState<{ name: string; note: string }[]>([])
   const [plants, setPlants] = useState<import('./types').PlantItem[]>([])
   const [plantBusy, setPlantBusy] = useState<'' | 'ideas' | 'create'>('')
@@ -598,11 +601,34 @@ export default function App() {
     catch (e) { handleApiError(e) } finally { setPlantBusy('') }
   }
 
+  async function handleBatchPlants() {
+    const names = plantBatchText.split('\n').map((s) => s.trim()).filter(Boolean)
+    if (names.length === 0) { setError('Pega al menos una planta (una por línea).'); return }
+    const est = plantProvider === 'wan' ? 'GPU local (gratis, lento)' : `~$${(names.length * (plantProvider === 'veo' ? 2.5 : 1.2)).toFixed(1)} aprox.`
+    if (!window.confirm(`Encolar ${names.length} vídeos con ${plantProvider}. Coste estimado: ${est}. ¿Seguir?`)) return
+    setPlantBusy('create'); setError('')
+    try {
+      await api.plantBatch({ plants: names, aspect: plantAspect, provider: plantProvider, duration: plantDuration })
+      setPlantBatchText('')
+      const started = Date.now()
+      const poll = async () => {
+        let pending = true
+        try {
+          const { plants: list } = await api.plantsList(); setPlants(list)
+          pending = list.some((p) => !p.video)
+        } catch { /* reintenta */ }
+        if (!pending || Date.now() - started > 8 * 60 * 60 * 1000) { setPlantBusy(''); return }
+        window.setTimeout(poll, 20000)
+      }
+      window.setTimeout(poll, 20000)
+    } catch (e) { handleApiError(e); setPlantBusy('') }
+  }
+
   async function handleCreatePlant() {
     if (!plantName.trim()) { setError('Escribe una planta (o elige una idea).'); return }
     setPlantBusy('create'); setError('')
     try {
-      const { plantId } = await api.plantCreate({ plant: plantName.trim(), aspect: plantAspect })
+      const { plantId } = await api.plantCreate({ plant: plantName.trim(), aspect: plantAspect, provider: plantProvider, duration: plantDuration })
       api.plantsList().then((d) => setPlants(d.plants)).catch(() => {})
       const started = Date.now()
       const poll = async () => {
@@ -3013,21 +3039,51 @@ export default function App() {
                 <span>Planta (fruta, flor, verdura…)</span>
                 <input value={plantName} onChange={(e) => setPlantName(e.target.value)} placeholder="Ej: limón, girasol, tomate, fresa…" />
               </label>
-              <label className="field" style={{ maxWidth: 140 }}>
+              <label className="field" style={{ maxWidth: 130 }}>
                 <span>Formato</span>
                 <select value={plantAspect} onChange={(e) => setPlantAspect(e.target.value as '9:16' | '16:9')}>
                   <option value="9:16">9:16 (Short)</option>
                   <option value="16:9">16:9 (largo)</option>
                 </select>
               </label>
+              <label className="field" style={{ maxWidth: 150 }}>
+                <span>Motor</span>
+                <select value={plantProvider} onChange={(e) => setPlantProvider(e.target.value as 'grok' | 'veo' | 'wan')}>
+                  <option value="grok">Grok (~$1.2)</option>
+                  <option value="veo">Google Veo (~$2.5)</option>
+                  <option value="wan">WAN local (GPU)</option>
+                </select>
+              </label>
+              {plantProvider !== 'wan' && (
+                <label className="field" style={{ maxWidth: 110 }}>
+                  <span>Duración (s)</span>
+                  <input type="number" min={4} max={15} value={plantDuration} onChange={(e) => setPlantDuration(Math.max(4, Math.min(15, Number(e.target.value) || 15)))} />
+                </label>
+              )}
               <button disabled={plantBusy !== ''} onClick={handlePlantIdeas}>
                 {plantBusy === 'ideas' ? '…' : '💡 Ideas'}
               </button>
               <button className="primary" disabled={plantBusy !== '' || !plantName.trim()} onClick={handleCreatePlant}>
-                {plantBusy === 'create' ? 'Generando vídeo…' : '🪴 Crear vídeo'}
+                {plantBusy === 'create' ? 'Generando…' : '🪴 Crear vídeo'}
               </button>
             </div>
-            {plantBusy === 'create' && <p className="help">Plan → primera imagen → 3 clips de WAN (cada uno tarda unos minutos en la GPU) → montaje. Puedes seguir en otra pestaña; aparecerá abajo.</p>}
+            {plantBusy === 'create' && <p className="help">Generando (plan → maceta vacía → clip continuo → montaje). Puedes seguir en otra pestaña; aparece abajo.</p>}
+
+            <div className="seo-box" style={{ marginTop: 12 }}>
+              <div className="seo-head"><span>📋 Tanda (cola) — una planta por línea</span></div>
+              <textarea rows={4} value={plantBatchText} onChange={(e) => setPlantBatchText(e.target.value)}
+                        placeholder={'limón\ngirasol\ntomate\nfresa\nlavanda'} style={{ width: '100%' }} />
+              <div className="actions-row" style={{ alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+                <span className="help">
+                  {(() => { const n = plantBatchText.split('\n').filter((s) => s.trim()).length
+                    return n ? `${n} plantas · ${plantProvider === 'wan' ? 'GPU local (gratis)' : '~$' + (n * (plantProvider === 'veo' ? 2.5 : 1.2)).toFixed(1)}` : 'Se generan en cadena, una tras otra.' })()}
+                </span>
+                <button className="primary" disabled={plantBusy !== ''} onClick={handleBatchPlants}>
+                  {plantBusy === 'create' ? 'En cola…' : '▶️ Encolar tanda'}
+                </button>
+              </div>
+              <p className="help">Con {plantProvider === 'wan' ? 'WAN es gratis pero lento (GPU)' : 'Grok/Veo cada vídeo gasta crédito'}. Ideal para dejar generando de noche.</p>
+            </div>
 
             {plantIdeasList.length > 0 && (
               <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>

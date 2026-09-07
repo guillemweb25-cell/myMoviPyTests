@@ -38,8 +38,8 @@ def _normalize(clip: Path, out: Path, w: int, h: int, ffmpeg: str = "ffmpeg") ->
 def main() -> None:
     ap = argparse.ArgumentParser(description="Vídeo de maceta (time-lapse)")
     ap.add_argument("--plant", required=True, help="id del registro en la BD")
-    ap.add_argument("--provider", default="grok", choices=["grok", "wan"],
-                    help="grok=1 clip continuo (xAI, de pago); wan=3 clips locales (GPU)")
+    ap.add_argument("--provider", default="grok", choices=["grok", "veo", "wan"],
+                    help="grok/veo=1 clip continuo (de pago); wan=3 clips locales (GPU)")
     ap.add_argument("--duration", type=int, default=15, help="segundos del clip (solo grok; máx 15)")
     ap.add_argument("--length", type=int, default=97, help="frames por clip (solo wan)")
     ap.add_argument("--ffmpeg", default="ffmpeg")
@@ -78,9 +78,10 @@ def main() -> None:
     first = out_dir / "frame_start.jpg"
     if first.exists() and first.stat().st_size > 10000:
         print("   (reuso la maceta vacía ya generada)", flush=True)
-    elif args.provider == "grok":
+    elif args.provider in ("grok", "veo"):
+        # grok-imagine-image es el que sí hace la maceta VACÍA (SDXL no).
         from app.services import grok_video as _gv  # noqa: E402
-        _gv.generate_image(img_prompt, first)   # grok-imagine-image (sí sale vacía)
+        _gv.generate_image(img_prompt, first)
     else:
         empty_neg = ("(plant:1.6), (sprout:1.6), (seedling:1.6), (leaves:1.6), (foliage:1.6), (green:1.4), "
                      "(stem:1.5), (branch:1.4), (tree:1.5), (sapling:1.5), (flower:1.5), (bud:1.4), (grass:1.4), "
@@ -90,12 +91,10 @@ def main() -> None:
 
     out = out_dir / "video.mp4"
 
-    if args.provider == "grok":
-        # 3) UN clip continuo con Grok Imagine (imagen→vídeo): crecimiento fluido de
-        # semilla a planta madura en un solo plano. Mucho mejor que encadenar clips WAN.
-        from app.services import grok_video  # noqa: E402
-        if not grok_video.is_configured():
-            raise SystemExit("Falta GROK_API_KEY en .env.")
+    if args.provider in ("grok", "veo"):
+        # 3) UN clip continuo (imagen→vídeo): crecimiento fluido de semilla a planta
+        # madura en un solo plano. Grok Imagine o Google Veo según --provider.
+        from app.services import grok_video, veo_video  # noqa: E402
         scene = plan.get("locked_scene", "")
         plant_name = rec.get("plant") or "plant"
         grow_prompt = (
@@ -108,13 +107,16 @@ def main() -> None:
             f"sky brightens to midday, warms to golden sunset, darkens to a deep starry night, then "
             f"dawn again, with the light on the plant and the shadows sweeping across the table to match. "
             f"Locked static camera, no zoom or pan. NO hands, no people, nothing enters the frame.")
-        print(f"3/4 Generando el clip continuo con Grok ({args.duration}s)...", flush=True)
-        raw = out_dir / "grok_raw.mp4"
-        grok_video.generate_video(first, raw, grow_prompt, duration=args.duration)
+        raw = out_dir / f"{args.provider}_raw.mp4"
+        print(f"3/4 Generando el clip continuo con {args.provider} ({args.duration}s)...", flush=True)
+        if args.provider == "grok":
+            grok_video.generate_video(first, raw, grow_prompt, duration=args.duration)
+        else:  # veo
+            veo_video.generate_video(first, raw, grow_prompt, aspect=aspect)
         print("4/4 Normalizando a vertical...", flush=True)
         _normalize(raw, out, out_w, out_h, args.ffmpeg)
         if not out.exists():
-            raise SystemExit("Falló normalizando el clip de Grok.")
+            raise SystemExit(f"Falló normalizando el clip de {args.provider}.")
     else:
         # 3) 3 clips WAN encadenados por el último fotograma (local, GPU).
         start_img = first

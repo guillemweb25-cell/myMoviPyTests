@@ -1936,33 +1936,67 @@ def plant_ideas_endpoint() -> dict:
         raise HTTPException(status_code=502, detail=f"Fallo generando ideas: {exc}") from exc
 
 
+def _validate_plant_provider(provider: str):
+    """Valida provider y claves/servicios. Devuelve el provider normalizado."""
+    from .services import comfy_client, grok_video, veo_video
+    provider = provider if provider in ("grok", "veo", "wan") else "grok"
+    # grok/veo hacen la 1ª imagen con grok-imagine-image → siempre hace falta GROK key.
+    if provider in ("grok", "veo") and not grok_video.is_configured():
+        raise HTTPException(status_code=400, detail="Falta GROK_API_KEY en .env (la imagen inicial usa Grok).")
+    if provider == "veo" and not veo_video.is_configured():
+        raise HTTPException(status_code=400, detail="Falta GOOGLE_API_KEY en .env para usar Veo.")
+    if provider == "wan" and not comfy_client.is_up():
+        raise HTTPException(status_code=502, detail="ComfyUI no responde (necesario para WAN).")
+    return provider
+
+
 class PlantCreateRequest(BaseModel):
     plant: str
     aspect: str = "9:16"
-    provider: str = "grok"          # grok (1 clip continuo, xAI) | wan (3 clips locales)
-    duration: int = 15              # segundos (solo grok; máx 15 en Grok)
+    provider: str = "grok"          # grok | veo | wan
+    duration: int = 15              # segundos (grok/veo; máx 15)
 
 
 @app.post("/api/plants")
 def plant_create(payload: PlantCreateRequest) -> dict:
-    """Crea un vídeo de maceta (job): plan → primera imagen → clip(s) → montaje.
-    provider=grok → 1 clip continuo con Grok Imagine; wan → 3 clips locales (GPU)."""
+    """Crea UN vídeo de maceta (job): plan → primera imagen → clip(s) → montaje."""
     if not payload.plant.strip():
         raise HTTPException(status_code=400, detail="Escribe una planta.")
-    from .services import comfy_client, grok_video
-    provider = payload.provider if payload.provider in ("grok", "wan") else "grok"
-    if provider == "grok" and not grok_video.is_configured():
-        raise HTTPException(status_code=400, detail="Falta GROK_API_KEY en .env para usar Grok.")
-    if provider == "wan" and not comfy_client.is_up():
-        raise HTTPException(status_code=502, detail="ComfyUI no responde (necesario para WAN).")
+    provider = _validate_plant_provider(payload.provider)
     aspect = payload.aspect if payload.aspect in ("9:16", "16:9") else "9:16"
     plant_id = uuid.uuid4().hex[:12]
     db.save_plant({"id": plant_id, "plant": payload.plant.strip(), "aspect": aspect, "createdAt": now_iso()})
-    args = ["--plant", plant_id, "--provider", provider]
-    if provider == "grok":
-        args += ["--duration", str(max(4, min(15, payload.duration)))]
+    args = ["--plant", plant_id, "--provider", provider, "--duration", str(max(4, min(15, payload.duration)))]
     job = enqueue_job("plant_video.py", args)
     return {"job": job, "plantId": plant_id}
+
+
+class PlantBatchRequest(BaseModel):
+    plants: list[str]               # una planta por elemento
+    aspect: str = "9:16"
+    provider: str = "grok"
+    duration: int = 15
+
+
+@app.post("/api/plants/batch")
+def plant_batch(payload: PlantBatchRequest) -> dict:
+    """Encola una TANDA de vídeos de maceta: crea un registro por planta y un único
+    job que los genera EN CADENA (uno tras otro). Ideal para tandas nocturnas."""
+    names = [p.strip() for p in payload.plants if p.strip()]
+    if not names:
+        raise HTTPException(status_code=400, detail="La lista de plantas está vacía.")
+    if len(names) > 50:
+        raise HTTPException(status_code=400, detail="Máximo 50 por tanda.")
+    provider = _validate_plant_provider(payload.provider)
+    aspect = payload.aspect if payload.aspect in ("9:16", "16:9") else "9:16"
+    ids = []
+    for name in names:
+        pid = uuid.uuid4().hex[:12]
+        db.save_plant({"id": pid, "plant": name, "aspect": aspect, "createdAt": now_iso()})
+        ids.append(pid)
+    args = ["--plants", ",".join(ids), "--provider", provider, "--duration", str(max(4, min(15, payload.duration)))]
+    job = enqueue_job("plant_batch.py", args)
+    return {"job": job, "plantIds": ids, "count": len(ids)}
 
 
 @app.get("/api/plants")

@@ -86,8 +86,10 @@ export const api = {
     postJson<{ job: Job; reelId: string }>('/api/reels/match', payload),
   reelRender: (reelId: string) => postJson<{ job: Job }>(`/api/reels/${reelId}/render`, {}),
   plantIdeas: () => postJson<{ ideas: { name: string; note: string }[] }>('/api/plants/ideas', {}),
-  plantCreate: (payload: { plant: string; aspect: string }) =>
+  plantCreate: (payload: { plant: string; aspect: string; provider?: string; duration?: number }) =>
     postJson<{ job: Job; plantId: string }>('/api/plants', payload),
+  plantBatch: (payload: { plants: string[]; aspect: string; provider?: string; duration?: number }) =>
+    postJson<{ job: Job; plantIds: string[]; count: number }>('/api/plants/batch', payload),
   plantsList: () => getJson<{ plants: import('./types').PlantItem[] }>('/api/plants'),
   plantDelete: (id: string) => del<{ deleted: string }>(`/api/plants/${id}`),
   reelUpload: (reelId: string, payload: { channelId: number; privacy?: string }) =>
