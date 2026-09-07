@@ -27,12 +27,70 @@ def _last_frame(video: Path, out: Path, ffmpeg: str = "ffmpeg") -> bool:
     return out.exists()
 
 
+MUSIC_DIR = Path(__file__).resolve().parents[1] / "assets" / "music"
+
+
+def _pick_music() -> "Path | None":
+    if MUSIC_DIR.exists():
+        import random
+        tracks = sorted(MUSIC_DIR.glob("*.mp3"))
+        if tracks:
+            return random.choice(tracks)
+    return None
+
+
+def _has_audio(media: Path, ffmpeg: str = "ffmpeg") -> bool:
+    r = subprocess.run([ffmpeg, "-i", str(media)], capture_output=True, text=True)
+    return "Audio:" in r.stderr
+
+
 def _normalize(clip: Path, out: Path, w: int, h: int, ffmpeg: str = "ffmpeg") -> None:
-    """Clip WAN (webm) → mp4 normalizado a WxH (cover), 30 fps, mudo."""
+    """Clip → mp4 normalizado a WxH (cover), 30 fps, MUDO (para WAN encadenado)."""
     vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,fps=30"
     subprocess.run([ffmpeg, "-y", "-i", str(clip), "-vf", vf, "-an",
-                    "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
                     "-pix_fmt", "yuv420p", "-r", "30", str(out)], capture_output=True, text=True)
+
+
+def _duration(media: Path, ffmpeg: str = "ffmpeg") -> float:
+    import re as _re
+    r = subprocess.run([ffmpeg, "-i", str(media)], capture_output=True, text=True)
+    m = _re.search(r"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", r.stderr)
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else 0.0
+
+
+def _finalize(src: Path, out: Path, w: int, h: int, ffmpeg: str = "ffmpeg",
+              music_volume: float = 0.5, src_audio_volume: float = 0.55) -> None:
+    """Normaliza `src` a vertical WxH y le añade MÚSICA de fondo (aleatoria del banco),
+    mezclada con el audio original del clip (ambiente de Grok) si lo hay. Si no hay
+    música, deja el audio original (o mudo)."""
+    music = _pick_music()
+    dur = _duration(src, ffmpeg)  # las pistas duran minutos → sin -stream_loop (evita colgar ffmpeg)
+    tbound = ["-t", f"{dur:.3f}"] if dur > 0 else []
+    vscale = f"[0:v:0]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,fps=30[v]"
+    if music:
+        has_src = _has_audio(src, ffmpeg)
+        inputs = ["-i", str(src), "-i", str(music)]
+        if has_src:
+            afc = (f"[0:a]volume={src_audio_volume},aformat=sample_rates=44100:channel_layouts=stereo[a0];"
+                   f"[1:a]volume={music_volume},aformat=sample_rates=44100:channel_layouts=stereo[m];"
+                   f"[a0][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]")
+        else:
+            afc = f"[1:a]volume={music_volume},aformat=sample_rates=44100:channel_layouts=stereo[a]"
+        cmd = [ffmpeg, "-y", *inputs, "-filter_complex", f"{vscale};{afc}",
+               "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+               "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "160k",
+               *tbound, "-movflags", "+faststart", str(out)]
+    else:  # sin banco de música: conserva el audio original tal cual
+        cmd = [ffmpeg, "-y", "-i", str(src), "-filter_complex", vscale,
+               "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+               "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "160k",
+               *tbound, "-movflags", "+faststart", str(out)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0 or not out.exists():
+        sys.stderr.write(r.stderr[-1200:])
+        raise SystemExit("Falló el montaje final (música/normalizado).")
+    print(f"   música de fondo: {music.name if music else '—'}", flush=True)
 
 
 def main() -> None:
@@ -108,13 +166,16 @@ def main() -> None:
             f"dawn again, with the light on the plant and the shadows sweeping across the table to match. "
             f"Locked static camera, no zoom or pan. NO hands, no people, nothing enters the frame.")
         raw = out_dir / f"{args.provider}_raw.mp4"
-        print(f"3/4 Generando el clip continuo con {args.provider} ({args.duration}s)...", flush=True)
-        if args.provider == "grok":
+        if raw.exists() and raw.stat().st_size > 100000:
+            print(f"3/4 Reuso el clip crudo ya generado ({args.provider}).", flush=True)
+        elif args.provider == "grok":
+            print(f"3/4 Generando el clip continuo con grok ({args.duration}s)...", flush=True)
             grok_video.generate_video(first, raw, grow_prompt, duration=args.duration)
         else:  # veo
+            print(f"3/4 Generando el clip continuo con veo ({args.duration}s)...", flush=True)
             veo_video.generate_video(first, raw, grow_prompt, aspect=aspect)
-        print("4/4 Normalizando a vertical...", flush=True)
-        _normalize(raw, out, out_w, out_h, args.ffmpeg)
+        print("4/4 Normalizando a vertical + música de fondo...", flush=True)
+        _finalize(raw, out, out_w, out_h, args.ffmpeg)  # mantiene audio de Grok + música
         if not out.exists():
             raise SystemExit(f"Falló normalizando el clip de {args.provider}.")
     else:
@@ -133,16 +194,19 @@ def main() -> None:
             nxt = out_dir / f"frame_{i}.jpg"
             if _last_frame(norm, nxt, args.ffmpeg):
                 start_img = nxt
-        print("4/5 Uniendo los clips...", flush=True)
+        print("4/5 Uniendo los clips + música de fondo...", flush=True)
         listfile = out_dir / "concat.txt"
         listfile.write_text("\n".join(f"file '{c.resolve()}'" for c in norm_clips), encoding="utf-8")
+        joined = out_dir / "joined.mp4"
         rc = subprocess.run([args.ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(listfile),
-                             "-c", "copy", "-movflags", "+faststart", str(out)],
+                             "-c", "copy", "-movflags", "+faststart", str(joined)],
                             capture_output=True, text=True)
-        if rc.returncode != 0 or not out.exists():
+        if rc.returncode != 0 or not joined.exists():
             sys.stderr.write(rc.stderr[-1200:])
             raise SystemExit("Falló uniendo los clips.")
         listfile.unlink(missing_ok=True)
+        _finalize(joined, out, out_w, out_h, args.ffmpeg)  # WAN es mudo → música de fondo sola
+        joined.unlink(missing_ok=True)
 
     # 5) Persistir.
     db.update_plant(args.plant, {"image_path": str(first.relative_to(root)),
