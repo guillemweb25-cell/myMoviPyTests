@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, clearToken, getToken, setToken, UnauthorizedError } from './api'
 import type { Campaign, Channel, ClipCandidate, ClipSource, ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
 
-type Section = 'dashboard' | 'content' | 'clipping' | 'reels' | 'plants' | 'channel' | 'execute' | 'jobs' | 'files'
+type Section = 'dashboard' | 'content' | 'clipping' | 'reels' | 'plants' | 'eggs' | 'channel' | 'execute' | 'jobs' | 'files'
 
 const sections: { id: Section; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -10,6 +10,7 @@ const sections: { id: Section; label: string }[] = [
   { id: 'clipping', label: 'Clipping' },
   { id: 'reels', label: '🎬 Avatar Reel' },
   { id: 'plants', label: '🪴 Macetas' },
+  { id: 'eggs', label: '🥚 Huevos' },
   { id: 'execute', label: 'Ejecutar Scripts' },
   { id: 'jobs', label: 'Historial' },
   { id: 'files', label: 'Explorador Output' },
@@ -159,6 +160,7 @@ export default function App() {
   const [plantRowBusy, setPlantRowBusy] = useState('')
   const [plantMusicList, setPlantMusicList] = useState<{ name: string; label: string; path: string }[]>([])
   const [plantMusic, setPlantMusic] = useState('')  // '' = aleatoria
+  const plantKind: 'plant' | 'egg' = activeSection === 'eggs' ? 'egg' : 'plant'
   const [plantIdeasList, setPlantIdeasList] = useState<{ name: string; note: string }[]>([])
   const [plants, setPlants] = useState<import('./types').PlantItem[]>([])
   const [plantBusy, setPlantBusy] = useState<'' | 'ideas' | 'create'>('')
@@ -613,7 +615,7 @@ export default function App() {
     if (!window.confirm(`Encolar ${names.length} vídeos con ${plantProvider}. Coste estimado: ${est}. ¿Seguir?`)) return
     setPlantBusy('create'); setError('')
     try {
-      await api.plantBatch({ plants: names, aspect: plantAspect, provider: plantProvider, duration: plantDuration, music: plantMusic })
+      await api.plantBatch({ plants: names, aspect: plantAspect, provider: plantProvider, duration: plantDuration, music: plantMusic, kind: plantKind })
       setPlantBatchText('')
       const started = Date.now()
       const poll = async () => {
@@ -633,7 +635,7 @@ export default function App() {
     if (!plantName.trim()) { setError('Escribe una planta (o elige una idea).'); return }
     setPlantBusy('create'); setError('')
     try {
-      const { plantId } = await api.plantCreate({ plant: plantName.trim(), aspect: plantAspect, provider: plantProvider, duration: plantDuration, music: plantMusic })
+      const { plantId } = await api.plantCreate({ plant: plantName.trim(), aspect: plantAspect, provider: plantProvider, duration: plantDuration, music: plantMusic, kind: plantKind })
       api.plantsList().then((d) => setPlants(d.plants)).catch(() => {})
       const started = Date.now()
       const poll = async () => {
@@ -1574,7 +1576,7 @@ export default function App() {
 
   // Carga los vídeos de macetas al abrir la sección.
   useEffect(() => {
-    if (activeSection !== 'plants' || authState !== 'authed') return
+    if ((activeSection !== 'plants' && activeSection !== 'eggs') || authState !== 'authed') return
     api.plantsList().then((d) => setPlants(d.plants)).catch(() => {})
     api.plantMusic().then((d) => setPlantMusicList(d.tracks)).catch(() => {})
     setPlantChannelId((cur) => cur ?? (channels[0]?.id ?? null))
@@ -3056,21 +3058,21 @@ export default function App() {
           </section>
         )}
 
-        {activeSection === 'plants' && (
+        {(activeSection === 'plants' || activeSection === 'eggs') && (
           <section className="panel">
             <div className="viewer-header">
-              <h3 style={{ margin: 0 }}>🪴 Macetas — crecimiento en time-lapse (WAN)</h3>
+              <h3 style={{ margin: 0 }}>{plantKind === 'egg' ? '🥚 Huevos — animal gracioso eclosionando' : '🪴 Macetas — crecimiento en time-lapse'}</h3>
             </div>
             <p className="description">
-              Vídeo satisfactorio de una planta creciendo de semilla a cosecha. El motor escribe el plan,
-              genera la primera imagen (maceta vacía) y monta 3 clips de vídeo IA (WAN 2.2) encadenados.
-              Todo generado → sin problemas de copyright. Usa la GPU del Windows.
+              {plantKind === 'egg'
+                ? 'Vídeo tierno y gracioso de un animal (pollito, dinosaurio, dragón…) saliendo de un huevo. Con 30s: el huevo se rompe y el animalito sale y hace algo gracioso. Todo IA, sin copyright.'
+                : 'Vídeo satisfactorio de una planta creciendo de semilla a cosecha. Con 30s: la mano planta la semilla y al final recoge el fruto. Todo IA, sin copyright.'}
             </p>
 
             <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <label className="field" style={{ flex: 1, minWidth: 220 }}>
-                <span>Planta (fruta, flor, verdura…)</span>
-                <input value={plantName} onChange={(e) => setPlantName(e.target.value)} placeholder="Ej: limón, girasol, tomate, fresa…" />
+                <span>{plantKind === 'egg' ? 'Animal (que salga del huevo)' : 'Planta (fruta, flor, verdura…)'}</span>
+                <input value={plantName} onChange={(e) => setPlantName(e.target.value)} placeholder={plantKind === 'egg' ? 'Ej: pollito, dinosaurio, dragón, pingüino…' : 'Ej: limón, girasol, tomate, fresa…'} />
               </label>
               <label className="field" style={{ maxWidth: 130 }}>
                 <span>Formato</span>
@@ -3105,24 +3107,26 @@ export default function App() {
               </label>
               {plantMusic && (() => { const t = plantMusicList.find((x) => x.name === plantMusic); return t
                 ? <audio key={plantMusic} controls src={api.fileUrl(t.path)} style={{ height: 34, maxWidth: 220 }} /> : null })()}
-              <button disabled={plantBusy !== ''} onClick={handlePlantIdeas}>
-                {plantBusy === 'ideas' ? '…' : '💡 Ideas'}
-              </button>
+              {plantKind === 'plant' && (
+                <button disabled={plantBusy !== ''} onClick={handlePlantIdeas}>
+                  {plantBusy === 'ideas' ? '…' : '💡 Ideas'}
+                </button>
+              )}
               <button className="primary" disabled={plantBusy !== '' || !plantName.trim()} onClick={handleCreatePlant}>
-                {plantBusy === 'create' ? 'Generando…' : '🪴 Crear vídeo'}
+                {plantBusy === 'create' ? 'Generando…' : (plantKind === 'egg' ? '🥚 Crear vídeo' : '🪴 Crear vídeo')}
               </button>
             </div>
-            {plantBusy === 'create' && <p className="help">Generando (plan → maceta vacía → clip continuo → montaje). Puedes seguir en otra pestaña; aparece abajo.</p>}
+            {plantBusy === 'create' && <p className="help">Generando (plan → primera imagen → clip(s) → montaje). Puedes seguir en otra pestaña; aparece abajo.</p>}
 
             <div className="seo-box" style={{ marginTop: 12 }}>
-              <div className="seo-head"><span>📋 Tanda (cola) — una planta por línea</span></div>
+              <div className="seo-head"><span>📋 Tanda (cola) — uno por línea</span></div>
               <textarea rows={4} value={plantBatchText} onChange={(e) => setPlantBatchText(e.target.value)}
-                        placeholder={'limón\ngirasol\ntomate\nfresa\nlavanda'} style={{ width: '100%' }} />
+                        placeholder={plantKind === 'egg' ? 'pollito\ndinosaurio\ndragón\npingüino\ntortuga' : 'limón\ngirasol\ntomate\nfresa\nlavanda'} style={{ width: '100%' }} />
               <div className="actions-row" style={{ alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
                 <span className="help">
                   {(() => { const n = plantBatchText.split('\n').filter((s) => s.trim()).length
                     const per = plantProvider === 'wan' ? 0 : plantProvider === 'veo' ? (plantDuration > 15 ? 5 : 2.5) : (plantDuration > 15 ? 3 : 1.2)
-                    return n ? `${n} plantas · ${plantProvider === 'wan' ? 'GPU local (gratis)' : '~$' + (n * per).toFixed(1)}` : 'Se generan en cadena, una tras otra.' })()}
+                    return n ? `${n} vídeos · ${plantProvider === 'wan' ? 'GPU local (gratis)' : '~$' + (n * per).toFixed(1)}` : 'Se generan en cadena, uno tras otro.' })()}
                 </span>
                 <button className="primary" disabled={plantBusy !== ''} onClick={handleBatchPlants}>
                   {plantBusy === 'create' ? 'En cola…' : '▶️ Encolar tanda'}
@@ -3144,7 +3148,7 @@ export default function App() {
 
             <div className="seo-box" style={{ marginTop: 16 }}>
               <div className="seo-head">
-                <span>📁 Mis vídeos de macetas ({plants.length})</span>
+                <span>📁 {plantKind === 'egg' ? 'Mis vídeos de huevos' : 'Mis vídeos de macetas'} ({plants.filter((p) => (p.kind || 'plant') === plantKind).length})</span>
                 <label className="field" style={{ maxWidth: 200 }}>
                   <span>Canal YouTube (para subir)</span>
                   <select value={plantChannelId ?? ''} onChange={(e) => setPlantChannelId(Number(e.target.value) || null)}>
@@ -3153,8 +3157,8 @@ export default function App() {
                   </select>
                 </label>
               </div>
-              {plants.length === 0 && <p className="help">Aún no hay vídeos. Escribe una planta y pulsa «Crear vídeo».</p>}
-              {plants.map((p) => (
+              {plants.filter((p) => (p.kind || 'plant') === plantKind).length === 0 && <p className="help">Aún no hay vídeos. Escribe {plantKind === 'egg' ? 'un animal' : 'una planta'} y pulsa «Crear vídeo».</p>}
+              {plants.filter((p) => (p.kind || 'plant') === plantKind).map((p) => (
                 <div key={p.id} className="clip-media-row" style={{ alignItems: 'flex-start', marginTop: 10, gap: 12 }}>
                   {p.video
                     ? <video controls src={api.fileUrl(p.video)} style={{ width: 160, borderRadius: 10, background: '#000' }} />

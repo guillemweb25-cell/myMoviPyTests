@@ -40,7 +40,7 @@ def main() -> None:
     description = (rec.get("seoDescription") or "").strip()
     if not title or not description:
         print("Generando SEO en inglés (título + descripción con hashtags)...", flush=True)
-        s = plant_seo(rec.get("plant") or "plant", channel.get("seoRules"))
+        s = plant_seo(rec.get("plant") or "plant", channel.get("seoRules"), kind=rec.get("kind", "plant"))
         title = title or s["title"]
         description = description or s["description"]
         db.update_plant(args.plant, {"title": title, "seo_description": description})

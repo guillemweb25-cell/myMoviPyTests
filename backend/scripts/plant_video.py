@@ -97,6 +97,35 @@ def _grok_growth_prompts(scene: str, plant: str, n_clips: int) -> list:
     return prompts
 
 
+def _egg_prompts(scene: str, animal: str, n_clips: int) -> list:
+    """Prompts para un huevo que eclosiona un animal gracioso. n==1: eclosión completa
+    en un clip. n>=2: clip 1 empieza a romperse, último clip sale del todo y hace algo
+    gracioso."""
+    funny = (f"a cute, funny, adorable baby {animal}, charming Pixar-like style, big expressive eyes")
+    if n_clips == 1:
+        return [(
+            f"{scene} The egg starts to wobble and rock, then cracks spread across the shell, pieces "
+            f"pop off and {funny} hatches out, climbs out of the shell, shakes itself off and does "
+            f"something funny and cute — looks around, chirps, wobbles, tiny happy dance. Locked static "
+            f"camera, no zoom or pan. Warm cozy lighting.")]
+    prompts = []
+    prompts.append(
+        f"{scene} The intact egg starts to wobble and rock gently, small cracks appear and slowly "
+        f"spread across the shell, a little piece pops off and the tip of a tiny beak or snout of "
+        f"{funny} peeks out through a hole — it is only just starting to hatch, still mostly inside "
+        f"the egg by the end. Locked static camera, no zoom or pan. Warm cozy lighting, no hands.")
+    for _ in range(n_clips - 2):
+        prompts.append(
+            f"{scene} The egg keeps cracking open more and more as {funny} pushes its way out. "
+            f"Locked static camera, no zoom or pan. Warm cozy lighting.")
+    prompts.append(
+        f"{scene} The shell finally breaks apart and {funny} fully hatches and climbs out of the "
+        f"broken shell, shakes itself off, and does something funny and cute — looks around, chirps, "
+        f"wobbles, trips adorably or does a tiny happy dance, then looks at the camera. It ends on the "
+        f"adorable baby {animal} out of the egg. Locked static camera, no zoom or pan. Warm cozy lighting.")
+    return prompts
+
+
 def _duration(media: Path, ffmpeg: str = "ffmpeg") -> float:
     import re as _re
     r = subprocess.run([ffmpeg, "-i", str(media)], capture_output=True, text=True)
@@ -145,6 +174,7 @@ def main() -> None:
                     help="grok/veo=1 clip continuo (de pago); wan=3 clips locales (GPU)")
     ap.add_argument("--duration", type=int, default=15, help="segundos del clip (solo grok; máx 15)")
     ap.add_argument("--length", type=int, default=97, help="frames por clip (solo wan)")
+    ap.add_argument("--kind", default="plant", choices=["plant", "egg"], help="planta o huevo eclosionando")
     ap.add_argument("--music", default="", help="nombre de la pista de música (vacío = aleatoria)")
     ap.add_argument("--ffmpeg", default="ffmpeg")
     args = ap.parse_args()
@@ -167,18 +197,24 @@ def main() -> None:
     out_dir = root / "output" / "plants" / args.plant
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1) Plan (escena bloqueada + prompt de imagen + 3 prompts de animación).
-    print("1/5 Generando el plan (escena + prompts)...", flush=True)
-    plan = plant_plan(rec.get("plant") or "lemon", aspect)
-    db.update_plant(args.plant, {"image_prompt": plan["image_prompt"], "clips": plan["clips"]})
-    clips_prompts = plan["clips"]
+    subject = rec.get("plant") or ("chick" if args.kind == "egg" else "lemon")
 
-    # 2) Primera imagen: maceta con SOLO tierra, sin nada plantado.
-    print("2/5 Generando la primera imagen (maceta vacía)...", flush=True)
-    ar = "vertical portrait 9:16" if aspect == "9:16" else "horizontal 16:9"
-    img_prompt = (f"photorealistic, {plan.get('locked_scene', '')}, the pot is filled to the brim with "
-                  f"fresh dark brown bare soil, smooth flat empty soil surface, absolutely nothing "
-                  f"growing, no plant, no sprout, {ar}, soft daylight, sharp focus, ultra detailed, no text")
+    # 1) Plan (escena bloqueada + prompt de imagen).
+    print("1/5 Generando el plan (escena + prompts)...", flush=True)
+    if args.kind == "egg":
+        from app.services.plant_engine import egg_plan  # noqa: E402
+        plan = egg_plan(subject, aspect)
+        img_prompt = plan["image_prompt"]
+    else:
+        plan = plant_plan(subject, aspect)
+        ar = "vertical portrait 9:16" if aspect == "9:16" else "horizontal 16:9"
+        img_prompt = (f"photorealistic, {plan.get('locked_scene', '')}, the pot is filled to the brim with "
+                      f"fresh dark brown bare soil, smooth flat empty soil surface, absolutely nothing "
+                      f"growing, no plant, no sprout, {ar}, soft daylight, sharp focus, ultra detailed, no text")
+    db.update_plant(args.plant, {"image_prompt": plan["image_prompt"], "clips": plan.get("clips", [])})
+
+    # 2) Primera imagen (maceta vacía / huevo intacto).
+    print("2/5 Generando la primera imagen...", flush=True)
     first = out_dir / "frame_start.jpg"
     if first.exists() and first.stat().st_size > 10000:
         print("   (reuso la maceta vacía ya generada)", flush=True)
@@ -200,10 +236,10 @@ def main() -> None:
         # (crecimiento sin manos). 30s = 2 clips (mano planta la semilla → … → cosecha).
         from app.services import grok_video, veo_video  # noqa: E402
         scene = plan.get("locked_scene", "")
-        plant_name = rec.get("plant") or "plant"
         n_clips = max(1, min(4, round(args.duration / 15)))
         per = 15 if n_clips > 1 else max(4, min(15, args.duration))
-        prompts = _grok_growth_prompts(scene, plant_name, n_clips)
+        prompts = (_egg_prompts(scene, subject, n_clips) if args.kind == "egg"
+                   else _grok_growth_prompts(scene, subject, n_clips))
 
         start_img = first
         norm_clips = []
@@ -247,7 +283,7 @@ def main() -> None:
         # 3) 3 clips WAN encadenados por el último fotograma (local, GPU).
         start_img = first
         norm_clips = []
-        for i, prompt in enumerate(clips_prompts):
+        for i, prompt in enumerate(plan.get("clips", [])):
             print(f"3/5 Clip {i + 1}/3 con WAN (puede tardar)...", flush=True)
             raw = out_dir / f"clip_{i}_raw.mp4"
             wan_client.generate_video(start_img, raw, prompt, width=wan_w, height=wan_h, length=args.length)

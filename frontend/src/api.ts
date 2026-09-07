@@ -87,9 +87,9 @@ export const api = {
   reelRender: (reelId: string) => postJson<{ job: Job }>(`/api/reels/${reelId}/render`, {}),
   plantIdeas: () => postJson<{ ideas: { name: string; note: string }[] }>('/api/plants/ideas', {}),
   plantMusic: () => getJson<{ tracks: { name: string; label: string; path: string }[] }>('/api/plants/music'),
-  plantCreate: (payload: { plant: string; aspect: string; provider?: string; duration?: number; music?: string }) =>
+  plantCreate: (payload: { plant: string; aspect: string; provider?: string; duration?: number; music?: string; kind?: string }) =>
     postJson<{ job: Job; plantId: string }>('/api/plants', payload),
-  plantBatch: (payload: { plants: string[]; aspect: string; provider?: string; duration?: number; music?: string }) =>
+  plantBatch: (payload: { plants: string[]; aspect: string; provider?: string; duration?: number; music?: string; kind?: string }) =>
     postJson<{ job: Job; plantIds: string[]; count: number }>('/api/plants/batch', payload),
   plantsList: () => getJson<{ plants: import('./types').PlantItem[] }>('/api/plants'),
   plantDelete: (id: string) => del<{ deleted: string }>(`/api/plants/${id}`),

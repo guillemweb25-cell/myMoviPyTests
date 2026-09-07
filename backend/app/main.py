@@ -1971,18 +1971,20 @@ class PlantCreateRequest(BaseModel):
     provider: str = "grok"          # grok | veo | wan
     duration: int = 15              # segundos (grok/veo; máx 15)
     music: str = ""                 # nombre de pista (vacío = aleatoria)
+    kind: str = "plant"             # plant | egg
 
 
 @app.post("/api/plants")
 def plant_create(payload: PlantCreateRequest) -> dict:
-    """Crea UN vídeo de maceta (job): plan → primera imagen → clip(s) → montaje."""
+    """Crea UN vídeo (job): plan → primera imagen → clip(s) → montaje. kind plant|egg."""
     if not payload.plant.strip():
-        raise HTTPException(status_code=400, detail="Escribe una planta.")
+        raise HTTPException(status_code=400, detail="Escribe una planta o animal.")
     provider = _validate_plant_provider(payload.provider)
     aspect = payload.aspect if payload.aspect in ("9:16", "16:9") else "9:16"
+    kind = payload.kind if payload.kind in ("plant", "egg") else "plant"
     plant_id = uuid.uuid4().hex[:12]
-    db.save_plant({"id": plant_id, "plant": payload.plant.strip(), "aspect": aspect, "createdAt": now_iso()})
-    args = ["--plant", plant_id, "--provider", provider, "--duration", str(max(4, min(30, payload.duration)))]
+    db.save_plant({"id": plant_id, "plant": payload.plant.strip(), "aspect": aspect, "kind": kind, "createdAt": now_iso()})
+    args = ["--plant", plant_id, "--provider", provider, "--duration", str(max(4, min(30, payload.duration))), "--kind", kind]
     if payload.music.strip():
         args += ["--music", payload.music.strip()]
     job = enqueue_job("plant_video.py", args)
@@ -1990,30 +1992,32 @@ def plant_create(payload: PlantCreateRequest) -> dict:
 
 
 class PlantBatchRequest(BaseModel):
-    plants: list[str]               # una planta por elemento
+    plants: list[str]               # una planta/animal por elemento
     aspect: str = "9:16"
     provider: str = "grok"
     duration: int = 15
     music: str = ""
+    kind: str = "plant"
 
 
 @app.post("/api/plants/batch")
 def plant_batch(payload: PlantBatchRequest) -> dict:
-    """Encola una TANDA de vídeos de maceta: crea un registro por planta y un único
-    job que los genera EN CADENA (uno tras otro). Ideal para tandas nocturnas."""
+    """Encola una TANDA de vídeos: crea un registro por elemento y un único job que
+    los genera EN CADENA (uno tras otro). Ideal para tandas nocturnas."""
     names = [p.strip() for p in payload.plants if p.strip()]
     if not names:
-        raise HTTPException(status_code=400, detail="La lista de plantas está vacía.")
+        raise HTTPException(status_code=400, detail="La lista está vacía.")
     if len(names) > 50:
         raise HTTPException(status_code=400, detail="Máximo 50 por tanda.")
     provider = _validate_plant_provider(payload.provider)
     aspect = payload.aspect if payload.aspect in ("9:16", "16:9") else "9:16"
+    kind = payload.kind if payload.kind in ("plant", "egg") else "plant"
     ids = []
     for name in names:
         pid = uuid.uuid4().hex[:12]
-        db.save_plant({"id": pid, "plant": name, "aspect": aspect, "createdAt": now_iso()})
+        db.save_plant({"id": pid, "plant": name, "aspect": aspect, "kind": kind, "createdAt": now_iso()})
         ids.append(pid)
-    args = ["--plants", ",".join(ids), "--provider", provider, "--duration", str(max(4, min(30, payload.duration)))]
+    args = ["--plants", ",".join(ids), "--provider", provider, "--duration", str(max(4, min(30, payload.duration))), "--kind", kind]
     if payload.music.strip():
         args += ["--music", payload.music.strip()]
     job = enqueue_job("plant_batch.py", args)
@@ -2021,8 +2025,8 @@ def plant_batch(payload: PlantBatchRequest) -> dict:
 
 
 @app.get("/api/plants")
-def plants_list() -> dict:
-    return {"plants": db.list_plants()}
+def plants_list(kind: str = "") -> dict:
+    return {"plants": db.list_plants(kind or None)}
 
 
 @app.delete("/api/plants/{plant_id}")
@@ -2051,7 +2055,7 @@ def plant_seo_endpoint(plant_id: str, payload: ReelSeoRequest) -> dict:
     ch_id = payload.channelId if payload.channelId is not None else rec.get("channelId")
     rules = (db.get_channel(int(ch_id)) or {}).get("seoRules") if ch_id else None
     try:
-        s = plant_seo(rec.get("plant") or "plant", rules)
+        s = plant_seo(rec.get("plant") or "plant", rules, kind=rec.get("kind", "plant"))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Fallo generando el SEO: {exc}") from exc
     db.update_plant(plant_id, {"title": s["title"], "seo_description": s["description"]})

@@ -109,7 +109,8 @@ CREATE TABLE IF NOT EXISTS plant_videos (
     seo_description TEXT DEFAULT '',
     created_at   TEXT,
     channel_id   INTEGER,
-    youtube_url  TEXT DEFAULT ''
+    youtube_url  TEXT DEFAULT '',
+    kind         TEXT DEFAULT 'plant'
 );
 """
 
@@ -120,6 +121,10 @@ REEL_MIGRATIONS = [
     "ALTER TABLE reels ADD COLUMN thumb_position TEXT DEFAULT 'bottom'",
     "ALTER TABLE reels ADD COLUMN seo_description TEXT DEFAULT ''",
     "ALTER TABLE reels ADD COLUMN source_video TEXT DEFAULT ''",
+]
+
+PLANT_MIGRATIONS = [
+    "ALTER TABLE plant_videos ADD COLUMN kind TEXT DEFAULT 'plant'",
 ]
 
 CAMPAIGN_MIGRATIONS = [
@@ -168,7 +173,7 @@ def init(db_path: Path) -> None:
     with _db_lock, _connect() as conn:
         conn.executescript(SCHEMA)
         # Migraciones para BD antiguas: anade columnas nuevas si faltan.
-        for statement in CLIP_MIGRATIONS + CAMPAIGN_MIGRATIONS + REEL_MIGRATIONS:
+        for statement in CLIP_MIGRATIONS + CAMPAIGN_MIGRATIONS + REEL_MIGRATIONS + PLANT_MIGRATIONS:
             try:
                 conn.execute(statement)
             except sqlite3.OperationalError:
@@ -594,6 +599,7 @@ def _plant_to_dict(row: sqlite3.Row) -> dict:
         "createdAt": row["created_at"],
         "channelId": (row["channel_id"] if "channel_id" in row.keys() else None),
         "youtubeUrl": (row["youtube_url"] if "youtube_url" in row.keys() else "") or "",
+        "kind": (row["kind"] if "kind" in row.keys() else "plant") or "plant",
     }
 
 
@@ -602,11 +608,11 @@ def save_plant(plant: dict) -> dict:
     with _db_lock, _connect() as conn:
         conn.execute(
             """INSERT INTO plant_videos (id, plant, aspect, image_prompt, clips_json, image_path,
-                video_path, title, created_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+                video_path, title, created_at, kind) VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (plant["id"], plant.get("plant", ""), plant.get("aspect", "9:16"),
              plant.get("imagePrompt", ""), _json.dumps(plant.get("clips", [])),
              plant.get("image", ""), plant.get("video", ""), plant.get("title", ""),
-             plant.get("createdAt", "")),
+             plant.get("createdAt", ""), plant.get("kind", "plant")),
         )
     return get_plant(plant["id"])
 
@@ -614,7 +620,7 @@ def save_plant(plant: dict) -> dict:
 def update_plant(plant_id: str, fields: dict) -> dict | None:
     import json as _json
     allowed = {"plant", "aspect", "image_prompt", "clips_json", "image_path", "video_path",
-               "title", "seo_description", "channel_id", "youtube_url"}
+               "title", "seo_description", "channel_id", "youtube_url", "kind"}
     if "clips" in fields:
         fields["clips_json"] = _json.dumps(fields.pop("clips"))
     updates = {k: v for k, v in fields.items() if k in allowed}
@@ -631,10 +637,13 @@ def get_plant(plant_id: str) -> dict | None:
     return _plant_to_dict(row) if row else None
 
 
-def list_plants() -> list[dict]:
+def list_plants(kind: str | None = None) -> list[dict]:
     with _db_lock, _connect() as conn:
         rows = conn.execute("SELECT * FROM plant_videos ORDER BY created_at DESC").fetchall()
-    return [_plant_to_dict(r) for r in rows]
+    items = [_plant_to_dict(r) for r in rows]
+    if kind:
+        items = [p for p in items if p.get("kind", "plant") == kind]
+    return items
 
 
 def delete_plant(plant_id: str) -> None:

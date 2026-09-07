@@ -70,24 +70,50 @@ _SYSTEM = (
 )
 
 
-def seo(plant: str, channel_rules: str | None = None) -> dict:
-    """SEO en INGLÉS para el vídeo de crecimiento: {title, description}. La descripción
-    termina con hashtags (#). Reutiliza SEOEngine (motor de clips)."""
+def egg_plan(animal: str, aspect: str = "9:16") -> dict:
+    """Plan (determinista, sin LLM → sin coste) para un vídeo de huevo que eclosiona:
+    {locked_scene, image_prompt, clips}. `animal` = pollito, dinosaurio, dragón…"""
+    animal = (animal or "chick").strip()
+    ar = "vertical portrait 9:16" if aspect == "9:16" else "horizontal 16:9"
+    scene = (f"A single {animal} egg in a cozy little straw nest on a rustic wooden table, softly "
+             f"blurred warm cozy background, soft daylight, locked static camera, {ar}, photorealistic "
+             f"but cute and charming Pixar-like adorable style.")
+    image_prompt = (f"photorealistic, {scene} The egg is whole and intact, sitting still in the nest, "
+                    f"nothing hatching yet, no cracks, no animal visible, cute, ultra detailed, no text.")
+    return {"locked_scene": scene, "image_prompt": image_prompt, "clips": []}
+
+
+def seo(subject: str, channel_rules: str | None = None, kind: str = "plant") -> dict:
+    """SEO en INGLÉS: {title, description} con hashtags (#). Reutiliza SEOEngine.
+    kind='plant' (time-lapse de crecimiento) o 'egg' (animal gracioso eclosionando)."""
     from .clip_seo import strip_markdown, strip_wrapping_quotes
     from .seo_engine import SEOEngine
     import re as _re
 
-    plant = (plant or "plant").strip()
-    snippet = (f"A satisfying, oddly satisfying ASMR time-lapse of a {plant} growing from a seed into "
-               f"a full plant with flowers and fruit inside a terracotta pot, day and night passing, "
-               f"relaxing plant growth, gardening, nature. Vertical short video.")
+    subject = (subject or ("egg" if kind == "egg" else "plant")).strip()
+    tag = _re.sub(r"[^a-zA-Z]", "", subject).lower() or ("egg" if kind == "egg" else "plant")
+    if kind == "egg":
+        snippet = (f"A cute, funny, oddly satisfying video of a {subject} hatching out of an egg in a "
+                   f"cozy nest — the egg cracks and an adorable {subject} pops out and does something "
+                   f"funny. Wholesome, satisfying, animals, cute. Vertical short video.")
+        title_rules = ("Write the title in ENGLISH. Catchy, high-CTR, fun and cute, about a funny "
+                       f"{subject} hatching out of an egg. No hashtags in the title.")
+        desc_rules = ("Write the description in ENGLISH. Short fun hook + a line about the cute/funny "
+                      f"{subject} hatching from its egg. END with a single line of 10-14 relevant "
+                      "hashtags (e.g. #hatching #cute #funny #animals #satisfying #asmr #shorts) "
+                      f"including one for the animal (#{tag}).")
+    else:
+        snippet = (f"A satisfying, oddly satisfying ASMR time-lapse of a {subject} growing from a seed "
+                   f"into a full plant with flowers and fruit inside a terracotta pot, day and night "
+                   f"passing, relaxing plant growth, gardening, nature. Vertical short video.")
+        title_rules = ("Write the title in ENGLISH. Catchy, high-CTR title about a satisfying "
+                       f"plant-growth time-lapse of a {subject}. No hashtags in the title.")
+        desc_rules = ("Write the description in ENGLISH. Short hook + one or two lines about the "
+                      f"satisfying {subject} growth time-lapse. END with a single line of 10-14 "
+                      "relevant hashtags (e.g. #timelapse #satisfying #plantgrowth #asmr #gardening "
+                      f"#nature #shorts) including one for the plant (#{tag}).")
+    plant = subject
     eng = SEOEngine()
-    title_rules = ("Write the title in ENGLISH. Make it a catchy, high-CTR title about a satisfying "
-                   f"plant-growth time-lapse of a {plant}. No hashtags in the title.")
-    desc_rules = ("Write the description in ENGLISH. Short hook + one or two lines about the satisfying "
-                  f"{plant} growth time-lapse. END with a single line of 10-14 relevant hashtags "
-                  "(e.g. #timelapse #satisfying #plantgrowth #asmr #gardening #nature #shorts) including "
-                  f"one for the plant (#{_re.sub(r'[^a-zA-Z]', '', plant).lower() or 'plant'}).")
     if channel_rules:
         title_rules += f"\n{channel_rules}"
         desc_rules += f"\n{channel_rules}"
@@ -95,8 +121,10 @@ def seo(plant: str, channel_rules: str | None = None) -> dict:
     desc = strip_markdown(eng.generate_description(snippet, lang="English", custom_rules=desc_rules))
     desc = _re.sub(r"^\s*(video\s+)?(title|description)\s*:\s*", "", desc, flags=_re.IGNORECASE).strip()
     if "#" not in desc:  # respaldo: asegura hashtags
-        tag = _re.sub(r"[^a-zA-Z]", "", plant).lower() or "plant"
-        desc += f"\n\n#timelapse #satisfying #plantgrowth #asmr #gardening #nature #plants #grow #{tag} #shorts"
+        if kind == "egg":
+            desc += f"\n\n#hatching #cute #funny #animals #satisfying #asmr #egg #wholesome #{tag} #shorts"
+        else:
+            desc += f"\n\n#timelapse #satisfying #plantgrowth #asmr #gardening #nature #plants #grow #{tag} #shorts"
     return {"title": title[:100], "description": desc[:4900]}
 
 

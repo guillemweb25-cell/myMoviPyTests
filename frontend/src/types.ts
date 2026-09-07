@@ -147,6 +147,7 @@ export type PlantItem = {
   id: string
   plant: string
   aspect: string
+  kind?: string
   imagePrompt?: string
   clips?: string[]
   image?: string

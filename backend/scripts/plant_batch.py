@@ -21,6 +21,7 @@ def main() -> None:
     ap.add_argument("--duration", type=int, default=15)
     ap.add_argument("--length", type=int, default=97)
     ap.add_argument("--music", default="")
+    ap.add_argument("--kind", default="plant", choices=["plant", "egg"])
     args = ap.parse_args()
 
     ids = [p.strip() for p in args.plants.split(",") if p.strip()]
@@ -29,7 +30,7 @@ def main() -> None:
     ok, fail = 0, 0
     for i, pid in enumerate(ids, 1):
         print(f"\n===== [{i}/{len(ids)}] planta {pid} =====", flush=True)
-        cmd = [sys.executable, str(PLANT_VIDEO), "--plant", pid,
+        cmd = [sys.executable, str(PLANT_VIDEO), "--plant", pid, "--kind", args.kind,
                "--provider", args.provider, "--duration", str(args.duration), "--length", str(args.length)]
         if args.music:
             cmd += ["--music", args.music]
