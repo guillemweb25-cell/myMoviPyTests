@@ -21,7 +21,7 @@ def main() -> None:
     ap.add_argument("--duration", type=int, default=15)
     ap.add_argument("--length", type=int, default=97)
     ap.add_argument("--music", default="")
-    ap.add_argument("--kind", default="plant", choices=["plant", "egg"])
+    ap.add_argument("--kind", default="plant", choices=["plant", "egg", "butterfly"])
     args = ap.parse_args()
 
     ids = [p.strip() for p in args.plants.split(",") if p.strip()]

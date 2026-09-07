@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, clearToken, getToken, setToken, UnauthorizedError } from './api'
 import type { Campaign, Channel, ClipCandidate, ClipSource, ComfyStatus, FileEntry, Job, ScriptInfo } from './types'
 
-type Section = 'dashboard' | 'content' | 'clipping' | 'reels' | 'plants' | 'eggs' | 'channel' | 'execute' | 'jobs' | 'files'
+type Section = 'dashboard' | 'content' | 'clipping' | 'reels' | 'plants' | 'eggs' | 'butterflies' | 'channel' | 'execute' | 'jobs' | 'files'
 
 const sections: { id: Section; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -11,6 +11,7 @@ const sections: { id: Section; label: string }[] = [
   { id: 'reels', label: '🎬 Avatar Reel' },
   { id: 'plants', label: '🪴 Macetas' },
   { id: 'eggs', label: '🥚 Huevos' },
+  { id: 'butterflies', label: '🦋 Mariposas' },
   { id: 'execute', label: 'Ejecutar Scripts' },
   { id: 'jobs', label: 'Historial' },
   { id: 'files', label: 'Explorador Output' },
@@ -160,7 +161,22 @@ export default function App() {
   const [plantRowBusy, setPlantRowBusy] = useState('')
   const [plantMusicList, setPlantMusicList] = useState<{ name: string; label: string; path: string }[]>([])
   const [plantMusic, setPlantMusic] = useState('')  // '' = aleatoria
-  const plantKind: 'plant' | 'egg' = activeSection === 'eggs' ? 'egg' : 'plant'
+  const plantKind: 'plant' | 'egg' | 'butterfly' =
+    activeSection === 'eggs' ? 'egg' : activeSection === 'butterflies' ? 'butterfly' : 'plant'
+  const KIND_UI = {
+    plant: { title: '🪴 Macetas — crecimiento en time-lapse', subject: 'Planta (fruta, flor, verdura…)',
+      ph: 'Ej: limón, girasol, tomate, fresa…', batch: 'limón\ngirasol\ntomate\nfresa\nlavanda',
+      list: 'Mis vídeos de macetas', empty: 'una planta', create: '🪴 Crear vídeo',
+      desc: 'Vídeo satisfactorio de una planta creciendo de semilla a cosecha. Con 30s: la mano planta la semilla y al final recoge el fruto. Todo IA, sin copyright.' },
+    egg: { title: '🥚 Huevos — animal gracioso eclosionando', subject: 'Animal (que salga del huevo)',
+      ph: 'Ej: pollito, dinosaurio, dragón, pingüino…', batch: 'pollito\ndinosaurio\ndragón\npingüino\ntortuga',
+      list: 'Mis vídeos de huevos', empty: 'un animal', create: '🥚 Crear vídeo',
+      desc: 'Vídeo tierno y gracioso de un animal (pollito, dinosaurio, dragón…) saliendo de un huevo. Con 30s: el huevo se rompe y el animalito sale y hace algo gracioso. Todo IA, sin copyright.' },
+    butterfly: { title: '🦋 Mariposas — metamorfosis en time-lapse', subject: 'Mariposa (tipo/color)',
+      ph: 'Ej: monarca, azul morpho, colorida…', batch: 'monarca\nazul morpho\ncolorida\namarilla\nnaranja',
+      list: 'Mis vídeos de mariposas', empty: 'una mariposa', create: '🦋 Crear vídeo',
+      desc: 'Metamorfosis satisfactoria: oruga → crisálida → mariposa que despliega sus alas. Con 30s: clip 1 oruga→crisálida, clip 2 emerge la mariposa. Todo IA, sin copyright.' },
+  }[plantKind]
   const [plantIdeasList, setPlantIdeasList] = useState<{ name: string; note: string }[]>([])
   const [plants, setPlants] = useState<import('./types').PlantItem[]>([])
   const [plantBusy, setPlantBusy] = useState<'' | 'ideas' | 'create'>('')
@@ -1576,7 +1592,7 @@ export default function App() {
 
   // Carga los vídeos de macetas al abrir la sección.
   useEffect(() => {
-    if ((activeSection !== 'plants' && activeSection !== 'eggs') || authState !== 'authed') return
+    if (!['plants', 'eggs', 'butterflies'].includes(activeSection) || authState !== 'authed') return
     api.plantsList().then((d) => setPlants(d.plants)).catch(() => {})
     api.plantMusic().then((d) => setPlantMusicList(d.tracks)).catch(() => {})
     setPlantChannelId((cur) => cur ?? (channels[0]?.id ?? null))
@@ -3061,21 +3077,17 @@ export default function App() {
           </section>
         )}
 
-        {(activeSection === 'plants' || activeSection === 'eggs') && (
+        {['plants', 'eggs', 'butterflies'].includes(activeSection) && (
           <section className="panel">
             <div className="viewer-header">
-              <h3 style={{ margin: 0 }}>{plantKind === 'egg' ? '🥚 Huevos — animal gracioso eclosionando' : '🪴 Macetas — crecimiento en time-lapse'}</h3>
+              <h3 style={{ margin: 0 }}>{KIND_UI.title}</h3>
             </div>
-            <p className="description">
-              {plantKind === 'egg'
-                ? 'Vídeo tierno y gracioso de un animal (pollito, dinosaurio, dragón…) saliendo de un huevo. Con 30s: el huevo se rompe y el animalito sale y hace algo gracioso. Todo IA, sin copyright.'
-                : 'Vídeo satisfactorio de una planta creciendo de semilla a cosecha. Con 30s: la mano planta la semilla y al final recoge el fruto. Todo IA, sin copyright.'}
-            </p>
+            <p className="description">{KIND_UI.desc}</p>
 
             <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <label className="field" style={{ flex: 1, minWidth: 220 }}>
-                <span>{plantKind === 'egg' ? 'Animal (que salga del huevo)' : 'Planta (fruta, flor, verdura…)'}</span>
-                <input value={plantName} onChange={(e) => setPlantName(e.target.value)} placeholder={plantKind === 'egg' ? 'Ej: pollito, dinosaurio, dragón, pingüino…' : 'Ej: limón, girasol, tomate, fresa…'} />
+                <span>{KIND_UI.subject}</span>
+                <input value={plantName} onChange={(e) => setPlantName(e.target.value)} placeholder={KIND_UI.ph} />
               </label>
               <label className="field" style={{ maxWidth: 130 }}>
                 <span>Formato</span>
@@ -3116,7 +3128,7 @@ export default function App() {
                 </button>
               )}
               <button className="primary" disabled={plantBusy !== '' || !plantName.trim()} onClick={handleCreatePlant}>
-                {plantBusy === 'create' ? 'Generando…' : (plantKind === 'egg' ? '🥚 Crear vídeo' : '🪴 Crear vídeo')}
+                {plantBusy === 'create' ? 'Generando…' : KIND_UI.create}
               </button>
             </div>
             {plantBusy === 'create' && <p className="help">Generando (plan → primera imagen → clip(s) → montaje). Puedes seguir en otra pestaña; aparece abajo.</p>}
@@ -3124,7 +3136,7 @@ export default function App() {
             <div className="seo-box" style={{ marginTop: 12 }}>
               <div className="seo-head"><span>📋 Tanda (cola) — uno por línea</span></div>
               <textarea rows={4} value={plantBatchText} onChange={(e) => setPlantBatchText(e.target.value)}
-                        placeholder={plantKind === 'egg' ? 'pollito\ndinosaurio\ndragón\npingüino\ntortuga' : 'limón\ngirasol\ntomate\nfresa\nlavanda'} style={{ width: '100%' }} />
+                        placeholder={KIND_UI.batch} style={{ width: '100%' }} />
               <div className="actions-row" style={{ alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
                 <span className="help">
                   {(() => { const n = plantBatchText.split('\n').filter((s) => s.trim()).length
@@ -3151,7 +3163,7 @@ export default function App() {
 
             <div className="seo-box" style={{ marginTop: 16 }}>
               <div className="seo-head">
-                <span>📁 {plantKind === 'egg' ? 'Mis vídeos de huevos' : 'Mis vídeos de macetas'} ({plants.filter((p) => (p.kind || 'plant') === plantKind).length})</span>
+                <span>📁 {KIND_UI.list} ({plants.filter((p) => (p.kind || 'plant') === plantKind).length})</span>
                 <label className="field" style={{ maxWidth: 200 }}>
                   <span>Canal YouTube (para subir)</span>
                   <select value={plantChannelId ?? ''} onChange={(e) => setPlantChannelId(Number(e.target.value) || null)}>
@@ -3160,7 +3172,7 @@ export default function App() {
                   </select>
                 </label>
               </div>
-              {plants.filter((p) => (p.kind || 'plant') === plantKind).length === 0 && <p className="help">Aún no hay vídeos. Escribe {plantKind === 'egg' ? 'un animal' : 'una planta'} y pulsa «Crear vídeo».</p>}
+              {plants.filter((p) => (p.kind || 'plant') === plantKind).length === 0 && <p className="help">Aún no hay vídeos. Escribe {KIND_UI.empty} y pulsa «Crear vídeo».</p>}
               {plants.filter((p) => (p.kind || 'plant') === plantKind).map((p) => (
                 <div key={p.id} className="clip-media-row" style={{ alignItems: 'flex-start', marginTop: 10, gap: 12 }}>
                   {p.video

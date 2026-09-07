@@ -83,6 +83,19 @@ def egg_plan(animal: str, aspect: str = "9:16") -> dict:
     return {"locked_scene": scene, "image_prompt": image_prompt, "clips": []}
 
 
+def butterfly_plan(subject: str, aspect: str = "9:16") -> dict:
+    """Plan (sin LLM) para metamorfosis de mariposa: {locked_scene, image_prompt, clips}.
+    `subject` = tipo/color de mariposa (monarca, azul, colorida…)."""
+    subject = (subject or "butterfly").strip()
+    ar = "vertical portrait 9:16" if aspect == "9:16" else "horizontal 16:9"
+    scene = (f"A small green twig with a single green leaf, on a softly blurred sunny garden "
+             f"background, soft daylight, locked static camera, {ar}, photorealistic, cute and "
+             f"charming, macro close-up.")
+    image_prompt = (f"photorealistic macro, {scene} A single small cute caterpillar rests on the leaf, "
+                    f"nothing else, no chrysalis, no butterfly yet, ultra detailed, no text.")
+    return {"locked_scene": scene, "image_prompt": image_prompt, "clips": []}
+
+
 def seo(subject: str, channel_rules: str | None = None, kind: str = "plant") -> dict:
     """SEO en INGLÉS: {title, description} con hashtags (#). Reutiliza SEOEngine.
     kind='plant' (time-lapse de crecimiento) o 'egg' (animal gracioso eclosionando)."""
@@ -92,7 +105,17 @@ def seo(subject: str, channel_rules: str | None = None, kind: str = "plant") -> 
 
     subject = (subject or ("egg" if kind == "egg" else "plant")).strip()
     tag = _re.sub(r"[^a-zA-Z]", "", subject).lower() or ("egg" if kind == "egg" else "plant")
-    if kind == "egg":
+    if kind == "butterfly":
+        snippet = (f"A satisfying, mesmerizing time-lapse of metamorphosis: a caterpillar turns into a "
+                   f"chrysalis and then a beautiful {subject} butterfly emerges and spreads its colorful "
+                   f"wings. Oddly satisfying, nature, transformation, wholesome. Vertical short video.")
+        title_rules = ("Write the title in ENGLISH. Catchy, high-CTR, about a mesmerizing caterpillar to "
+                       f"butterfly ({subject}) metamorphosis time-lapse. No hashtags in the title.")
+        desc_rules = ("Write the description in ENGLISH. Short hook + a line about the satisfying "
+                      f"caterpillar → chrysalis → {subject} butterfly transformation. END with a single "
+                      "line of 10-14 relevant hashtags (e.g. #butterfly #metamorphosis #timelapse "
+                      f"#satisfying #nature #asmr #shorts) including one for the butterfly (#{tag}).")
+    elif kind == "egg":
         snippet = (f"A cute, funny, oddly satisfying video of a {subject} hatching out of an egg in a "
                    f"cozy nest — the egg cracks and an adorable {subject} pops out and does something "
                    f"funny. Wholesome, satisfying, animals, cute. Vertical short video.")
@@ -121,7 +144,9 @@ def seo(subject: str, channel_rules: str | None = None, kind: str = "plant") -> 
     desc = strip_markdown(eng.generate_description(snippet, lang="English", custom_rules=desc_rules))
     desc = _re.sub(r"^\s*(video\s+)?(title|description)\s*:\s*", "", desc, flags=_re.IGNORECASE).strip()
     if "#" not in desc:  # respaldo: asegura hashtags
-        if kind == "egg":
+        if kind == "butterfly":
+            desc += f"\n\n#butterfly #metamorphosis #timelapse #satisfying #nature #asmr #caterpillar #wholesome #{tag} #shorts"
+        elif kind == "egg":
             desc += f"\n\n#hatching #cute #funny #animals #satisfying #asmr #egg #wholesome #{tag} #shorts"
         else:
             desc += f"\n\n#timelapse #satisfying #plantgrowth #asmr #gardening #nature #plants #grow #{tag} #shorts"

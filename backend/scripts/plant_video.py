@@ -126,6 +126,32 @@ def _egg_prompts(scene: str, animal: str, n_clips: int) -> list:
     return prompts
 
 
+def _butterfly_prompts(scene: str, subject: str, n_clips: int) -> list:
+    """Prompts para metamorfosis de mariposa. n==1: oruga→crisálida→mariposa en un clip.
+    n>=2: clip 1 oruga→crisálida; último clip la crisálida se abre y emerge la mariposa."""
+    if n_clips == 1:
+        return [(
+            f"{scene} Satisfying macro time-lapse: the caterpillar crawls, then hangs and forms a "
+            f"chrysalis; the chrysalis hardens, darkens and then cracks open as a beautiful {subject} "
+            f"butterfly slowly emerges, climbs out and unfolds and dries its colorful wings, then gently "
+            f"flaps them open. Locked static camera, no zoom or pan. Soft daylight, no hands.")]
+    prompts = []
+    prompts.append(
+        f"{scene} Satisfying macro time-lapse: the caterpillar crawls on the leaf, eats a little, then "
+        f"climbs to the twig, hangs upside down and slowly forms a smooth green chrysalis that hardens. "
+        f"It ends with the finished chrysalis hanging still. Locked static camera, no zoom or pan, no hands.")
+    for _ in range(n_clips - 2):
+        prompts.append(
+            f"{scene} The chrysalis hangs and slowly darkens, the wing pattern becoming visible through "
+            f"the shell. Locked static camera, no zoom or pan, no hands.")
+    prompts.append(
+        f"{scene} The chrysalis darkens and its shell splits open; a beautiful {subject} butterfly slowly "
+        f"emerges, climbs out, and unfolds and dries its crumpled wings until they are full, colorful and "
+        f"open, then gently flaps them. It ends on the gorgeous {subject} butterfly with open wings. "
+        f"Locked static camera, no zoom or pan. Soft daylight, no hands.")
+    return prompts
+
+
 def _duration(media: Path, ffmpeg: str = "ffmpeg") -> float:
     import re as _re
     r = subprocess.run([ffmpeg, "-i", str(media)], capture_output=True, text=True)
@@ -174,7 +200,7 @@ def main() -> None:
                     help="grok/veo=1 clip continuo (de pago); wan=3 clips locales (GPU)")
     ap.add_argument("--duration", type=int, default=15, help="segundos del clip (solo grok; máx 15)")
     ap.add_argument("--length", type=int, default=97, help="frames por clip (solo wan)")
-    ap.add_argument("--kind", default="plant", choices=["plant", "egg"], help="planta o huevo eclosionando")
+    ap.add_argument("--kind", default="plant", choices=["plant", "egg", "butterfly"], help="planta / huevo / mariposa")
     ap.add_argument("--music", default="", help="nombre de la pista de música (vacío = aleatoria)")
     ap.add_argument("--ffmpeg", default="ffmpeg")
     args = ap.parse_args()
@@ -197,13 +223,17 @@ def main() -> None:
     out_dir = root / "output" / "plants" / args.plant
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    subject = rec.get("plant") or ("chick" if args.kind == "egg" else "lemon")
+    subject = rec.get("plant") or {"egg": "chick", "butterfly": "butterfly"}.get(args.kind, "lemon")
 
     # 1) Plan (escena bloqueada + prompt de imagen).
     print("1/5 Generando el plan (escena + prompts)...", flush=True)
     if args.kind == "egg":
         from app.services.plant_engine import egg_plan  # noqa: E402
         plan = egg_plan(subject, aspect)
+        img_prompt = plan["image_prompt"]
+    elif args.kind == "butterfly":
+        from app.services.plant_engine import butterfly_plan  # noqa: E402
+        plan = butterfly_plan(subject, aspect)
         img_prompt = plan["image_prompt"]
     else:
         plan = plant_plan(subject, aspect)
@@ -238,8 +268,12 @@ def main() -> None:
         scene = plan.get("locked_scene", "")
         n_clips = max(1, min(4, round(args.duration / 15)))
         per = 15 if n_clips > 1 else max(4, min(15, args.duration))
-        prompts = (_egg_prompts(scene, subject, n_clips) if args.kind == "egg"
-                   else _grok_growth_prompts(scene, subject, n_clips))
+        if args.kind == "egg":
+            prompts = _egg_prompts(scene, subject, n_clips)
+        elif args.kind == "butterfly":
+            prompts = _butterfly_prompts(scene, subject, n_clips)
+        else:
+            prompts = _grok_growth_prompts(scene, subject, n_clips)
 
         start_img = first
         norm_clips = []

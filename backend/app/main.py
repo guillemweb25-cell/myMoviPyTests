@@ -1981,7 +1981,7 @@ def plant_create(payload: PlantCreateRequest) -> dict:
         raise HTTPException(status_code=400, detail="Escribe una planta o animal.")
     provider = _validate_plant_provider(payload.provider)
     aspect = payload.aspect if payload.aspect in ("9:16", "16:9") else "9:16"
-    kind = payload.kind if payload.kind in ("plant", "egg") else "plant"
+    kind = payload.kind if payload.kind in ("plant", "egg", "butterfly") else "plant"
     plant_id = uuid.uuid4().hex[:12]
     db.save_plant({"id": plant_id, "plant": payload.plant.strip(), "aspect": aspect, "kind": kind, "createdAt": now_iso()})
     args = ["--plant", plant_id, "--provider", provider, "--duration", str(max(4, min(30, payload.duration))), "--kind", kind]
@@ -2011,7 +2011,7 @@ def plant_batch(payload: PlantBatchRequest) -> dict:
         raise HTTPException(status_code=400, detail="Máximo 50 por tanda.")
     provider = _validate_plant_provider(payload.provider)
     aspect = payload.aspect if payload.aspect in ("9:16", "16:9") else "9:16"
-    kind = payload.kind if payload.kind in ("plant", "egg") else "plant"
+    kind = payload.kind if payload.kind in ("plant", "egg", "butterfly") else "plant"
     ids = []
     for name in names:
         pid = uuid.uuid4().hex[:12]
