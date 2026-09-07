@@ -20,6 +20,7 @@ def main() -> None:
     ap.add_argument("--provider", default="grok", choices=["grok", "veo", "wan"])
     ap.add_argument("--duration", type=int, default=15)
     ap.add_argument("--length", type=int, default=97)
+    ap.add_argument("--music", default="")
     args = ap.parse_args()
 
     ids = [p.strip() for p in args.plants.split(",") if p.strip()]
@@ -30,6 +31,8 @@ def main() -> None:
         print(f"\n===== [{i}/{len(ids)}] planta {pid} =====", flush=True)
         cmd = [sys.executable, str(PLANT_VIDEO), "--plant", pid,
                "--provider", args.provider, "--duration", str(args.duration), "--length", str(args.length)]
+        if args.music:
+            cmd += ["--music", args.music]
         rc = subprocess.run(cmd, cwd=str(root)).returncode
         if rc == 0:
             ok += 1

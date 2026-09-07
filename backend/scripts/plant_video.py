@@ -30,7 +30,12 @@ def _last_frame(video: Path, out: Path, ffmpeg: str = "ffmpeg") -> bool:
 MUSIC_DIR = Path(__file__).resolve().parents[1] / "assets" / "music"
 
 
-def _pick_music() -> "Path | None":
+def _pick_music(explicit: str = "") -> "Path | None":
+    """Música concreta (por nombre de fichero) o una aleatoria del banco."""
+    if explicit:
+        p = MUSIC_DIR / Path(explicit).name
+        if p.exists():
+            return p
     if MUSIC_DIR.exists():
         import random
         tracks = sorted(MUSIC_DIR.glob("*.mp3"))
@@ -60,11 +65,11 @@ def _duration(media: Path, ffmpeg: str = "ffmpeg") -> float:
 
 
 def _finalize(src: Path, out: Path, w: int, h: int, ffmpeg: str = "ffmpeg",
-              music_volume: float = 0.5, src_audio_volume: float = 0.55) -> None:
-    """Normaliza `src` a vertical WxH y le añade MÚSICA de fondo (aleatoria del banco),
+              music_volume: float = 0.5, src_audio_volume: float = 0.55, music_name: str = "") -> None:
+    """Normaliza `src` a vertical WxH y le añade MÚSICA de fondo (la elegida o aleatoria),
     mezclada con el audio original del clip (ambiente de Grok) si lo hay. Si no hay
     música, deja el audio original (o mudo)."""
-    music = _pick_music()
+    music = _pick_music(music_name)
     dur = _duration(src, ffmpeg)  # las pistas duran minutos → sin -stream_loop (evita colgar ffmpeg)
     tbound = ["-t", f"{dur:.3f}"] if dur > 0 else []
     vscale = f"[0:v:0]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,fps=30[v]"
@@ -100,6 +105,7 @@ def main() -> None:
                     help="grok/veo=1 clip continuo (de pago); wan=3 clips locales (GPU)")
     ap.add_argument("--duration", type=int, default=15, help="segundos del clip (solo grok; máx 15)")
     ap.add_argument("--length", type=int, default=97, help="frames por clip (solo wan)")
+    ap.add_argument("--music", default="", help="nombre de la pista de música (vacío = aleatoria)")
     ap.add_argument("--ffmpeg", default="ffmpeg")
     args = ap.parse_args()
 
@@ -175,7 +181,7 @@ def main() -> None:
             print(f"3/4 Generando el clip continuo con veo ({args.duration}s)...", flush=True)
             veo_video.generate_video(first, raw, grow_prompt, aspect=aspect)
         print("4/4 Normalizando a vertical + música de fondo...", flush=True)
-        _finalize(raw, out, out_w, out_h, args.ffmpeg)  # mantiene audio de Grok + música
+        _finalize(raw, out, out_w, out_h, args.ffmpeg, music_name=args.music)  # mantiene audio de Grok + música
         if not out.exists():
             raise SystemExit(f"Falló normalizando el clip de {args.provider}.")
     else:
@@ -205,7 +211,7 @@ def main() -> None:
             sys.stderr.write(rc.stderr[-1200:])
             raise SystemExit("Falló uniendo los clips.")
         listfile.unlink(missing_ok=True)
-        _finalize(joined, out, out_w, out_h, args.ffmpeg)  # WAN es mudo → música de fondo sola
+        _finalize(joined, out, out_w, out_h, args.ffmpeg, music_name=args.music)  # WAN es mudo → música de fondo sola
         joined.unlink(missing_ok=True)
 
     # 5) Persistir.

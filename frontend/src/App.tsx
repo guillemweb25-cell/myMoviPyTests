@@ -157,6 +157,8 @@ export default function App() {
   const [plantBatchText, setPlantBatchText] = useState('')
   const [plantChannelId, setPlantChannelId] = useState<number | null>(null)
   const [plantRowBusy, setPlantRowBusy] = useState('')
+  const [plantMusicList, setPlantMusicList] = useState<{ name: string; label: string; path: string }[]>([])
+  const [plantMusic, setPlantMusic] = useState('')  // '' = aleatoria
   const [plantIdeasList, setPlantIdeasList] = useState<{ name: string; note: string }[]>([])
   const [plants, setPlants] = useState<import('./types').PlantItem[]>([])
   const [plantBusy, setPlantBusy] = useState<'' | 'ideas' | 'create'>('')
@@ -610,7 +612,7 @@ export default function App() {
     if (!window.confirm(`Encolar ${names.length} vídeos con ${plantProvider}. Coste estimado: ${est}. ¿Seguir?`)) return
     setPlantBusy('create'); setError('')
     try {
-      await api.plantBatch({ plants: names, aspect: plantAspect, provider: plantProvider, duration: plantDuration })
+      await api.plantBatch({ plants: names, aspect: plantAspect, provider: plantProvider, duration: plantDuration, music: plantMusic })
       setPlantBatchText('')
       const started = Date.now()
       const poll = async () => {
@@ -630,7 +632,7 @@ export default function App() {
     if (!plantName.trim()) { setError('Escribe una planta (o elige una idea).'); return }
     setPlantBusy('create'); setError('')
     try {
-      const { plantId } = await api.plantCreate({ plant: plantName.trim(), aspect: plantAspect, provider: plantProvider, duration: plantDuration })
+      const { plantId } = await api.plantCreate({ plant: plantName.trim(), aspect: plantAspect, provider: plantProvider, duration: plantDuration, music: plantMusic })
       api.plantsList().then((d) => setPlants(d.plants)).catch(() => {})
       const started = Date.now()
       const poll = async () => {
@@ -1573,6 +1575,7 @@ export default function App() {
   useEffect(() => {
     if (activeSection !== 'plants' || authState !== 'authed') return
     api.plantsList().then((d) => setPlants(d.plants)).catch(() => {})
+    api.plantMusic().then((d) => setPlantMusicList(d.tracks)).catch(() => {})
     setPlantChannelId((cur) => cur ?? (channels[0]?.id ?? null))
   }, [activeSection, authState, channels])
 
@@ -3089,6 +3092,15 @@ export default function App() {
                   <input type="number" min={4} max={15} value={plantDuration} onChange={(e) => setPlantDuration(Math.max(4, Math.min(15, Number(e.target.value) || 15)))} />
                 </label>
               )}
+              <label className="field" style={{ minWidth: 170 }}>
+                <span>Música</span>
+                <select value={plantMusic} onChange={(e) => setPlantMusic(e.target.value)}>
+                  <option value="">🎲 Aleatoria</option>
+                  {plantMusicList.map((t) => <option key={t.name} value={t.name}>{t.label}</option>)}
+                </select>
+              </label>
+              {plantMusic && (() => { const t = plantMusicList.find((x) => x.name === plantMusic); return t
+                ? <audio key={plantMusic} controls src={api.fileUrl(t.path)} style={{ height: 34, maxWidth: 220 }} /> : null })()}
               <button disabled={plantBusy !== ''} onClick={handlePlantIdeas}>
                 {plantBusy === 'ideas' ? '…' : '💡 Ideas'}
               </button>

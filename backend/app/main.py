@@ -1950,11 +1950,27 @@ def _validate_plant_provider(provider: str):
     return provider
 
 
+MUSIC_DIR = ROOT_DIR / "backend" / "assets" / "music"
+
+
+@app.get("/api/plants/music")
+def plant_music_list() -> dict:
+    """Lista las pistas de música del banco (para elegir + previsualizar)."""
+    tracks = []
+    if MUSIC_DIR.exists():
+        for f in sorted(MUSIC_DIR.glob("*.mp3")):
+            tracks.append({"name": f.name,
+                           "label": f.stem.replace("_", " ").title(),
+                           "path": str(f.relative_to(ROOT_DIR))})
+    return {"tracks": tracks}
+
+
 class PlantCreateRequest(BaseModel):
     plant: str
     aspect: str = "9:16"
     provider: str = "grok"          # grok | veo | wan
     duration: int = 15              # segundos (grok/veo; máx 15)
+    music: str = ""                 # nombre de pista (vacío = aleatoria)
 
 
 @app.post("/api/plants")
@@ -1967,6 +1983,8 @@ def plant_create(payload: PlantCreateRequest) -> dict:
     plant_id = uuid.uuid4().hex[:12]
     db.save_plant({"id": plant_id, "plant": payload.plant.strip(), "aspect": aspect, "createdAt": now_iso()})
     args = ["--plant", plant_id, "--provider", provider, "--duration", str(max(4, min(15, payload.duration)))]
+    if payload.music.strip():
+        args += ["--music", payload.music.strip()]
     job = enqueue_job("plant_video.py", args)
     return {"job": job, "plantId": plant_id}
 
@@ -1976,6 +1994,7 @@ class PlantBatchRequest(BaseModel):
     aspect: str = "9:16"
     provider: str = "grok"
     duration: int = 15
+    music: str = ""
 
 
 @app.post("/api/plants/batch")
@@ -1995,6 +2014,8 @@ def plant_batch(payload: PlantBatchRequest) -> dict:
         db.save_plant({"id": pid, "plant": name, "aspect": aspect, "createdAt": now_iso()})
         ids.append(pid)
     args = ["--plants", ",".join(ids), "--provider", provider, "--duration", str(max(4, min(15, payload.duration)))]
+    if payload.music.strip():
+        args += ["--music", payload.music.strip()]
     job = enqueue_job("plant_batch.py", args)
     return {"job": job, "plantIds": ids, "count": len(ids)}
 
