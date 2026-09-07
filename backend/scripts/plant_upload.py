@@ -45,9 +45,10 @@ def main() -> None:
         description = description or s["description"]
         db.update_plant(args.plant, {"title": title, "seo_description": description})
 
-    # Hashtags de la descripción como tags de YouTube (sin el #).
+    # Hashtags de la descripción como tags de YouTube (sin el #). YouTubeService
+    # espera una CADENA separada por comas, no una lista.
     import re
-    tags = [t.lstrip("#") for t in re.findall(r"#\w+", description)][:15]
+    tags = ",".join(t.lstrip("#") for t in re.findall(r"#\w+", description)[:15])
 
     print(f"Subiendo a YouTube (canal {channel['name']})...", flush=True)
     service = YouTubeService(channel["id"], root / "youtube_creds")
