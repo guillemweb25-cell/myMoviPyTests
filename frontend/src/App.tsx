@@ -1596,9 +1596,10 @@ export default function App() {
     api.plantsList().then((d) => setPlants(d.plants)).catch(() => {})
     api.plantMusic().then((d) => setPlantMusicList(d.tracks)).catch(() => {})
     setPlantChannelId((cur) => cur ?? (channels[0]?.id ?? null))
-    // Música por defecto para Huevos: la infantil "crecepollito".
-    if (activeSection === 'eggs') setPlantMusic('crecepollito.mp3')
-    else setPlantMusic((cur) => (cur === 'crecepollito.mp3' ? '' : cur))
+    // Música por defecto por pestaña: Huevos → "crecepollito"; Mariposas → "maripositacrece".
+    const DEFAULT_MUSIC: Record<string, string> = { eggs: 'crecepollito.mp3', butterflies: 'maripositacrece.mp3' }
+    const def = DEFAULT_MUSIC[activeSection] || ''
+    setPlantMusic((cur) => def || (Object.values(DEFAULT_MUSIC).includes(cur) ? '' : cur))
   }, [activeSection, authState, channels])
 
   // Duración del vídeo de la campaña activa (para el mapa de cobertura).
