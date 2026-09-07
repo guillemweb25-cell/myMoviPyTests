@@ -1982,7 +1982,7 @@ def plant_create(payload: PlantCreateRequest) -> dict:
     aspect = payload.aspect if payload.aspect in ("9:16", "16:9") else "9:16"
     plant_id = uuid.uuid4().hex[:12]
     db.save_plant({"id": plant_id, "plant": payload.plant.strip(), "aspect": aspect, "createdAt": now_iso()})
-    args = ["--plant", plant_id, "--provider", provider, "--duration", str(max(4, min(15, payload.duration)))]
+    args = ["--plant", plant_id, "--provider", provider, "--duration", str(max(4, min(30, payload.duration)))]
     if payload.music.strip():
         args += ["--music", payload.music.strip()]
     job = enqueue_job("plant_video.py", args)
@@ -2013,7 +2013,7 @@ def plant_batch(payload: PlantBatchRequest) -> dict:
         pid = uuid.uuid4().hex[:12]
         db.save_plant({"id": pid, "plant": name, "aspect": aspect, "createdAt": now_iso()})
         ids.append(pid)
-    args = ["--plants", ",".join(ids), "--provider", provider, "--duration", str(max(4, min(15, payload.duration)))]
+    args = ["--plants", ",".join(ids), "--provider", provider, "--duration", str(max(4, min(30, payload.duration)))]
     if payload.music.strip():
         args += ["--music", payload.music.strip()]
     job = enqueue_job("plant_batch.py", args)

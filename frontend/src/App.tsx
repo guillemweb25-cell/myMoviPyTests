@@ -608,7 +608,8 @@ export default function App() {
   async function handleBatchPlants() {
     const names = plantBatchText.split('\n').map((s) => s.trim()).filter(Boolean)
     if (names.length === 0) { setError('Pega al menos una planta (una por línea).'); return }
-    const est = plantProvider === 'wan' ? 'GPU local (gratis, lento)' : `~$${(names.length * (plantProvider === 'veo' ? 2.5 : 1.2)).toFixed(1)} aprox.`
+    const per = plantProvider === 'wan' ? 0 : plantProvider === 'veo' ? (plantDuration > 15 ? 5 : 2.5) : (plantDuration > 15 ? 3 : 1.2)
+    const est = plantProvider === 'wan' ? 'GPU local (gratis, lento)' : `~$${(names.length * per).toFixed(1)} aprox.`
     if (!window.confirm(`Encolar ${names.length} vídeos con ${plantProvider}. Coste estimado: ${est}. ¿Seguir?`)) return
     setPlantBusy('create'); setError('')
     try {
@@ -3087,9 +3088,12 @@ export default function App() {
                 </select>
               </label>
               {plantProvider !== 'wan' && (
-                <label className="field" style={{ maxWidth: 110 }}>
-                  <span>Duración (s)</span>
-                  <input type="number" min={4} max={15} value={plantDuration} onChange={(e) => setPlantDuration(Math.max(4, Math.min(15, Number(e.target.value) || 15)))} />
+                <label className="field" style={{ maxWidth: 200 }}>
+                  <span>Duración</span>
+                  <select value={plantDuration} onChange={(e) => setPlantDuration(Number(e.target.value))}>
+                    <option value={15}>15s · crecimiento</option>
+                    <option value={30}>30s · mano + cosecha</option>
+                  </select>
                 </label>
               )}
               <label className="field" style={{ minWidth: 170 }}>
@@ -3117,7 +3121,8 @@ export default function App() {
               <div className="actions-row" style={{ alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
                 <span className="help">
                   {(() => { const n = plantBatchText.split('\n').filter((s) => s.trim()).length
-                    return n ? `${n} plantas · ${plantProvider === 'wan' ? 'GPU local (gratis)' : '~$' + (n * (plantProvider === 'veo' ? 2.5 : 1.2)).toFixed(1)}` : 'Se generan en cadena, una tras otra.' })()}
+                    const per = plantProvider === 'wan' ? 0 : plantProvider === 'veo' ? (plantDuration > 15 ? 5 : 2.5) : (plantDuration > 15 ? 3 : 1.2)
+                    return n ? `${n} plantas · ${plantProvider === 'wan' ? 'GPU local (gratis)' : '~$' + (n * per).toFixed(1)}` : 'Se generan en cadena, una tras otra.' })()}
                 </span>
                 <button className="primary" disabled={plantBusy !== ''} onClick={handleBatchPlants}>
                   {plantBusy === 'create' ? 'En cola…' : '▶️ Encolar tanda'}

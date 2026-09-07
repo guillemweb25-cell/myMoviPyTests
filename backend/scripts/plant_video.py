@@ -57,6 +57,46 @@ def _normalize(clip: Path, out: Path, w: int, h: int, ffmpeg: str = "ffmpeg") ->
                     "-pix_fmt", "yuv420p", "-r", "30", str(out)], capture_output=True, text=True)
 
 
+def _norm_keep_audio(src: Path, out: Path, w: int, h: int, ffmpeg: str = "ffmpeg") -> None:
+    """Normaliza a WxH CONSERVANDO el audio del clip (para encadenar clips con audio)."""
+    vf = f"[0:v:0]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,fps=30[v]"
+    subprocess.run([ffmpeg, "-y", "-i", str(src), "-filter_complex", vf,
+                    "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "ultrafast",
+                    "-crf", "20", "-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "160k",
+                    str(out)], capture_output=True, text=True)
+
+
+def _grok_growth_prompts(scene: str, plant: str, n_clips: int) -> list:
+    """Prompts para n clips encadenados. n==1: crecimiento puro sin manos. n>=2: modo
+    'manos' (clip 1 planta la semilla, último clip madura el fruto y lo cosecha)."""
+    if n_clips == 1:
+        return [(
+            f"{scene} Slow continuous satisfying time-lapse of a {plant} growing in this exact pot: "
+            f"begins on bare soil, a sprout pushes up and grows GRADUALLY the whole clip — leaves "
+            f"unfurl, stem thickens, branches spread, then buds, flowers and ripe fruit by the end. "
+            f"The day-night cycle passes ~twice (day, sunset, starry night, dawn), shadows sweeping. "
+            f"Locked static camera, no zoom or pan. NO hands, nothing enters the frame.")]
+    prompts = []
+    prompts.append(
+        f"{scene} A human hand enters from the side holding a single seed/pit of a {plant}, gently "
+        f"presses it into the centre of the bare soil and covers it, then the hand leaves. Then a "
+        f"smooth continuous time-lapse begins and grows FAST into a small young {plant} sapling with "
+        f"several branches by the end. Day-night cycle passes ~once (day, sunset, starry night, dawn). "
+        f"Locked camera, no zoom/pan. Only the hand at the very start; then nothing else enters.")
+    for _ in range(n_clips - 2):  # clips intermedios (solo si n>2): crecimiento puro
+        prompts.append(
+            f"{scene} Pure continuous time-lapse of a {plant} growing FAST: the tree fills out, "
+            f"branches spread, leaves multiply. Day-night cycle passes ~once. Locked camera, no hands.")
+    prompts.append(
+        f"{scene} Pure continuous time-lapse of a {plant} growing FAST: it fills out, blossoms bloom "
+        f"and petals fall, then fruit forms and ripens QUICKLY into plump, glossy, FULLY RIPE fruit — "
+        f"the fruit must be completely ripe and richly coloured well before the end. In the final 2-3 "
+        f"seconds a human hand enters from the side, grips one fully ripe fruit and picks it cleanly "
+        f"from the tree, then holds it still. Day-night cycle passes ~once. Locked camera, no hands "
+        f"until the harvest at the end.")
+    return prompts
+
+
 def _duration(media: Path, ffmpeg: str = "ffmpeg") -> float:
     import re as _re
     r = subprocess.run([ffmpeg, "-i", str(media)], capture_output=True, text=True)
@@ -156,34 +196,53 @@ def main() -> None:
     out = out_dir / "video.mp4"
 
     if args.provider in ("grok", "veo"):
-        # 3) UN clip continuo (imagen→vídeo): crecimiento fluido de semilla a planta
-        # madura en un solo plano. Grok Imagine o Google Veo según --provider.
+        # 3) 1 o más clips continuos encadenados por el último fotograma. ≤15s = 1 clip
+        # (crecimiento sin manos). 30s = 2 clips (mano planta la semilla → … → cosecha).
         from app.services import grok_video, veo_video  # noqa: E402
         scene = plan.get("locked_scene", "")
         plant_name = rec.get("plant") or "plant"
-        grow_prompt = (
-            f"{scene} Slow, continuous, satisfying time-lapse of a {plant_name} growing in this exact "
-            f"pot. It begins on the bare empty soil; a small sprout pushes up and then the plant grows "
-            f"GRADUALLY and steadily the WHOLE time — shoot rising, leaves unfurling one by one, stem "
-            f"thickening, branches spreading, then buds, flowers and finally ripe fruit, reaching full "
-            f"size only at the very end. Pace the growth evenly across the whole clip, never jumping or "
-            f"snapping to the final size early. The day-night cycle passes clearly about TWO times: the "
-            f"sky brightens to midday, warms to golden sunset, darkens to a deep starry night, then "
-            f"dawn again, with the light on the plant and the shadows sweeping across the table to match. "
-            f"Locked static camera, no zoom or pan. NO hands, no people, nothing enters the frame.")
-        raw = out_dir / f"{args.provider}_raw.mp4"
-        if raw.exists() and raw.stat().st_size > 100000:
-            print(f"3/4 Reuso el clip crudo ya generado ({args.provider}).", flush=True)
-        elif args.provider == "grok":
-            print(f"3/4 Generando el clip continuo con grok ({args.duration}s)...", flush=True)
-            grok_video.generate_video(first, raw, grow_prompt, duration=args.duration)
-        else:  # veo
-            print(f"3/4 Generando el clip continuo con veo ({args.duration}s)...", flush=True)
-            veo_video.generate_video(first, raw, grow_prompt, aspect=aspect)
-        print("4/4 Normalizando a vertical + música de fondo...", flush=True)
-        _finalize(raw, out, out_w, out_h, args.ffmpeg, music_name=args.music)  # mantiene audio de Grok + música
+        n_clips = max(1, min(4, round(args.duration / 15)))
+        per = 15 if n_clips > 1 else max(4, min(15, args.duration))
+        prompts = _grok_growth_prompts(scene, plant_name, n_clips)
+
+        start_img = first
+        norm_clips = []
+        for i, prompt in enumerate(prompts):
+            raw = out_dir / f"{args.provider}_raw{i}.mp4"
+            if raw.exists() and raw.stat().st_size > 100000:
+                print(f"3/4 Reuso el clip crudo {i + 1}/{n_clips}.", flush=True)
+            elif args.provider == "grok":
+                print(f"3/4 Clip {i + 1}/{n_clips} con grok ({per}s)...", flush=True)
+                grok_video.generate_video(start_img, raw, prompt, duration=per)
+            else:
+                print(f"3/4 Clip {i + 1}/{n_clips} con veo...", flush=True)
+                veo_video.generate_video(start_img, raw, prompt, aspect=aspect)
+            if n_clips == 1:
+                norm_clips.append(raw)
+                break
+            n = out_dir / f"{args.provider}_n{i}.mp4"
+            _norm_keep_audio(raw, n, out_w, out_h, args.ffmpeg)
+            norm_clips.append(n)
+            nxt = out_dir / f"frame_mid{i}.jpg"  # último fotograma → inicio del siguiente
+            subprocess.run([args.ffmpeg, "-y", "-sseof", "-0.15", "-i", str(n), "-update", "1",
+                            "-frames:v", "1", "-q:v", "2", str(nxt)], capture_output=True, text=True)
+            if nxt.exists():
+                start_img = nxt
+
+        print("4/4 Uniendo + música de fondo...", flush=True)
+        if len(norm_clips) == 1:
+            _finalize(norm_clips[0], out, out_w, out_h, args.ffmpeg, music_name=args.music)
+        else:
+            listf = out_dir / "concat.txt"
+            listf.write_text("\n".join(f"file '{c.resolve()}'" for c in norm_clips), encoding="utf-8")
+            joined = out_dir / "joined.mp4"
+            subprocess.run([args.ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(listf),
+                            "-c", "copy", "-movflags", "+faststart", str(joined)], capture_output=True, text=True)
+            listf.unlink(missing_ok=True)
+            _finalize(joined, out, out_w, out_h, args.ffmpeg, music_name=args.music)
+            joined.unlink(missing_ok=True)
         if not out.exists():
-            raise SystemExit(f"Falló normalizando el clip de {args.provider}.")
+            raise SystemExit(f"Falló el montaje ({args.provider}).")
     else:
         # 3) 3 clips WAN encadenados por el último fotograma (local, GPU).
         start_img = first
