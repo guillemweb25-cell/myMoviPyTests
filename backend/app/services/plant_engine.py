@@ -70,6 +70,36 @@ _SYSTEM = (
 )
 
 
+def seo(plant: str, channel_rules: str | None = None) -> dict:
+    """SEO en INGLÉS para el vídeo de crecimiento: {title, description}. La descripción
+    termina con hashtags (#). Reutiliza SEOEngine (motor de clips)."""
+    from .clip_seo import strip_markdown, strip_wrapping_quotes
+    from .seo_engine import SEOEngine
+    import re as _re
+
+    plant = (plant or "plant").strip()
+    snippet = (f"A satisfying, oddly satisfying ASMR time-lapse of a {plant} growing from a seed into "
+               f"a full plant with flowers and fruit inside a terracotta pot, day and night passing, "
+               f"relaxing plant growth, gardening, nature. Vertical short video.")
+    eng = SEOEngine()
+    title_rules = ("Write the title in ENGLISH. Make it a catchy, high-CTR title about a satisfying "
+                   f"plant-growth time-lapse of a {plant}. No hashtags in the title.")
+    desc_rules = ("Write the description in ENGLISH. Short hook + one or two lines about the satisfying "
+                  f"{plant} growth time-lapse. END with a single line of 10-14 relevant hashtags "
+                  "(e.g. #timelapse #satisfying #plantgrowth #asmr #gardening #nature #shorts) including "
+                  f"one for the plant (#{_re.sub(r'[^a-zA-Z]', '', plant).lower() or 'plant'}).")
+    if channel_rules:
+        title_rules += f"\n{channel_rules}"
+        desc_rules += f"\n{channel_rules}"
+    title = strip_wrapping_quotes(strip_markdown(eng.generate_video_title(snippet, lang="English", custom_rules=title_rules)))
+    desc = strip_markdown(eng.generate_description(snippet, lang="English", custom_rules=desc_rules))
+    desc = _re.sub(r"^\s*(video\s+)?(title|description)\s*:\s*", "", desc, flags=_re.IGNORECASE).strip()
+    if "#" not in desc:  # respaldo: asegura hashtags
+        tag = _re.sub(r"[^a-zA-Z]", "", plant).lower() or "plant"
+        desc += f"\n\n#timelapse #satisfying #plantgrowth #asmr #gardening #nature #plants #grow #{tag} #shorts"
+    return {"title": title[:100], "description": desc[:4900]}
+
+
 def plant_plan(plant: str, aspect: str = "9:16", model: str | None = None) -> dict:
     """Devuelve {locked_scene, image_prompt, clips:[3]} para la planta dada."""
     from openai import OpenAI

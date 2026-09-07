@@ -2019,6 +2019,42 @@ def plant_delete(plant_id: str) -> dict:
     return {"deleted": plant_id}
 
 
+@app.post("/api/plants/{plant_id}/seo")
+def plant_seo_endpoint(plant_id: str, payload: ReelSeoRequest) -> dict:
+    """Genera título + descripción SEO en INGLÉS (con hashtags) para el vídeo de maceta
+    y los guarda. Usa las reglas del canal si se indica uno."""
+    rec = db.get_plant(plant_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Vídeo de maceta no encontrado.")
+    from .services.plant_engine import seo as plant_seo
+    ch_id = payload.channelId if payload.channelId is not None else rec.get("channelId")
+    rules = (db.get_channel(int(ch_id)) or {}).get("seoRules") if ch_id else None
+    try:
+        s = plant_seo(rec.get("plant") or "plant", rules)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo generando el SEO: {exc}") from exc
+    db.update_plant(plant_id, {"title": s["title"], "seo_description": s["description"]})
+    return s
+
+
+class PlantUploadRequest(BaseModel):
+    channelId: int
+    privacy: str = "public"
+
+
+@app.post("/api/plants/{plant_id}/upload")
+def plant_upload(plant_id: str, payload: PlantUploadRequest) -> dict:
+    """Sube el vídeo de maceta al canal elegido (job). Genera SEO inglés si falta."""
+    rec = db.get_plant(plant_id)
+    if not rec or not rec.get("video") or not (ROOT_DIR / rec["video"]).exists():
+        raise HTTPException(status_code=400, detail="El vídeo de la maceta no está listo.")
+    if not db.get_channel(payload.channelId):
+        raise HTTPException(status_code=404, detail="Canal no encontrado.")
+    privacy = payload.privacy if payload.privacy in ("private", "unlisted", "public") else "public"
+    job = enqueue_job("plant_upload.py", ["--plant", plant_id, "--channel", str(payload.channelId), "--privacy", privacy])
+    return {"job": job}
+
+
 @app.post("/api/clips/{clip_id}/seo")
 def generate_clip_seo_endpoint(clip_id: str) -> dict:
     from .services.clip_seo import generate_clip_seo

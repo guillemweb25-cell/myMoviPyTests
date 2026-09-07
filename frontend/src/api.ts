@@ -92,6 +92,10 @@ export const api = {
     postJson<{ job: Job; plantIds: string[]; count: number }>('/api/plants/batch', payload),
   plantsList: () => getJson<{ plants: import('./types').PlantItem[] }>('/api/plants'),
   plantDelete: (id: string) => del<{ deleted: string }>(`/api/plants/${id}`),
+  plantSeo: (id: string, channelId?: number | null) =>
+    postJson<{ title: string; description: string }>(`/api/plants/${id}/seo`, { channelId: channelId ?? null }),
+  plantUpload: (id: string, payload: { channelId: number; privacy?: string }) =>
+    postJson<{ job: Job }>(`/api/plants/${id}/upload`, payload),
   reelUpload: (reelId: string, payload: { channelId: number; privacy?: string }) =>
     postJson<{ job: Job }>(`/api/reels/${reelId}/upload`, payload),
   reelHook: (reelId: string) => postJson<{ hook: string }>(`/api/reels/${reelId}/hook`, {}),

@@ -155,6 +155,8 @@ export default function App() {
   const [plantProvider, setPlantProvider] = useState<'grok' | 'veo' | 'wan'>('grok')
   const [plantDuration, setPlantDuration] = useState(15)
   const [plantBatchText, setPlantBatchText] = useState('')
+  const [plantChannelId, setPlantChannelId] = useState<number | null>(null)
+  const [plantRowBusy, setPlantRowBusy] = useState('')
   const [plantIdeasList, setPlantIdeasList] = useState<{ name: string; note: string }[]>([])
   const [plants, setPlants] = useState<import('./types').PlantItem[]>([])
   const [plantBusy, setPlantBusy] = useState<'' | 'ideas' | 'create'>('')
@@ -643,6 +645,32 @@ export default function App() {
       }
       window.setTimeout(poll, 8000)
     } catch (e) { handleApiError(e); setPlantBusy('') }
+  }
+
+  async function handlePlantSeo(p: import('./types').PlantItem) {
+    setPlantRowBusy(p.id + ':seo'); setError('')
+    try {
+      await api.plantSeo(p.id, plantChannelId)
+      const { plants: list } = await api.plantsList(); setPlants(list)
+    } catch (e) { handleApiError(e) } finally { setPlantRowBusy('') }
+  }
+
+  async function handlePlantUpload(p: import('./types').PlantItem) {
+    if (!plantChannelId) { setError('Elige un canal de YouTube.'); return }
+    setPlantRowBusy(p.id + ':up'); setError('')
+    try {
+      await api.plantUpload(p.id, { channelId: plantChannelId })
+      const started = Date.now()
+      const poll = async () => {
+        try {
+          const { plants: list } = await api.plantsList(); setPlants(list)
+          if (list.find((x) => x.id === p.id)?.youtubeUrl) { setPlantRowBusy(''); return }
+        } catch { /* reintenta */ }
+        if (Date.now() - started > 8 * 60 * 1000) { setPlantRowBusy(''); return }
+        window.setTimeout(poll, 4000)
+      }
+      window.setTimeout(poll, 4000)
+    } catch (e) { handleApiError(e); setPlantRowBusy('') }
   }
 
   async function handleDeletePlant(p: import('./types').PlantItem) {
@@ -1545,7 +1573,8 @@ export default function App() {
   useEffect(() => {
     if (activeSection !== 'plants' || authState !== 'authed') return
     api.plantsList().then((d) => setPlants(d.plants)).catch(() => {})
-  }, [activeSection, authState])
+    setPlantChannelId((cur) => cur ?? (channels[0]?.id ?? null))
+  }, [activeSection, authState, channels])
 
   // Duración del vídeo de la campaña activa (para el mapa de cobertura).
   useEffect(() => {
@@ -3097,7 +3126,16 @@ export default function App() {
             )}
 
             <div className="seo-box" style={{ marginTop: 16 }}>
-              <div className="seo-head"><span>📁 Mis vídeos de macetas ({plants.length})</span></div>
+              <div className="seo-head">
+                <span>📁 Mis vídeos de macetas ({plants.length})</span>
+                <label className="field" style={{ maxWidth: 200 }}>
+                  <span>Canal YouTube (para subir)</span>
+                  <select value={plantChannelId ?? ''} onChange={(e) => setPlantChannelId(Number(e.target.value) || null)}>
+                    <option value="">— elige canal —</option>
+                    {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </label>
+              </div>
               {plants.length === 0 && <p className="help">Aún no hay vídeos. Escribe una planta y pulsa «Crear vídeo».</p>}
               {plants.map((p) => (
                 <div key={p.id} className="clip-media-row" style={{ alignItems: 'flex-start', marginTop: 10, gap: 12 }}>
@@ -3106,12 +3144,26 @@ export default function App() {
                     : p.image
                       ? <img src={api.fileUrl(p.image)} alt="frame" style={{ width: 160, borderRadius: 10 }} />
                       : <div style={{ width: 160, height: 90, borderRadius: 10, background: '#0b1120', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="help">⏳</div>}
-                  <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ flex: 1, minWidth: 220 }}>
                     <div style={{ fontWeight: 600 }}>🪴 {p.plant} · {p.aspect}</div>
                     <p className="help" style={{ margin: '2px 0' }}>
-                      {p.video ? '✅ Listo' : '⏳ Procesando… (plan → imagen → 3 clips WAN)'} · {new Date(p.createdAt).toLocaleString()}
+                      {p.video ? '✅ Listo' : '⏳ Procesando…'} · {new Date(p.createdAt).toLocaleString()}
                     </p>
-                    <button className="link-btn" onClick={() => handleDeletePlant(p)}>Borrar</button>
+                    {p.title && <div style={{ fontSize: 13, margin: '4px 0' }}><b>{p.title}</b></div>}
+                    {p.seoDescription && <p className="help" style={{ whiteSpace: 'pre-wrap', maxHeight: 90, overflow: 'auto', margin: '2px 0' }}>{p.seoDescription}</p>}
+                    {p.video && (
+                      <div className="actions-row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                        <button disabled={plantRowBusy !== ''} onClick={() => handlePlantSeo(p)}>
+                          {plantRowBusy === p.id + ':seo' ? '…' : '✨ SEO inglés'}
+                        </button>
+                        {p.youtubeUrl
+                          ? <a className="link-btn" href={p.youtubeUrl} target="_blank" rel="noreferrer">▶️ Ver en YouTube</a>
+                          : <button className="primary" disabled={plantRowBusy !== '' || !plantChannelId} onClick={() => handlePlantUpload(p)}>
+                              {plantRowBusy === p.id + ':up' ? 'Subiendo…' : '📤 Subir a YouTube'}
+                            </button>}
+                      </div>
+                    )}
+                    <button className="link-btn" style={{ marginTop: 4 }} onClick={() => handleDeletePlant(p)}>Borrar</button>
                   </div>
                 </div>
               ))}
