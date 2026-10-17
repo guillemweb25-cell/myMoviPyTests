@@ -2637,6 +2637,7 @@ export default function App() {
                         {clip.rendered && clip.renderedPath && (
                           <a className="panel-link" href={api.fileUrl(clip.renderedPath)} target="_blank" rel="noreferrer">Ver / Descargar</a>
                         )}
+                        <a className="panel-link" href={api.clipHorizontalUrl(clip.id)} download title="Tramo original en 16:9, sin subtítulos ni nada encima (720p, para WhatsApp). Tarda unos segundos la primera vez.">16:9 para WhatsApp</a>
                         {clip.rendered && clip.rawPath && (
                           <a className="panel-link" href={api.fileUrl(clip.rawPath)} download title="Vertical con encuadre y blur, sin subtítulos, texto fijo, watermark ni cierre">Descargar sin subtítulos</a>
                         )}

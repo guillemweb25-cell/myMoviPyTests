@@ -1297,6 +1297,37 @@ def render_clip_endpoint(clip_id: str) -> dict:
     return {"job": job, "renderedPath": out_rel}
 
 
+@app.get("/api/clips/{clip_id}/horizontal")
+def clip_horizontal(clip_id: str):
+    """Tramo del clip en 16:9 tal cual sale en el original (sin subtitulos, overlay,
+    watermark ni blur), en H.264/AAC 720p para mandarlo por WhatsApp. Se genera al
+    pedirlo y se cachea por tramo: si se recorta el clip, sale otro fichero."""
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    if not clip.get("videoPath"):
+        raise HTTPException(status_code=400, detail="El clip no tiene video asociado")
+    video = resolve_within_root(clip["videoPath"])
+    start, end = float(clip["start"]), float(clip["end"])
+    out = video.parent / "clips" / f"clip_{clip_id}_16x9_{int(start * 1000)}_{int(end * 1000)}.mp4"
+    if not out.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_name(out.stem + "_tmp.mp4")
+        cmd = [
+            "ffmpeg", "-y", "-ss", f"{start:.3f}", "-i", str(video), "-t", f"{end - start:.3f}",
+            "-vf", "scale=-2:'min(720,ih)'", "-c:v", "libx264", "-preset", "veryfast",
+            "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart", str(tmp),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            tmp.unlink(missing_ok=True)
+            raise HTTPException(status_code=500, detail=f"ffmpeg fallo: {result.stderr[-300:]}")
+        tmp.replace(out)
+    title = re.sub(r"[^\w\- ]+", "", clip.get("title") or "").strip()[:60] or f"clip_{clip_id}"
+    return FileResponse(out, media_type="video/mp4", filename=f"{title} 16x9.mp4")
+
+
 class RenderAllRequest(BaseModel):
     transcriptPath: str
     focus: str | None = None

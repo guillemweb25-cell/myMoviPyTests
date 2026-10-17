@@ -255,6 +255,7 @@ export const api = {
   files: (path = 'output') =>
     getJson<{ base: string; items: FileEntry[] }>(`/api/files?path=${encodeURIComponent(path)}`),
   fileUrl: (path: string) => withToken(`/api/file?path=${encodeURIComponent(path)}`),
+  clipHorizontalUrl: (clipId: string) => withToken(`/api/clips/${clipId}/horizontal`),
   fileText: async (path: string) => {
     const response = await fetch(`/api/file?path=${encodeURIComponent(path)}`, { headers: authHeaders() })
     if (response.status === 401) {

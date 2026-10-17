@@ -64,6 +64,7 @@ el frontend detecta esos params y hace `POST /api/youtube/finish`.
 | PATCH | `/api/clips/{id}/trim` | `{start, end}` |
 | PATCH | `/api/clips/{id}/settings` | `{focus, zoom, topRatio, subtitles, overlayText, endcardPercent}` |
 | POST | `/api/clips/{id}/render` | render de UN clip (job) |
+| GET | `/api/clips/{id}/horizontal` | tramo original en 16:9 sin subtítulos (H.264/AAC 720p, para WhatsApp); se genera al pedirlo y se cachea en `clips/clip_<id>_16x9_<ms0>_<ms1>.mp4` |
 | POST | `/api/clips/render-all` | `{transcriptPath, focus}` → render EN COLA de los pendientes (job backend) |
 | POST | `/api/clips/{id}/frames` | extrae 3 fotogramas (25/50/75%) del render para elegir miniatura |
 | POST | `/api/clips/{id}/seo` | genera título/desc/tags |
