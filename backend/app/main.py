@@ -375,6 +375,18 @@ def comfy_status() -> dict:
     return asdict(ComfyUiClient().status())
 
 
+@app.get("/api/fx/presets")
+def fx_presets() -> dict:
+    """Presets de motion graphics que ofrece el worker de FX.
+
+    Lista vacía = no hay worker (FX_WORKER_URL sin definir o caído). El frontend
+    oculta los selectores en ese caso y se usa el camino ASS de siempre.
+    """
+    from .services import fx_client
+
+    return {"presets": fx_client.presets(), "available": fx_client.available()}
+
+
 @app.get("/api/scripts")
 def list_scripts() -> list[dict]:
     scripts = sorted(SCRIPTS_DIR.glob("*.py"), key=lambda p: p.name.lower())

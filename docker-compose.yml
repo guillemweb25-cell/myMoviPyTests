@@ -33,3 +33,25 @@ services:
     ports:
       - "5074:80"
     restart: unless-stopped
+
+  # Motion graphics (Remotion). Opcional: si no está levantado, el backend usa el
+  # camino de siempre (ffmpeg + subtítulos ASS). Ver doc/08-fx-worker-motion-graphics.md.
+  fx_worker:
+    build: ./fx_worker
+    container_name: intro_python_fx
+    ports:
+      - "8910:3000"
+    volumes:
+      - ./fx_worker/assets:/app/assets:ro
+      - ./backend/assets/fonts:/app/fonts:ro
+      - ./backend/assets/music:/app/music:ro
+    shm_size: "1gb"                 # Chromium headless lo necesita: con los 64 MB
+                                    # por defecto se cae a mitad del render.
+    environment:
+      # Pestañas de Chromium por render. Con una por núcleo (el defecto de
+      # Remotion) el navegador se cae por RAM en esta VM. Subir solo si sobra.
+      FX_CONCURRENCY: "1"
+      # Escala del render: 1 = 1080x1920. Bajar a 0.67 (720x1280) si la máquina
+      # no da para el render a resolución completa.
+      FX_SCALE: "1"
+    restart: unless-stopped

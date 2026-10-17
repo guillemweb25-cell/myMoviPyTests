@@ -254,9 +254,36 @@ de animación. Iniciales: `hormozi` (Anton, mayúsculas, amarillo, pop fuerte),
 Al pasarlo a `06-fases.md`, va como **Fase 13 — FX Worker (motion graphics)**, con
 estas subfases:
 
-**13A — Worker mínimo.** `fx_worker/` con Remotion, `POST /render`, `GET /health`,
-preset `minimal` (solo subtítulos por palabra). Prueba con `curl`.
+**13A — Worker mínimo. ✅ Implementado.** `fx_worker/` con Remotion, `POST /render`,
+`GET /health`, presets `minimal` y `hormozi` (subtítulos por palabra). Prueba con
+`curl` (ver `fx_worker/README.md`).
 *Hecho cuando:* un vertical + JSON de palabras devuelve un MP4 con subtítulos animados.
+
+Se adelantaron dos cosas de 13B/13D porque callarlas habría dado clips no
+conformes: el **caption fijo del brief** (`overlay`) y el **watermark como capa
+fija sin escalar**. Y el worker **responde 422** si el payload pide una capa que
+todavía no pinta (`hook`, `emphasis`, `endcard`, `progress_bar`, `sfx`, `music`),
+en vez de ignorarla en silencio, para que el backend caiga al camino ASS.
+
+También se añadieron ya `backend/app/services/fx_client.py` (con el fallback) y
+`GET /api/fx/presets`, que es lo que 13B necesita para enchufarlo a
+`render_clip.py`.
+
+**Notas de implementación** (cosas que costaron y conviene no volver a descubrir):
+
+- Las URLs que se le pasan a la composición (vídeo, watermark, fuente) tienen que
+  ser **absolutas** al servidor del worker. Dentro de la composición, una ruta
+  relativa la resuelve Chromium contra el servidor del bundle de Remotion, que
+  está en otro puerto, y da 404.
+- Esas rutas necesitan **`Access-Control-Allow-Origin`**: para Chromium el bundle
+  es otro origen y las **fuentes** se bloquean por CORS aunque devuelvan 200.
+- `npx remotion browser ensure` no sirve en la imagen de producción (vive en
+  `@remotion/cli`, que es solo de desarrollo). Se usa `ensureBrowser()` de
+  `@remotion/renderer`.
+- **La concurrencia por defecto de Remotion (una pestaña por núcleo) tumba el
+  navegador en esta VM por falta de RAM.** Está fijada a 1 en `FX_CONCURRENCY`,
+  con `FX_SCALE` como segunda palanca (0.67 = 720x1280). Hay que subirla cuando
+  la máquina mejore.
 
 **13B — Integración en clipping con fallback.** `fx_client.py`, `--fx-preset` en
 `render_clip.py`/`render_all.py`, migraciones, selector en la UI, watermark como capa
