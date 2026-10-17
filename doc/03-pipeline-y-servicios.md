@@ -14,6 +14,9 @@
   segundos. `segments` son los mismos tramos del VTT y `words`, los tiempos por palabra
   de AssemblyAI. Para transcripciones anteriores, `scripts/vtt_to_json.py <vtt|carpeta>`
   lo saca del `.vtt` sin coste (sin `words`, que solo da la transcripción).
+  Para tener `words` hay que volver a transcribir: en el explorador, sobre el `.mp3`,
+  botón **"Regenerar transcripción"** (`transcribe_sutitles.py`, que usa este mismo
+  servicio; pide confirmación porque gasta crédito y sobrescribe `.txt/.vtt/.json`).
 
 ## Detección de clips — `services/clip_detector.py`
 

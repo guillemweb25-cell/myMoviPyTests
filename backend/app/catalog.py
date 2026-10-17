@@ -8,7 +8,7 @@ SCRIPT_DESCRIPTIONS = {
     "download_thumbnail.py": "Descarga la miniatura de YouTube en PNG.",
     "process_video_content.py": "Pipeline web: URL a MP3, TXT y subtitulos.",
     "transcribe_assemblai.py": "Transcribe un MP3 con AssemblyAI y genera TXT/LANG.",
-    "transcribe_sutitles.py": "Transcribe y genera subtitulos VTT/SRT.",
+    "transcribe_sutitles.py": "Transcribe y genera subtitulos VTT/SRT y JSON (con palabras).",
     "normalize_output.py": "Normaliza nombres de carpetas y ficheros en output.",
     "make_simple_video.py": "Genera slideshow con FFmpeg desde imagenes.",
     "make_simple_with_moviepy.py": "Generador de video con transiciones en MoviePy.",

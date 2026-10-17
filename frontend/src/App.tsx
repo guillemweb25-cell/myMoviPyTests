@@ -3465,13 +3465,16 @@ export default function App() {
                           {isDownloadingThumbnail ? 'Lanzando yt-dlp...' : 'Descargar miniatura'}
                         </button>
                       )}
-                      {getFileKind(selectedFile.path) === 'audio' && !transcriptFile && (
+                      {getFileKind(selectedFile.path) === 'audio' && (
                         <button
                           className="panel-link panel-link-button"
                           disabled={isGeneratingTranscript}
-                          onClick={() => handleGenerateTranscript(selectedFile)}
+                          onClick={() => {
+                            if (transcriptFile && !window.confirm('Ya hay transcripción. ¿Volver a transcribir con AssemblyAI? Sobrescribe .txt/.vtt/.json y gasta crédito.')) return
+                            handleGenerateTranscript(selectedFile)
+                          }}
                         >
-                          {isGeneratingTranscript ? 'Generando...' : 'Generar transcripcion'}
+                          {isGeneratingTranscript ? 'Generando...' : transcriptFile ? 'Regenerar transcripción' : 'Generar transcripcion'}
                         </button>
                       )}
                       {getFileKind(selectedFile.path) === 'video' && (
