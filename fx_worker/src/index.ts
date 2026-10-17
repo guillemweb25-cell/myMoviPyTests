@@ -172,6 +172,7 @@ app.post(
       const url = await ensureBundle();
       const outPath = path.join(jobDir, "final.mp4");
 
+      let lastStep = -1;
       await serialize(async () => {
         const composition = await selectComposition({ serveUrl: url, id: "Short", inputProps });
         console.log(
@@ -193,8 +194,14 @@ app.post(
           // elija backend de GL es otra vía a que se caiga.
           chromiumOptions: { gl: "swangle" },
           onProgress: ({ progress }) => {
-            const pct = Math.round(progress * 100);
-            if (pct % 20 === 0) console.log(`[fx] ${jobId} ${pct}%`);
+            // Solo cuando el tramo CAMBIA: con `pct % 20` se repetía la misma
+            // linea decenas de veces mientras el progreso seguia dentro del
+            // mismo 20%, y el log del job quedaba ilegible.
+            const step = Math.floor(progress * 5) * 20;
+            if (step > lastStep) {
+              lastStep = step;
+              console.log(`[fx] ${jobId} ${step}%`);
+            }
           },
         });
       });
