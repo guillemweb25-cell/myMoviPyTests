@@ -164,6 +164,8 @@ CLIP_MIGRATIONS = [
     "ALTER TABLE clips ADD COLUMN focus_segments TEXT DEFAULT ''",
     "ALTER TABLE clips ADD COLUMN manual_blur TEXT DEFAULT ''",
     "ALTER TABLE clips ADD COLUMN fx_preset TEXT DEFAULT 'none'",
+    # Clips añadidos a mano (inicio/fin): re-detectar NO los borra.
+    "ALTER TABLE clips ADD COLUMN manual INTEGER DEFAULT 0",
 ]
 
 
@@ -284,6 +286,7 @@ def _clip_to_dict(row: sqlite3.Row) -> dict:
         "focusSegments": (row["focus_segments"] if "focus_segments" in row.keys() else "") or "",
         "manualBlur": (row["manual_blur"] if "manual_blur" in row.keys() else "") or "",
         "fxPreset": (row["fx_preset"] if "fx_preset" in row.keys() else "") or "none",
+        "manual": bool(row["manual"]) if "manual" in row.keys() else False,
     }
 
 
@@ -293,7 +296,8 @@ def replace_clips(transcript_path: str, video_path: str | None, channel_id: int 
     transcripcion. Los que ya tienen render o youtube se conservan."""
     with _db_lock, _connect() as conn:
         conn.execute(
-            "DELETE FROM clips WHERE transcript_path = ? AND rendered_path = '' AND youtube_url = ''",
+            "DELETE FROM clips WHERE transcript_path = ? AND rendered_path = '' AND youtube_url = ''"
+            " AND COALESCE(manual, 0) = 0",
             (transcript_path,),
         )
         conn.executemany(
@@ -324,11 +328,29 @@ def replace_clips(transcript_path: str, video_path: str | None, channel_id: int 
         )
 
 
+def add_manual_clip(clip: dict) -> None:
+    """Inserta un clip definido a mano (inicio/fin). Marcado `manual` para que
+    re-detectar no lo borre."""
+    with _db_lock, _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO clips (id, transcript_path, video_path, channel_id, start, end,
+                               title, reason, score, transcript, created_at, endcard_percent,
+                               overlay_text, manual)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 50, ?, 1)
+            """,
+            (clip["id"], clip["transcriptPath"], clip["videoPath"], clip["channelId"],
+             clip["start"], clip["end"], clip["title"], clip["reason"], clip["transcript"],
+             clip["createdAt"], clip.get("overlayText", "")),
+        )
+
+
 def load_clips(transcript_path: str) -> list[dict]:
-    """Devuelve los clips guardados de una transcripcion, mayor score primero."""
+    """Devuelve los clips guardados de una transcripcion: los manuales primero y
+    luego por mayor score."""
     with _db_lock, _connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM clips WHERE transcript_path = ? ORDER BY score DESC",
+            "SELECT * FROM clips WHERE transcript_path = ? ORDER BY COALESCE(manual, 0) DESC, score DESC",
             (transcript_path,),
         ).fetchall()
     return [_clip_to_dict(row) for row in rows]

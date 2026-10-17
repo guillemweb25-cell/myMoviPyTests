@@ -111,6 +111,9 @@ Funciones clave en `db.py`:
 - `replace_clips(transcript_path, video_path, channel_id, clips, created_at)`:
   reemplaza los clips **detectados** de una transcripción borrando solo los que no
   tienen render ni youtube (`rendered_path='' AND youtube_url=''`), así al re-detectar
-  no se pierden los ya trabajados. Inserta `endcard_percent=50` por defecto.
+  no se pierden los ya trabajados. Tampoco borra los **manuales** (`manual=1`).
+  Inserta `endcard_percent=50` por defecto.
+- `add_manual_clip(clip)`: clip con inicio/fin puestos a mano (`manual=1`, `score=0`).
+  `load_clips` los devuelve primero (`ORDER BY manual DESC, score DESC`).
 - `load_clips(transcript_path)`, `get_clip(id)`, `update_clip(id, fields)` (con set `allowed`).
 - `get_campaign_by_transcript(path)` para recuperar las reglas de compliance al subir.

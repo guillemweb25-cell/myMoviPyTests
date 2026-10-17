@@ -1072,6 +1072,16 @@ def list_clip_sources(channelId: int | None = None) -> list[dict]:
     return sources
 
 
+def _sibling_video(transcript: Path) -> str | None:
+    """Video hermano de una transcripcion (mismo nombre base, o el primer .mp4)."""
+    for ext in (".mp4", ".webm", ".mkv", ".mov"):
+        candidate = transcript.with_suffix(ext)
+        if candidate.exists():
+            return str(candidate.relative_to(ROOT_DIR))
+    siblings = sorted(transcript.parent.glob("*.mp4"))
+    return str(siblings[0].relative_to(ROOT_DIR)) if siblings else None
+
+
 @app.post("/api/clips/detect")
 def detect_clips_endpoint(payload: DetectClipsRequest) -> dict:
     from .services.clip_detector import detect_clips
@@ -1080,17 +1090,7 @@ def detect_clips_endpoint(payload: DetectClipsRequest) -> dict:
     if transcript.suffix.lower() not in {".vtt", ".srt"}:
         raise HTTPException(status_code=400, detail="La transcripcion debe ser .vtt o .srt")
 
-    # Busca un video hermano (mismo nombre base) en la misma carpeta.
-    video_path: str | None = None
-    for ext in (".mp4", ".webm", ".mkv", ".mov"):
-        candidate = transcript.with_suffix(ext)
-        if candidate.exists():
-            video_path = str(candidate.relative_to(ROOT_DIR))
-            break
-    if not video_path:
-        siblings = sorted(transcript.parent.glob("*.mp4"))
-        if siblings:
-            video_path = str(siblings[0].relative_to(ROOT_DIR))
+    video_path = _sibling_video(transcript)
 
     try:
         clips = detect_clips(
@@ -1110,6 +1110,60 @@ def detect_clips_endpoint(payload: DetectClipsRequest) -> dict:
 
     db.replace_clips(payload.transcriptPath, video_path, payload.channelId, clip_dicts, now_iso())
     return {"videoPath": video_path, "clips": db.load_clips(payload.transcriptPath)}
+
+
+class ManualClipRequest(BaseModel):
+    transcriptPath: str
+    start: float = Field(..., ge=0)
+    end: float = Field(..., gt=0)
+    title: str = ""
+    channelId: int | None = None
+
+
+@app.post("/api/clips/manual")
+def add_manual_clip(payload: ManualClipRequest) -> dict:
+    """Añade un clip con inicio/fin puestos a mano (p. ej. 2:17 → 4:03). Lleva el
+    texto de la transcripcion de ese tramo y el texto en pantalla de la campaña."""
+    from .services.transcription import parse_vtt
+
+    transcript = resolve_within_root(payload.transcriptPath)
+    if transcript.suffix.lower() not in {".vtt", ".srt"}:
+        raise HTTPException(status_code=400, detail="La transcripcion debe ser .vtt o .srt")
+    video_path = _sibling_video(transcript)
+    if not video_path:
+        raise HTTPException(status_code=400, detail="No hay video junto a la transcripcion")
+    start, end = round(payload.start, 3), round(payload.end, 3)
+    if end - start < 1:
+        raise HTTPException(status_code=400, detail="El fin tiene que ser al menos 1 s posterior al inicio.")
+    duration = _video_duration(ROOT_DIR / video_path)
+    if duration and end > duration + 0.5:
+        raise HTTPException(status_code=400,
+                            detail=f"El fin ({end:.0f}s) pasa de la duracion del video ({duration:.0f}s).")
+
+    cues = parse_vtt(transcript.read_text(encoding="utf-8", errors="ignore"))
+    text = " ".join(c["text"] for c in cues if c["end"] > start and c["start"] < end)
+    def mmss(t: float) -> str:
+        t = int(round(t))
+        return f"{t // 3600}:{t % 3600 // 60:02d}:{t % 60:02d}" if t >= 3600 else f"{t // 60}:{t % 60:02d}"
+
+    campaign = db.get_campaign_by_transcript(payload.transcriptPath)
+    rules = (campaign or {}).get("rules") or {}
+    overlay = (rules.get("onScreenText") or "").strip() or (rules.get("captionRequired") or "").strip()
+    clip_id = uuid.uuid4().hex[:12]
+    db.add_manual_clip({
+        "id": clip_id,
+        "transcriptPath": payload.transcriptPath,
+        "videoPath": video_path,
+        "channelId": payload.channelId or (campaign or {}).get("channelId") or channel_id_from_path(video_path),
+        "start": start,
+        "end": end,
+        "title": payload.title.strip() or f"Clip manual {mmss(start)} – {mmss(end)}",
+        "reason": "Añadido a mano",
+        "transcript": text,
+        "createdAt": now_iso(),
+        "overlayText": overlay,
+    })
+    return _annotate_clip(db.get_clip(clip_id))
 
 
 def _clip_blur_ids(clip: dict) -> list[int]:

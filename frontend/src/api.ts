@@ -194,6 +194,8 @@ export const api = {
     postJson<{ manualBlur: { x: number; y: number; w: number; h: number }[] }>(`/api/clips/${clipId}/manual-blur`, { regions }),
   setFocusPlan: (clipId: string, segments: { start: number; end: number; personId: number; cx?: number | null }[]) =>
     postJson<{ focusSegments: unknown }>(`/api/clips/${clipId}/focus-plan`, { segments }),
+  addManualClip: (payload: { transcriptPath: string; start: number; end: number; title?: string; channelId?: number | null }) =>
+    postJson<ClipCandidate>('/api/clips/manual', payload),
   trimClip: (clipId: string, start: number, end: number) =>
     patchJson<ClipCandidate>(`/api/clips/${clipId}/trim`, { start, end }),
   renderClip: (clipId: string) => postJson<{ job: Job; renderedPath: string }>(`/api/clips/${clipId}/render`, {}),

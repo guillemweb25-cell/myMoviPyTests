@@ -24,6 +24,13 @@ function formatSeconds(value: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
+/** "2:17", "1:02:17", "137" o "2:17.5" -> segundos. null si no se entiende. */
+function parseTimecode(value: string): number | null {
+  const v = value.trim().replace(',', '.')
+  if (!/^\d+(\.\d+)?$|^\d+(:\d{1,2}){1,2}(\.\d+)?$/.test(v)) return null
+  return v.split(':').reduce((acc, part) => acc * 60 + Number(part), 0)
+}
+
 type NavState = { section?: Section; channelId?: number | null; clipTab?: 'create' | 'manage' | 'youtube'; campaignId?: number | null }
 
 function loadNav(): NavState {
@@ -72,6 +79,10 @@ export default function App() {
   const [isLoadingFile, setIsLoadingFile] = useState(false)
   const [isGeneratingTranscript, setIsGeneratingTranscript] = useState(false)
   const [isDownloadingVideo, setIsDownloadingVideo] = useState(false)
+  const [manualStart, setManualStart] = useState('')
+  const [manualEnd, setManualEnd] = useState('')
+  const [manualTitle, setManualTitle] = useState('')
+  const [isAddingManual, setIsAddingManual] = useState(false)
   const [isDownloadingThumbnail, setIsDownloadingThumbnail] = useState(false)
   const [isConvertingImageToPng, setIsConvertingImageToPng] = useState(false)
   const [isDetectingInsertedFrames, setIsDetectingInsertedFrames] = useState(false)
@@ -1021,6 +1032,32 @@ export default function App() {
       await api.updateClipSettings(clip.id, merged)
     } catch (e) {
       handleApiError(e)
+    }
+  }
+
+  async function handleAddManualClip() {
+    const start = parseTimecode(manualStart)
+    const end = parseTimecode(manualEnd)
+    if (start === null || end === null) {
+      setError('Pon inicio y fin como 2:17, 1:02:17 o en segundos.')
+      return
+    }
+    if (end - start < 1) {
+      setError('El fin tiene que ser posterior al inicio.')
+      return
+    }
+    setIsAddingManual(true)
+    setError('')
+    try {
+      const clip = await api.addManualClip({ transcriptPath: selectedClipSource, start, end, title: manualTitle, channelId: activeChannelId })
+      setClipCandidates((prev) => [clip, ...prev])
+      setManualStart('')
+      setManualEnd('')
+      setManualTitle('')
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setIsAddingManual(false)
     }
   }
 
@@ -2465,6 +2502,28 @@ export default function App() {
                       Divide la transcripción en partes y saca varios clips de cada una (más cobertura, peticiones más pequeñas). Auto ≈ 1 parte por cada 15 min.
                     </p>
 
+                    <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                      <label className="field" style={{ maxWidth: 110 }}>
+                        <span>Inicio</span>
+                        <input placeholder="2:17" value={manualStart} onChange={(e) => setManualStart(e.target.value)} />
+                      </label>
+                      <label className="field" style={{ maxWidth: 110 }}>
+                        <span>Fin</span>
+                        <input placeholder="4:03" value={manualEnd} onChange={(e) => setManualEnd(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddManualClip() }} />
+                      </label>
+                      <label className="field" style={{ maxWidth: 320 }}>
+                        <span>Título (opcional)</span>
+                        <input placeholder="Clip manual 2:17 – 4:03" value={manualTitle} onChange={(e) => setManualTitle(e.target.value)} />
+                      </label>
+                      <button disabled={isAddingManual || !selectedClipSource || !manualStart.trim() || !manualEnd.trim()} onClick={handleAddManualClip}>
+                        {isAddingManual ? 'Añadiendo...' : '➕ Añadir clip'}
+                      </button>
+                    </div>
+                    <p className="help">
+                      Añade un clip a mano con su inicio y fin (2:17, 1:02:17 o segundos). Re-detectar no lo borra.
+                    </p>
+
                     {clipCandidates.length === 0 && (
                       <p className="description">Aún no hay clips. Pulsa “Detectar clips”.</p>
                     )}
@@ -2539,7 +2598,7 @@ export default function App() {
                       <div className="viewer-header">
                         <div>
                           <h3 style={{ margin: 0 }}>
-                            <span className="status completed" style={{ marginRight: 8 }}>{clip.score}</span>
+                            <span className="status completed" style={{ marginRight: 8 }}>{clip.manual ? '✋ manual' : clip.score}</span>
                             {clip.title || 'Clip'}
                           </h3>
                           <p className="help">{formatSeconds(clip.start)} → {formatSeconds(clip.end)} ({Math.round(clip.duration)}s)</p>

@@ -109,6 +109,7 @@ export type ClipCandidate = {
   subtitles: boolean
   renderedPath?: string
   rawPath?: string | null
+  manual?: boolean
   youtubeUrl?: string
   rendered?: boolean
   uploaded?: boolean
