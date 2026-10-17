@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +15,7 @@ class TranscriptionArtifacts:
     subtitles_file: Path
     language_file: Path | None
     detected_language: str | None
+    json_file: Path | None = None
 
 
 def export_subtitles(transcript: object, subtitle_format: str) -> str:
@@ -31,6 +34,43 @@ def export_subtitles(transcript: object, subtitle_format: str) -> str:
     raise SystemExit(
         "Tu version de assemblyai no soporta exportar subtitulos con los metodos esperados."
     )
+
+
+_VTT_TIME = r"(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})"
+
+
+def _vtt_seconds(match: tuple) -> float:
+    h, m, s, ms = match
+    return int(h or 0) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
+
+
+def parse_vtt(vtt: str) -> list[dict]:
+    """Cues de un VTT/SRT como [{start, end, text}] en segundos."""
+    cues = []
+    for block in re.split(r"\n\s*\n", vtt.replace("\r\n", "\n")):
+        lines = block.strip().splitlines()
+        for i, line in enumerate(lines):
+            times = re.findall(_VTT_TIME, line)
+            if "-->" in line and len(times) == 2:
+                text = " ".join(l.strip() for l in lines[i + 1:] if l.strip())
+                if text:
+                    cues.append({"start": round(_vtt_seconds(times[0]), 3),
+                                 "end": round(_vtt_seconds(times[1]), 3), "text": text})
+                break
+    return cues
+
+
+def subtitles_json(segments: list[dict], words: list[dict] | None = None,
+                   language: str | None = None, text: str | None = None) -> str:
+    """JSON de subtitulos: mismos tramos que el VTT y, si los hay, tiempos por palabra.
+    Todo en segundos."""
+    data = {
+        "language": language,
+        "text": text if text is not None else " ".join(s["text"] for s in segments),
+        "segments": segments,
+        "words": words or [],
+    }
+    return json.dumps(data, ensure_ascii=False, indent=2)
 
 
 class AssemblyAiTranscriptionService:
@@ -76,6 +116,19 @@ class AssemblyAiTranscriptionService:
         print(f"Subtitulos guardados en: {subtitles_file}")
 
         detected_language = getattr(tx, "language_code", None)
+
+        # JSON con los mismos tramos que el VTT + tiempos por palabra.
+        words = [
+            {"text": w.text, "start": round(w.start / 1000, 3), "end": round(w.end / 1000, 3),
+             "confidence": round(w.confidence, 3) if w.confidence is not None else None}
+            for w in (tx.words or [])
+        ]
+        json_file = base.with_suffix(".json")
+        json_file.write_text(
+            subtitles_json(parse_vtt(subtitles or ""), words, detected_language, tx.text or ""),
+            encoding="utf-8",
+        )
+        print(f"Subtitulos JSON guardados en: {json_file}")
         language_file: Path | None = None
         if detected_language:
             language_file = base.with_suffix(".lang")
@@ -87,4 +140,5 @@ class AssemblyAiTranscriptionService:
             subtitles_file=subtitles_file,
             language_file=language_file,
             detected_language=detected_language,
+            json_file=json_file,
         )

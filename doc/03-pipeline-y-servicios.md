@@ -9,6 +9,11 @@
   - `wetransfer_dl.py`: resuelve links de WeTransfer (API `/transfers/{id}/download` → `direct_link`).
 - Transcripción → fichero de subtítulos con tiempos. La transcripción (`.txt`/`.vtt`)
   es la **fuente de verdad** para detectar clips; el nexo con la campaña es su ruta.
+- `services/transcription.py` guarda además **`<nombre>.json`**: `{language, text,
+  segments: [{start, end, text}], words: [{text, start, end, confidence}]}`, todo en
+  segundos. `segments` son los mismos tramos del VTT y `words`, los tiempos por palabra
+  de AssemblyAI. Para transcripciones anteriores, `scripts/vtt_to_json.py <vtt|carpeta>`
+  lo saca del `.vtt` sin coste (sin `words`, que solo da la transcripción).
 
 ## Detección de clips — `services/clip_detector.py`
 
