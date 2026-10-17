@@ -42,21 +42,34 @@ export const brandSchema = z.object({
   stroke: z.string().default("#000000"),
 });
 
+export const emphasisSchema = z.object({
+  /** Indice dentro de `words`. Fuera de rango = se ignora ese enfasis. */
+  word_index: z.number().int().min(0),
+  effect: z.enum(["punch_zoom", "emoji"]),
+  emoji: z.string().optional(),
+});
+
+export const hookSchema = z.object({
+  text: z.string(),
+  duration: z.number().min(0.5).max(6).default(2),
+});
+
+export const musicSchema = z.object({
+  /** null = una aleatoria del banco montado en /app/music. */
+  file: z.string().nullable().default(null),
+  volume: z.number().min(0).max(1).default(0.1),
+  /** Baja la musica mientras hay voz. */
+  duck: z.boolean().default(true),
+});
+
 /**
- * Campos del contrato que todavía NO renderiza nadie (fases 13C/13E).
- *
- * Se declaran para que el payload del backend valide sin cambios cuando lleguen,
- * pero el servidor RECHAZA la petición si vienen con contenido: callarlos sería
- * perder texto obligatorio de campaña o un endcard, y eso es un clip no conforme.
+ * El endcard sigue montandolo ffmpeg en el backend, sobre el clip ya terminado.
+ * Se declara para que el payload valide, pero el servidor RECHAZA la peticion si
+ * viene: callarlo daria un clip sin el cierre obligatorio de la campana.
  * Ver "Compliance" en el documento.
  */
 export const notYetImplementedSchema = z.object({
-  emphasis: z.array(z.unknown()).optional(),
-  hook: z.unknown().optional(),
   endcard: z.unknown().optional(),
-  progress_bar: z.enum(["top", "split_line", "off"]).optional(),
-  sfx: z.boolean().optional(),
-  music: z.unknown().optional(),
 });
 
 export const payloadSchema = notYetImplementedSchema.extend({
@@ -69,6 +82,11 @@ export const payloadSchema = notYetImplementedSchema.extend({
   watermark: watermarkSchema.optional(),
   safe_zones: z.array(safeZoneSchema).default([]),
   brand: brandSchema.default({ font: "Anton", primary: "#FFD400", stroke: "#000000" }),
+  emphasis: z.array(emphasisSchema).default([]),
+  hook: hookSchema.optional(),
+  progress_bar: z.enum(["top", "split_line", "off"]).default("off"),
+  sfx: z.boolean().default(false),
+  music: musicSchema.optional(),
 });
 
 export type Payload = z.infer<typeof payloadSchema>;
@@ -85,4 +103,10 @@ export type ShortProps = Payload & {
   videoSrc: string;
   watermarkSrc: string | null;
   fontUrl: string;
+  /** URLs servidas por el worker; null = esa capa no suena. */
+  whooshUrl: string | null;
+  popUrl: string | null;
+  musicUrl: string | null;
 };
+
+export type Emphasis = z.infer<typeof emphasisSchema>;

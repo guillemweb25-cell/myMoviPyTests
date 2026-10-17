@@ -425,6 +425,28 @@ def stamp_watermark_on_frame(frame: Path, watermark: Path, ffmpeg: str = "ffmpeg
     return False
 
 
+def derive_emphasis(words: list[dict], min_gap: float = 3.5) -> list[dict]:
+    """Elige en que palabras cae un punch zoom.
+
+    Sin que un modelo marque las palabras fuertes (eso llega con clip_detector en
+    13C), se reparten por ritmo: la primera palabra de una frase, dejando al
+    menos `min_gap` segundos entre zooms. Un zoom cada pocos segundos da pulso al
+    clip; uno por frase lo marearia.
+    """
+    marks: list[dict] = []
+    last = -min_gap
+    for i, w in enumerate(words):
+        start = float(w.get("start", 0))
+        if start - last < min_gap:
+            continue
+        # Primera palabra tras una pausa clara: es donde cae bien el golpe.
+        prev_end = float(words[i - 1]["end"]) if i > 0 else 0.0
+        if i == 0 or start - prev_end > 0.18:
+            marks.append({"word_index": i, "effect": "punch_zoom"})
+            last = start
+    return marks
+
+
 def render_fx(out_path: Path, args, duration: float,
               facecam) -> tuple[bool, Path | None]:
     """Camino FX: manda el vertical al worker de Remotion para que pinte
@@ -489,7 +511,17 @@ def render_fx(out_path: Path, args, duration: float,
         },
         "words": words,
         "safe_zones": safe_zones,
+        "emphasis": derive_emphasis(words),
+        # Whoosh en cada zoom. El preset manda: si no hace zooms, tampoco suena.
+        "sfx": True,
+        # Con watermark la barra NUNCA va arriba: se le montaria encima.
+        "progress_bar": "split_line" if watermark else "top",
     }
+    if args.fx_hook.strip():
+        payload["hook"] = {"text": args.fx_hook.strip(), "duration": 2.0}
+    if args.fx_music:
+        # file=None -> el worker elige una del banco montado.
+        payload["music"] = {"file": None, "volume": args.fx_music_volume, "duck": True}
     if overlay_text:
         payload["overlay"] = {"text": overlay_text, "center_y": 0.63}
     if watermark:
@@ -535,6 +567,12 @@ def main() -> None:
     parser.add_argument("--screen-zoom", type=float, default=1.4, help="zoom de la pantalla abajo en modo facecam (1.0 = completa)")
     parser.add_argument("--fx-preset", default="none",
                         help="preset de motion graphics del worker de FX ('none' = camino ASS de siempre)")
+    parser.add_argument("--fx-hook", default="",
+                        help="titulo gancho de los primeros 2s (solo con --fx-preset)")
+    parser.add_argument("--fx-music", action="store_true",
+                        help="musica de fondo del banco, bajando bajo la voz (solo con --fx-preset)")
+    parser.add_argument("--fx-music-volume", type=float, default=0.10,
+                        help="volumen de la musica de fondo (0-1)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
 

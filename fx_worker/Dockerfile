@@ -6,8 +6,11 @@ ENV DEBIAN_FRONTEND=noninteractive TZ=Europe/Madrid
 
 # Dependencias de Chromium headless, que es quien pinta los frames. Remotion trae
 # su propio ffmpeg, así que aquí no hace falta.
+# fonts-noto-color-emoji es obligatoria: sin ella los emojis salen como un
+# cuadrado vacío (tofu), porque fonts-liberation no trae emoji en color.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 \
+        ca-certificates fonts-liberation fonts-noto-color-emoji \
+        libasound2 libatk-bridge2.0-0 libatk1.0-0 \
         libcairo2 libcups2 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0 libnspr4 \
         libnss3 libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 \
         libxext6 libxfixes3 libxkbcommon0 libxrandr2 && \

@@ -30,6 +30,9 @@ output/
 *.avi
 *.mkv
 *.wav
+# ...salvo los efectos de sonido del worker de FX, que son fuente: sin ellos
+# la imagen se construiria muda.
+!fx_worker/assets/sfx/*.wav
 *.mp3
 *.m4a
 

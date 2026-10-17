@@ -11,6 +11,8 @@ import { payloadSchema, type ShortProps } from "./types.ts";
 const PORT = Number(process.env.PORT ?? 3000);
 const JOBS_DIR = process.env.FX_JOBS_DIR ?? "/tmp/fx-jobs";
 const FONTS_DIR = process.env.FX_FONTS_DIR ?? "/app/fonts";
+const SFX_DIR = process.env.FX_SFX_DIR ?? "/app/assets/sfx";
+const MUSIC_DIR = process.env.FX_MUSIC_DIR ?? "/app/music";
 /**
  * Pestañas de Chromium en paralelo por render. Remotion abre por defecto una por
  * núcleo (8 aquí) y el navegador se cae a mitad del render ("target closed")
@@ -29,8 +31,11 @@ const SCALE = Number(process.env.FX_SCALE ?? 1);
 /** Verbosidad de Remotion. "verbose" imprime el motivo real si Chromium se cae. */
 const LOG_LEVEL = (process.env.FX_LOG_LEVEL ?? "info") as "error" | "warn" | "info" | "verbose";
 
-/** Capas del contrato que este worker todavía no pinta (fases 13C/13E). */
-const NOT_IMPLEMENTED = ["emphasis", "hook", "endcard", "progress_bar", "sfx", "music"] as const;
+/**
+ * Lo unico del contrato que este worker no pinta: el endcard, que sigue
+ * montando ffmpeg en el backend sobre el clip ya terminado.
+ */
+const NOT_IMPLEMENTED = ["endcard"] as const;
 
 const app = express();
 const upload = multer({ dest: path.join(JOBS_DIR, "_uploads"), limits: { fileSize: 2 * 1024 * 1024 * 1024 } });
@@ -68,7 +73,8 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: bundleError === null,
     presets: presetNames(),
-    implemented: ["captions", "overlay", "watermark"],
+    implemented: ["captions", "overlay", "watermark", "punch_zoom", "emoji",
+                  "hook", "progress_bar", "sfx", "music"],
     pending: NOT_IMPLEMENTED,
     bundled: serveUrl !== null,
     error: bundleError,
@@ -91,6 +97,9 @@ const allowCors: express.RequestHandler = (_req, res, next) => {
 app.use("/assets/fonts", allowCors, express.static(FONTS_DIR, { fallthrough: false }));
 /** Los ficheros del job en curso (vídeo base y watermark) para OffthreadVideo/Img. */
 app.use("/jobs", allowCors, express.static(JOBS_DIR));
+/** Efectos de sonido propios y el banco de musica montado. */
+app.use("/assets/sfx", allowCors, express.static(SFX_DIR));
+app.use("/assets/music", allowCors, express.static(MUSIC_DIR));
 
 app.post(
   "/render",
@@ -162,11 +171,28 @@ app.post(
         watermarkUrl = `http://127.0.0.1:${PORT}/jobs/${jobId}/watermark.png`;
       }
 
+      const base = `http://127.0.0.1:${PORT}`;
+      // Pista de musica: la pedida, o una al azar del banco montado.
+      let musicUrl: string | null = null;
+      if (payload.music) {
+        let track = payload.music.file;
+        if (!track) {
+          const bank = await fs.readdir(MUSIC_DIR).catch(() => [] as string[]);
+          const tracks = bank.filter((f) => /\.(mp3|m4a|wav|ogg)$/i.test(f));
+          track = tracks.length ? tracks[Math.floor(Math.random() * tracks.length)]! : null;
+        }
+        if (track) musicUrl = `${base}/assets/music/${encodeURIComponent(track)}`;
+        else console.warn("[fx] se pidio musica pero el banco esta vacio; el clip ira sin ella.");
+      }
+
       const inputProps: ShortProps = {
         ...payload,
-        videoSrc: `http://127.0.0.1:${PORT}/jobs/${jobId}/video.mp4`,
+        videoSrc: `${base}/jobs/${jobId}/video.mp4`,
         watermarkSrc: watermarkUrl,
-        fontUrl: `http://127.0.0.1:${PORT}/assets/fonts/Anton-Regular.ttf`,
+        fontUrl: `${base}/assets/fonts/Anton-Regular.ttf`,
+        whooshUrl: `${base}/assets/sfx/whoosh.wav`,
+        popUrl: `${base}/assets/sfx/pop.wav`,
+        musicUrl,
       };
 
       const url = await ensureBundle();
@@ -175,9 +201,17 @@ app.post(
       let lastStep = -1;
       await serialize(async () => {
         const composition = await selectComposition({ serveUrl: url, id: "Short", inputProps });
+        const capas = [
+          `palabras=${payload.words.length}`,
+          `enfasis=${payload.emphasis.length}`,
+          payload.hook ? "hook" : null,
+          payload.progress_bar !== "off" ? `barra=${payload.progress_bar}` : null,
+          payload.sfx ? "sfx" : null,
+          musicUrl ? "musica" : null,
+        ].filter(Boolean).join(" ");
         console.log(
           `[fx] render ${jobId}: preset=${payload.preset} ${composition.durationInFrames}f ` +
-            `@${composition.fps}fps palabras=${payload.words.length}`,
+            `@${composition.fps}fps ${capas}`,
         );
         await renderMedia({
           composition,

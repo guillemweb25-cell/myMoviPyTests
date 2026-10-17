@@ -323,10 +323,49 @@ de cierre.
 - Columnas nuevas: `clips.fx_preset` y `campaigns.fx_preset_default`. Las de
   `hook` y `emphasis_json` se dejan para 13C, cuando haya código que las use.
 
-**13C — Efectos completos.** Preset `hormozi`, hook cinético, punch zooms (respetando
-`facecam`), emojis, barra de progreso, endcard animado, SFX y ducking. `hook` y
-`emphasis_words` desde `clip_detector.py`.
+**13C — Efectos completos. ✅ Casi todo implementado.** Preset `hormozi`, hook
+cinético, punch zooms (respetando `facecam`), emojis, barra de progreso, SFX y
+ducking.
 *Hecho cuando:* un clip detectado sale con todo sin tocar nada a mano.
+
+**Implementado:**
+
+- **Punch zooms**: entrada rápida (0,25 s) y salida lenta (0,4 s). Si dos énfasis
+  caen juntos gana el más fuerte, no se multiplican (encadenarlos dispararía la
+  escala y recortaría la imagen). En `facecam` se pintan dos capas recortadas del
+  mismo vídeo y solo se escala la de arriba: la pantalla compartida tiene que
+  poder leerse.
+- **SFX**: `whoosh` en cada zoom y `pop` en cada emoji. Generados con ffmpeg
+  (ruido rosa filtrado y un blip corto) y versionados en `fx_worker/assets/sfx/`,
+  así no entra audio de terceros en el repo.
+- **Música** con ducking: baja al 28 % mientras hay voz, con 0,25 s de margen a
+  cada lado para que no bombee. Pista del banco montado, al azar si no se indica.
+- **Hook** con muelle de entrada y fundido de salida; **barra de progreso**
+  (`split_line` cuando hay watermark, nunca `top`: se le montaría encima);
+  **emojis** con pop.
+- El **preset manda**: con `punchZoom: 0` (p. ej. `minimal`) no hay zooms ni
+  whoosh aunque el backend mande énfasis. Así el backend envía siempre lo mismo y
+  el estilo se decide en un solo sitio.
+- Los **énfasis los reparte el backend por ritmo** (`derive_emphasis`): primera
+  palabra tras una pausa, mínimo 3,5 s entre zooms.
+
+**Notas de implementación:**
+
+- La imagen necesita **`fonts-noto-color-emoji`**: sin ella los emojis salen como
+  un cuadrado vacío, porque `fonts-liberation` no trae emoji en color.
+- Remotion **baja 3 dB el audio de una fuente mono**, al repartir su energía
+  entre los dos canales de salida. Con fuente estéreo el nivel se conserva
+  exacto (comprobado), así que a los clips reales no les afecta.
+
+**Pendiente de 13C:**
+
+- `hook` y `emphasis_words` desde `clip_detector.py` (ahora el hook se pasa a
+  mano con `--fx-hook` y los énfasis se reparten por ritmo, no por contenido).
+- **Emojis**: el worker los pinta, pero nadie los elige todavía; hacen falta las
+  `emphasis_words` del modelo.
+- **Endcard animado**: lo sigue montando ffmpeg sobre el clip terminado.
+- **Hook y música no están en la UI**: solo por línea de comandos
+  (`--fx-hook`, `--fx-music`). Desde la web salen subtítulos, zooms, SFX y barra.
 
 **13D — Compliance y QA.** `safe_zones` desde las reglas de campaña,
 `fx_preset_default` por campaña, revisión de que watermark y overlay nunca quedan

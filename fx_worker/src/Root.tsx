@@ -19,6 +19,12 @@ const defaultProps: ShortProps = {
   videoSrc: "",
   watermarkSrc: null,
   fontUrl: "/assets/fonts/Anton-Regular.ttf",
+  emphasis: [],
+  progress_bar: "off",
+  sfx: false,
+  whooshUrl: null,
+  popUrl: null,
+  musicUrl: null,
 };
 
 export const RemotionRoot: React.FC = () => (

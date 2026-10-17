@@ -20,6 +20,8 @@ export type Preset = {
   /** Y del bloque de subtítulos, fracción de la altura (centro del bloque). */
   captionCenterY: number;
   maxWordsPerPhrase: number;
+  /** Cuánto amplía un punch zoom (0.08 = 8%). 0 = el preset no hace zooms. */
+  punchZoom: number;
 };
 
 export const PRESETS: Record<string, Preset> = {
@@ -35,6 +37,7 @@ export const PRESETS: Record<string, Preset> = {
     activeScale: 1.0,
     captionCenterY: 0.78,
     maxWordsPerPhrase: 4,
+    punchZoom: 0,
   },
   hormozi: {
     name: "hormozi",
@@ -48,6 +51,7 @@ export const PRESETS: Record<string, Preset> = {
     activeScale: 1.14,
     captionCenterY: 0.76,
     maxWordsPerPhrase: 3,
+    punchZoom: 0.08,
   },
 };
 
