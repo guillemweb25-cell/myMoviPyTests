@@ -425,25 +425,68 @@ def stamp_watermark_on_frame(frame: Path, watermark: Path, ffmpeg: str = "ffmpeg
     return False
 
 
-def derive_emphasis(words: list[dict], min_gap: float = 3.5) -> list[dict]:
+# Palabras vacias (castellano): articulos, preposiciones, conjunciones, pronombres
+# y verbos auxiliares. Un punch zoom sobre "la" o "una" no significa nada.
+_STOPWORDS = {
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "lo", "al", "del",
+    "de", "a", "en", "con", "por", "para", "sin", "sobre", "entre", "hasta",
+    "desde", "hacia", "segun", "tras", "ante", "bajo", "contra", "durante",
+    "y", "e", "o", "u", "ni", "que", "si", "no", "pero", "sino", "como",
+    "cuando", "donde", "porque", "aunque", "pues", "mas", "muy", "ya", "mismo",
+    "me", "te", "se", "le", "nos", "os", "les", "mi", "tu", "su", "sus", "mis",
+    "yo", "el", "ella", "ellos", "ellas", "usted", "ustedes", "nosotros",
+    "es", "son", "era", "eran", "fue", "fueron", "ser", "estar", "esta",
+    "estan", "hay", "ha", "han", "he", "has", "habia", "este", "esta", "esto",
+    "ese", "esa", "eso", "aquel", "todo", "toda", "todos", "todas", "otro",
+    "otra", "cada", "tan", "tanto", "bien", "aqui", "alli", "ahi", "asi",
+}
+
+_ACCENTS = str.maketrans("áéíóúüñ", "aeiouun")
+
+
+def _content_word(text: str) -> str:
+    """Normaliza una palabra; devuelve "" si es vacia de significado."""
+    w = text.strip(" .,!?¿¡:;\"'«»—-").lower().translate(_ACCENTS)
+    if len(w) < 4 or w in _STOPWORDS or not w.isalpha():
+        return ""
+    return w
+
+
+def derive_emphasis(words: list[dict], min_gap: float = 3.5,
+                    window: float = 1.2) -> list[dict]:
     """Elige en que palabras cae un punch zoom.
 
-    Sin que un modelo marque las palabras fuertes (eso llega con clip_detector en
-    13C), se reparten por ritmo: la primera palabra de una frase, dejando al
-    menos `min_gap` segundos entre zooms. Un zoom cada pocos segundos da pulso al
-    clip; uno por frase lo marearia.
+    Mientras no sea un modelo quien marque las palabras fuertes (eso es lo que
+    pide el documento para 13C), se eligen por peso: se deja pasar `min_gap`
+    segundos y, de las palabras de la siguiente ventana de `window` segundos, se
+    coge la mas larga que NO sea vacia.
+
+    Repartirlos solo por ritmo, como se hacia antes, ponia el golpe en "la",
+    "una" o "sin", que es justo donde no significa nada.
     """
     marks: list[dict] = []
     last = -min_gap
-    for i, w in enumerate(words):
-        start = float(w.get("start", 0))
+    i = 0
+    while i < len(words):
+        start = float(words[i].get("start", 0))
         if start - last < min_gap:
+            i += 1
             continue
-        # Primera palabra tras una pausa clara: es donde cae bien el golpe.
-        prev_end = float(words[i - 1]["end"]) if i > 0 else 0.0
-        if i == 0 or start - prev_end > 0.18:
-            marks.append({"word_index": i, "effect": "punch_zoom"})
-            last = start
+        best, best_len = -1, 0
+        for j in range(i, len(words)):
+            if float(words[j].get("start", 0)) - start > window:
+                break
+            weight = len(_content_word(words[j].get("text", "")))
+            if weight > best_len:
+                best, best_len = j, weight
+        if best < 0:
+            # Ninguna palabra con peso en la ventana: mejor saltarse el zoom que
+            # ponerlo en un "que".
+            i += 1
+            continue
+        marks.append({"word_index": best, "effect": "punch_zoom"})
+        last = float(words[best].get("start", 0))
+        i = best + 1
     return marks
 
 

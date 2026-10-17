@@ -17,10 +17,14 @@ type Props = {
  * Nivel de mezcla de los efectos. Los ficheros estan normalizados a -3 dBFS, asi
  * que esto es lo unico que hay que tocar para subirlos o bajarlos.
  *
- * 0.55 deja el whoosh unos 8 dB por debajo del pico de la voz: se oye por encima
- * del habla sin taparla. Mas bajo y se pierde (con 0.12 no se distinguia nada).
+ * Historia de este numero, para no volver a pasarla:
+ *   - Con los ficheros sin normalizar el whoosh picaba a -17,9 dB y bajo la voz
+ *     (que pica a -10) no se oia nada.
+ *   - Subirlo a 0.55 lo dejo a -3,7 dB en el clip real: se oia, pero agresivo.
+ *   - 0.30 lo deja ~6 dB POR DEBAJO de la voz: acompana al zoom sin pelearse
+ *     con la frase, que es lo que tiene que hacer una transicion.
  */
-const SFX_VOLUME = 0.55;
+const SFX_VOLUME = 0.3;
 
 /** Cuanto baja la musica mientras hay voz. */
 const DUCK_FACTOR = 0.28;

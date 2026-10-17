@@ -346,8 +346,16 @@ ducking.
 - El **preset manda**: con `punchZoom: 0` (p. ej. `minimal`) no hay zooms ni
   whoosh aunque el backend mande énfasis. Así el backend envía siempre lo mismo y
   el estilo se decide en un solo sitio.
-- Los **énfasis los reparte el backend por ritmo** (`derive_emphasis`): primera
-  palabra tras una pausa, mínimo 3,5 s entre zooms.
+- Los **énfasis los elige el backend por peso** (`derive_emphasis`): pasados 3,5 s
+  de margen, de la siguiente ventana de 1,2 s coge la palabra más larga que no
+  sea vacía (hay lista de artículos, preposiciones, conjunciones, pronombres y
+  auxiliares, con acentos normalizados). Si en la ventana no hay ninguna con
+  peso, **se salta el zoom** en vez de ponerlo en cualquier sitio.
+
+  > Primero se repartían solo por ritmo (primera palabra tras una pausa) y el
+  > resultado fue malo de verdad: los golpes caían en "la", "una" y "sin". Con
+  > el filtro caen en "presentaron", "Madrid", "diferencia", "repercusión".
+  > Sigue siendo una heurística; lo bueno es que las marque el modelo.
 
 **Notas de implementación:**
 
@@ -356,6 +364,17 @@ ducking.
 - Remotion **baja 3 dB el audio de una fuente mono**, al repartir su energía
   entre los dos canales de salida. Con fuente estéreo el nivel se conserva
   exacto (comprobado), así que a los clips reales no les afecta.
+- **Nivel de los SFX** (`SFX_VOLUME` en `SoundLayer.tsx`), medido en aislado
+  sobre vídeo mudo, contra una voz que pica a −10 dB:
+  | Ajuste | Whoosh aislado | Resultado |
+  |---|---|---|
+  | ficheros sin normalizar | −17,9 dB | no se oía bajo la voz |
+  | 0.55 | −8,2 dB | agresivo, se comía la frase |
+  | **0.30** (actual) | **−13,4 dB** | acompaña al zoom sin pelearse |
+  Ojo al medir: en el clip real los picos en los zooms salen a −6 dB, pero eso
+  es la SUMA de voz y whoosh. Para juzgar el efecto hay que medirlo aislado.
+  El timbre también importa: cortaba en 4000 Hz ("shh" brillante) y ahora en
+  1400 Hz ("whuff" oscuro).
 
 **Pendiente de 13C:**
 
