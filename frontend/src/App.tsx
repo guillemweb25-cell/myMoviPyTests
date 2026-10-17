@@ -186,6 +186,10 @@ export default function App() {
   const [facecamEditor, setFacecamEditor] = useState<{ campaignId: number; frame: string; rect: Rect | null; zoom: number } | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow' | 'facecam'>('center')
+  // Presets de motion graphics que ofrece el worker de FX. Lista vacía = no hay
+  // worker: se ocultan los selectores y todo va por el camino ASS de siempre.
+  const [fxPresets, setFxPresets] = useState<string[]>([])
+  const [globalFxPreset, setGlobalFxPreset] = useState<string>('none')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
   const [copiedUrl, setCopiedUrl] = useState('')
 
@@ -1010,6 +1014,7 @@ export default function App() {
       subtitles: patch.subtitles ?? clip.subtitles,
       overlayText: patch.overlayText ?? clip.overlayText ?? '',
       endcardPercent: patch.endcardPercent ?? clip.endcardPercent ?? 0,
+      fxPreset: patch.fxPreset ?? clip.fxPreset ?? 'none',
     }
     setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? { ...c, ...patch } : c)))
     try {
@@ -1065,7 +1070,7 @@ export default function App() {
     if (!pending.length) return
     setError('')
     try {
-      const { job } = await api.renderAll(selectedClipSource, globalFocus)
+      const { job } = await api.renderAll(selectedClipSource, globalFocus, globalFxPreset)
       insertOrUpdateJob(job)
     } catch (e) {
       handleApiError(e)
@@ -1581,6 +1586,15 @@ export default function App() {
       refreshCampaigns(activeChannel.id)
     }
   }, [activeChannel?.id])
+
+  // Presets de motion graphics. Si el worker no está, la lista llega vacía y los
+  // selectores de efectos no se pintan.
+  useEffect(() => {
+    if (authState !== 'authed') return
+    api.fxPresets()
+      .then((d) => setFxPresets(d.available ? d.presets : []))
+      .catch(() => setFxPresets([]))
+  }, [authState])
 
   // Carga voces + generaciones guardadas al abrir Avatar Reel.
   useEffect(() => {
@@ -2479,6 +2493,21 @@ export default function App() {
                               <option value="facecam">🎥 Facecam + pantalla</option>
                             </select>
                           </label>
+                          {fxPresets.length > 0 && (
+                            <label className="batch-focus">
+                              <span>Efectos (todos)</span>
+                              <select
+                                value={globalFxPreset}
+                                disabled={enCola}
+                                onChange={(e) => setGlobalFxPreset(e.target.value)}
+                              >
+                                <option value="none">Sin efectos</option>
+                                {fxPresets.map((name) => (
+                                  <option key={name} value={name}>{`✨ ${name}`}</option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                           <button
                             className="primary"
                             disabled={enCola || pendientes === 0}
@@ -2574,6 +2603,20 @@ export default function App() {
                             <option value="no">No</option>
                           </select>
                         </label>
+                        {fxPresets.length > 0 && (
+                          <label className="field">
+                            <span>Efectos</span>
+                            <select
+                              value={clip.fxPreset || 'none'}
+                              onChange={(e) => handleClipSettingChange(clip, { fxPreset: e.target.value })}
+                            >
+                              <option value="none">Sin efectos</option>
+                              {fxPresets.map((name) => (
+                                <option key={name} value={name}>{`✨ ${name}`}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
                       </div>
 
                       <label className="field">

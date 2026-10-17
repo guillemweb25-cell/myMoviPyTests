@@ -132,6 +132,7 @@ CAMPAIGN_MIGRATIONS = [
     "ALTER TABLE campaigns ADD COLUMN rules_json TEXT DEFAULT ''",
     "ALTER TABLE campaigns ADD COLUMN watermark_path TEXT DEFAULT ''",
     "ALTER TABLE campaigns ADD COLUMN facecam TEXT DEFAULT ''",
+    "ALTER TABLE campaigns ADD COLUMN fx_preset_default TEXT DEFAULT 'none'",
 ]
 
 
@@ -162,6 +163,7 @@ CLIP_MIGRATIONS = [
     "ALTER TABLE clips ADD COLUMN focus_person INTEGER DEFAULT -1",
     "ALTER TABLE clips ADD COLUMN focus_segments TEXT DEFAULT ''",
     "ALTER TABLE clips ADD COLUMN manual_blur TEXT DEFAULT ''",
+    "ALTER TABLE clips ADD COLUMN fx_preset TEXT DEFAULT 'none'",
 ]
 
 
@@ -281,6 +283,7 @@ def _clip_to_dict(row: sqlite3.Row) -> dict:
         "focusPerson": (row["focus_person"] if "focus_person" in row.keys() else -1) if (row["focus_person"] if "focus_person" in row.keys() else -1) is not None else -1,
         "focusSegments": (row["focus_segments"] if "focus_segments" in row.keys() else "") or "",
         "manualBlur": (row["manual_blur"] if "manual_blur" in row.keys() else "") or "",
+        "fxPreset": (row["fx_preset"] if "fx_preset" in row.keys() else "") or "none",
     }
 
 
@@ -341,7 +344,7 @@ def update_clip(clip_id: str, fields: dict) -> dict | None:
     allowed = {"focus", "zoom", "top_ratio", "subtitles", "rendered_path", "youtube_url", "channel_id",
                "seo_title", "seo_description", "seo_tags", "overlay_text", "youtube_privacy", "start", "end",
                "endcard_percent", "submitted", "uploaded_at", "blur_persons", "focus_person", "focus_segments",
-               "manual_blur"}
+               "manual_blur", "fx_preset"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)
@@ -433,6 +436,7 @@ def _campaign_to_dict(row: sqlite3.Row) -> dict:
         "rules": rules,
         "watermarkPath": (row["watermark_path"] if "watermark_path" in row.keys() else "") or "",
         "facecam": _parse_json_obj(row["facecam"] if "facecam" in row.keys() else ""),
+        "fxPresetDefault": (row["fx_preset_default"] if "fx_preset_default" in row.keys() else "") or "none",
     }
 
 
@@ -502,7 +506,7 @@ def get_campaign_by_transcript(transcript_path: str) -> dict | None:
 
 
 def update_campaign(campaign_id: int, fields: dict) -> dict | None:
-    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status", "brief_url", "rules_json", "watermark_path", "facecam"}
+    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status", "brief_url", "rules_json", "watermark_path", "facecam", "fx_preset_default"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)

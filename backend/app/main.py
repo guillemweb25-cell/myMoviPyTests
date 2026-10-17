@@ -157,6 +157,10 @@ class ClipSettingsRequest(BaseModel):
     subtitles: bool = True
     overlayText: str = Field(default="", max_length=300)
     endcardPercent: int = Field(default=0, ge=0, le=99)
+    # Preset de motion graphics. Sin patron fijo: los presets los define el
+    # worker (GET /api/fx/presets) y se validan contra su lista, para no tener
+    # que tocar el backend al anadir uno.
+    fxPreset: str = Field(default="none", max_length=40)
 
 
 class CreateContentJobRequest(BaseModel):
@@ -373,6 +377,20 @@ def health() -> dict:
 @app.get("/api/comfy/status")
 def comfy_status() -> dict:
     return asdict(ComfyUiClient().status())
+
+
+def _valid_fx_preset(preset: str) -> str:
+    """Devuelve el preset si el worker lo ofrece; si no, 'none'.
+
+    Asi un preset guardado cuando el worker estaba vivo no rompe el render si
+    luego se apaga o se le quita ese preset: el clip sale por el camino ASS.
+    """
+    from .services import fx_client
+
+    value = (preset or "none").strip() or "none"
+    if value == "none":
+        return "none"
+    return value if value in fx_client.presets() else "none"
 
 
 @app.get("/api/fx/presets")
@@ -1201,6 +1219,7 @@ def update_clip_settings_endpoint(clip_id: str, payload: ClipSettingsRequest) ->
         "subtitles": int(payload.subtitles),
         "overlay_text": payload.overlayText,
         "endcard_percent": payload.endcardPercent,
+        "fx_preset": _valid_fx_preset(payload.fxPreset),
     })
     return _annotate_clip(db.get_clip(clip_id))
 
@@ -1261,6 +1280,14 @@ def render_clip_endpoint(clip_id: str) -> dict:
     watermark = _clip_watermark(clip)
     if watermark:
         args.extend(["--watermark", watermark])
+    # Preset del clip; si no tiene, el de la campaña. Se revalida contra el
+    # worker: si esta apagado sale "none" y el clip va por el camino ASS.
+    campaign = db.get_campaign_by_transcript(clip.get("transcriptPath") or "")
+    fx_preset = _valid_fx_preset(
+        clip.get("fxPreset") or (campaign or {}).get("fxPresetDefault") or "none"
+    )
+    if fx_preset != "none":
+        args.extend(["--fx-preset", fx_preset])
 
     db.update_clip(clip_id, {"rendered_path": out_rel})
     job = enqueue_job("render_clip.py", args)
@@ -1270,6 +1297,7 @@ def render_clip_endpoint(clip_id: str) -> dict:
 class RenderAllRequest(BaseModel):
     transcriptPath: str
     focus: str | None = None
+    fxPreset: str | None = None
 
 
 @app.post("/api/clips/render-all")
@@ -1282,6 +1310,8 @@ def render_all_endpoint(payload: RenderAllRequest) -> dict:
     args = ["--transcript", payload.transcriptPath]
     if payload.focus in ("left", "center", "right", "follow", "facecam"):
         args += ["--focus", payload.focus]
+    if payload.fxPreset:
+        args += ["--fx-preset", _valid_fx_preset(payload.fxPreset)]
     job = enqueue_job("render_all.py", args)
     return {"job": job}
 

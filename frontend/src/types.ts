@@ -124,6 +124,8 @@ export type ClipCandidate = {
   focusSegments?: string
   manualBlur?: string
   hasPersons?: boolean
+  /** Preset de motion graphics; 'none' = subtítulos ASS de siempre. */
+  fxPreset?: string
 }
 
 export type ReelItem = {

@@ -391,6 +391,127 @@ def add_watermark(video: Path, watermark: Path, ffmpeg: str = "ffmpeg",
                          f"ffmpeg: {(r.stderr.decode()[-300:] if r.stderr else '')}")
 
 
+def transcribe_words(vertical_path: Path, ffmpeg: str = "ffmpeg",
+                     language: str = "es") -> list[dict]:
+    """Palabras con tiempos del clip (AssemblyAI), SIN generar ASS ni quemar nada.
+    Es la misma transcripcion que usa el karaoke; aqui se exporta para el worker
+    de FX, que pinta los subtitulos el."""
+    engine = SubtitleEngine()
+    audio_path = extract_audio(vertical_path, ffmpeg)
+    try:
+        return engine.transcribe_words(audio_path, language_code=language) or []
+    finally:
+        audio_path.unlink(missing_ok=True)
+
+
+def stamp_watermark_on_frame(frame: Path, watermark: Path, ffmpeg: str = "ffmpeg",
+                             width_frac: float = 0.42, top_frac: float = 0.03) -> bool:
+    """Pega el watermark sobre un PNG suelto, con la misma geometria que
+    `add_watermark`. En el camino FX el vertical va SIN watermark (lo pinta
+    Remotion como capa fija), asi que el fotograma de cierre hay que marcarlo
+    aparte o la miniatura saldria sin marca: no conforme."""
+    if not watermark.exists():
+        return False
+    wm_w = int(CANVAS_W * width_frac)
+    top = int(CANVAS_H * top_frac)
+    tmp = frame.with_name(frame.stem + "_wm.png")
+    fc = f"[1:v]scale={wm_w}:-1[wm];[0:v][wm]overlay=(W-w)/2:{top}"
+    subprocess.run([ffmpeg, "-y", "-i", str(frame), "-i", str(watermark),
+                    "-filter_complex", fc, str(tmp)], capture_output=True)
+    if tmp.exists() and tmp.stat().st_size > 0:
+        tmp.replace(frame)
+        return True
+    tmp.unlink(missing_ok=True)
+    return False
+
+
+def render_fx(out_path: Path, args, duration: float,
+              facecam) -> tuple[bool, Path | None]:
+    """Camino FX: manda el vertical al worker de Remotion para que pinte
+    subtitulos, overlay y watermark.
+
+    Devuelve (ok, clean_frame). Si ok es False hay que seguir por el camino ASS
+    de siempre: el worker no esta, rechazo el payload o fallo. Nunca deja el
+    clip a medias.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
+    try:
+        from app.services import fx_client  # noqa: E402
+    except Exception as exc:
+        print(f"[fx] no se pudo importar el cliente ({exc}); uso el camino ASS.", flush=True)
+        return False, None
+
+    if not fx_client.available():
+        print("[fx] worker no disponible; uso el camino ASS.", flush=True)
+        return False, None
+
+    watermark = Path(args.watermark) if args.watermark else None
+    if watermark and not watermark.exists():
+        # Mismo criterio que add_watermark: si se pidio watermark y no esta, no
+        # se genera el clip. Caer al camino ASS solo escondería el problema.
+        raise SystemExit(f"ERROR: watermark no encontrado ({watermark}). No se genera el clip.")
+
+    # Fotograma de cierre: se saca del vertical LIMPIO (sin subtitulos) y se le
+    # pega el watermark aparte, porque aqui el vertical aun no lo lleva.
+    clean_frame: Path | None = None
+    if args.endcard > 0:
+        clean_frame = out_path.with_suffix("").with_name(out_path.stem + "_ecclean.png")
+        frame_t = max(0.0, _probe_duration(out_path) * max(1, min(99, args.endcard)) / 100)
+        subprocess.run([args.ffmpeg, "-y", "-ss", f"{frame_t:.2f}", "-i", str(out_path),
+                        "-frames:v", "1", str(clean_frame)], check=True, capture_output=True)
+        if watermark and not stamp_watermark_on_frame(clean_frame, watermark, args.ffmpeg):
+            raise SystemExit("ERROR: no se pudo marcar el fotograma de cierre con el "
+                             "watermark de la campana. No se genera el clip.")
+
+    words: list[dict] = []
+    if args.subtitles:
+        print("[fx] transcribiendo palabras para los subtitulos animados...", flush=True)
+        words = fx_client.words_from_assemblyai(transcribe_words(out_path, args.ffmpeg, args.lang))
+        if not words:
+            print("[fx] sin palabras en la transcripcion; el clip saldra sin subtitulos.", flush=True)
+
+    overlay_text = args.overlay.strip()
+    # Zonas que ninguna capa puede tapar. El worker sube los subtitulos si hace
+    # falta para respetarlas.
+    safe_zones = [{"name": "yt_ui", "y0": 0.85, "y1": 1.00}]
+    if watermark:
+        safe_zones.insert(0, {"name": "watermark", "y0": 0.00, "y1": 0.14})
+    if overlay_text:
+        safe_zones.append({"name": "overlay", "y0": 0.58, "y1": 0.68})
+
+    payload = {
+        "fps": 30,
+        "duration": duration,
+        "preset": args.fx_preset,
+        "layout": {
+            "mode": "facecam" if facecam is not None else "split",
+            "top_ratio": args.top_ratio,
+        },
+        "words": words,
+        "safe_zones": safe_zones,
+    }
+    if overlay_text:
+        payload["overlay"] = {"text": overlay_text, "center_y": 0.63}
+    if watermark:
+        payload["watermark"] = {"required": True, "width_frac": 0.42, "top_frac": 0.03}
+    # OJO: `endcard` NO va en el payload. El worker aun no lo pinta (fase 13C) y
+    # rechazaria la peticion entera; aqui se anade despues con ffmpeg, igual que
+    # en el camino ASS.
+
+    fx_out = out_path.with_name(out_path.stem + "_fx.mp4")
+    print(f"[fx] renderizando con preset '{args.fx_preset}'...", flush=True)
+    result = fx_client.render(out_path, payload, fx_out, watermark=watermark)
+    if result is None:
+        if clean_frame:
+            clean_frame.unlink(missing_ok=True)
+        print("[fx] el worker no devolvio el clip; uso el camino ASS.", flush=True)
+        return False, None
+
+    fx_out.replace(out_path)
+    print("[fx] clip con motion graphics listo.", flush=True)
+    return True, clean_frame
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Render de clip vertical con subtitulos opcionales")
     parser.add_argument("--video", required=True)
@@ -412,6 +533,8 @@ def main() -> None:
     parser.add_argument("--watermark", default="", help="ruta a un PNG a superponer arriba centrado (watermark de campaña)")
     parser.add_argument("--facecam", default="", help="modo facecam: rect de la webcam 'x,y,w,h' normalizado (arriba la cara, abajo la pantalla)")
     parser.add_argument("--screen-zoom", type=float, default=1.4, help="zoom de la pantalla abajo en modo facecam (1.0 = completa)")
+    parser.add_argument("--fx-preset", default="none",
+                        help="preset de motion graphics del worker de FX ('none' = camino ASS de siempre)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
 
@@ -500,33 +623,46 @@ def main() -> None:
         follow_segments=follow_segments, facecam=facecam, screen_zoom=args.screen_zoom,
     )
 
-    # Watermark de la campaña (arriba centrado). Se aplica ANTES de sacar el
-    # fotograma de cierre para que también aparezca en la miniatura.
-    if args.watermark:
-        print("Anadiendo watermark de la campana (arriba centrado)...", flush=True)
-        add_watermark(out_path, Path(args.watermark), ffmpeg=args.ffmpeg)
+    duration = round(end - start, 3)
 
-    # Fotograma de cierre limpio: se saca AHORA (vertical sin karaoke ni overlay) para que
-    # la miniatura no arrastre subtitulos quemados. La duracion no cambia con los pasos
-    # siguientes, asi que el % apunta al mismo instante.
+    # Camino FX (motion graphics con Remotion). Pinta subtitulos, overlay y
+    # watermark en una sola pasada, con el watermark como capa fija que los
+    # zooms no escalan. Si no se puede, `fx_ok` es False y seguimos por el
+    # camino de siempre: NUNCA se queda un clip a medias.
+    fx_ok = False
     clean_frame: Path | None = None
-    if args.endcard > 0:
-        clean_frame = out_path.with_suffix("").with_name(out_path.stem + "_ecclean.png")
-        dur = _probe_duration(out_path)
-        frame_t = max(0.0, dur * max(1, min(99, args.endcard)) / 100)
-        subprocess.run([args.ffmpeg, "-y", "-ss", f"{frame_t:.2f}", "-i", str(out_path),
-                        "-frames:v", "1", str(clean_frame)], check=True, capture_output=True)
+    if args.fx_preset and args.fx_preset != "none":
+        fx_ok, clean_frame = render_fx(out_path, args, duration, facecam)
 
-    if args.subtitles:
-        print("Anadiendo subtitulos karaoke...", flush=True)
-        final = add_subtitles(out_path, ffmpeg=args.ffmpeg, language=args.lang)
-        if final != out_path:
-            final.replace(out_path)
+    if not fx_ok:
+        # Watermark de la campaña (arriba centrado). Se aplica ANTES de sacar el
+        # fotograma de cierre para que también aparezca en la miniatura.
+        if args.watermark:
+            print("Anadiendo watermark de la campana (arriba centrado)...", flush=True)
+            add_watermark(out_path, Path(args.watermark), ffmpeg=args.ffmpeg)
 
-    if args.overlay.strip():
-        print("Anadiendo texto fijo (overlay)...", flush=True)
-        burn_overlay(out_path, args.overlay, round(end - start, 3), ffmpeg=args.ffmpeg)
+        # Fotograma de cierre limpio: se saca AHORA (vertical sin karaoke ni overlay) para que
+        # la miniatura no arrastre subtitulos quemados. La duracion no cambia con los pasos
+        # siguientes, asi que el % apunta al mismo instante.
+        if args.endcard > 0:
+            clean_frame = out_path.with_suffix("").with_name(out_path.stem + "_ecclean.png")
+            dur = _probe_duration(out_path)
+            frame_t = max(0.0, dur * max(1, min(99, args.endcard)) / 100)
+            subprocess.run([args.ffmpeg, "-y", "-ss", f"{frame_t:.2f}", "-i", str(out_path),
+                            "-frames:v", "1", str(clean_frame)], check=True, capture_output=True)
 
+        if args.subtitles:
+            print("Anadiendo subtitulos karaoke...", flush=True)
+            final = add_subtitles(out_path, ffmpeg=args.ffmpeg, language=args.lang)
+            if final != out_path:
+                final.replace(out_path)
+
+        if args.overlay.strip():
+            print("Anadiendo texto fijo (overlay)...", flush=True)
+            burn_overlay(out_path, args.overlay, duration, ffmpeg=args.ffmpeg)
+
+    # El fotograma de cierre se anade igual por los dos caminos: el worker aun no
+    # lo pinta (fase 13C), asi que lo monta ffmpeg sobre el clip ya terminado.
     if args.endcard > 0:
         print(f"Anadiendo fotograma final con fadeout de audio (al {args.endcard}%)...", flush=True)
         add_fade_and_endcard(out_path, args.overlay or "", args.endcard, ffmpeg=args.ffmpeg, clean_frame=clean_frame)

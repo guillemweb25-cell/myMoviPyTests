@@ -24,6 +24,8 @@ def main() -> None:
     parser.add_argument("--transcript", required=True)
     parser.add_argument("--focus", default=None, choices=["left", "center", "right", "follow", "facecam"],
                         help="Encuadre global a aplicar a todos antes de renderizar")
+    parser.add_argument("--fx-preset", default=None,
+                        help="Preset de motion graphics global ('none' = camino ASS de siempre)")
     args = parser.parse_args()
 
     root = Path.cwd()
@@ -37,8 +39,17 @@ def main() -> None:
     # Si se pide un encuadre global, se re-renderizan también los ya hechos cuyo
     # encuadre NO coincide (para que el cambio se aplique a TODOS, no solo a los
     # pendientes). Sin encuadre global, solo los que faltan.
-    if args.focus:
-        pending = [c for c in clips if not _rendered(c) or c.get("focus") != args.focus]
+    # El preset de FX se trata igual: cambiarlo cambia como se ve el clip, asi
+    # que los ya renderizados con otro preset hay que rehacerlos.
+    def _stale(c):
+        if args.focus and c.get("focus") != args.focus:
+            return True
+        if args.fx_preset and (c.get("fxPreset") or "none") != args.fx_preset:
+            return True
+        return False
+
+    if args.focus or args.fx_preset:
+        pending = [c for c in clips if not _rendered(c) or _stale(c)]
     else:
         pending = [c for c in clips if not _rendered(c)]
     print(f"Clips a renderizar: {len(pending)} de {len(clips)}", flush=True)
@@ -58,6 +69,10 @@ def main() -> None:
         if args.focus and clip.get("focus") != args.focus:
             db.update_clip(cid, {"focus": args.focus})
             clip["focus"] = args.focus
+        # Aplica el preset de FX global.
+        if args.fx_preset and (clip.get("fxPreset") or "none") != args.fx_preset:
+            db.update_clip(cid, {"fx_preset": args.fx_preset})
+            clip["fxPreset"] = args.fx_preset
 
         video_rel = clip.get("videoPath") or ""
         if not video_rel:
@@ -85,6 +100,9 @@ def main() -> None:
             cmd += ["--overlay", clip["overlayText"]]
         if clip.get("endcardPercent"):
             cmd += ["--endcard", str(clip["endcardPercent"])]
+        fx_preset = clip.get("fxPreset") or "none"
+        if fx_preset != "none":
+            cmd += ["--fx-preset", fx_preset]
         try:
             blur_ids = [int(x) for x in json.loads(clip.get("blurPersons") or "[]")]
         except Exception:

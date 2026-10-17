@@ -296,11 +296,32 @@ También se añadieron ya `backend/app/services/fx_client.py` (con el fallback) 
   con `FX_SCALE` como segunda palanca (0.67 = 720x1280). Hay que subirla cuando
   la máquina mejore.
 
-**13B — Integración en clipping con fallback.** `fx_client.py`, `--fx-preset` en
+**13B — Integración en clipping con fallback. ✅ Implementado.** `fx_client.py`, `--fx-preset` en
 `render_clip.py`/`render_all.py`, migraciones, selector en la UI, watermark como capa
 fija.
 *Hecho cuando:* con worker → clip con FX y watermark intacto; worker apagado → clip
-ASS de siempre con watermark ffmpeg y aviso en el log.
+ASS de siempre con watermark ffmpeg y aviso en el log. **Verificado con un render
+real por los dos caminos**, comprobando el watermark en el clip y en el fotograma
+de cierre.
+
+**Decisiones de implementación:**
+
+- **El endcard lo sigue montando ffmpeg**, por los dos caminos. El worker aún no
+  lo pinta (13C) y rechazaría el payload entero, así que `endcard` NO se le
+  manda: el camino FX hace subtítulos, overlay y watermark, y
+  `add_fade_and_endcard` añade el cierre después, igual que siempre.
+- Como en el camino FX el vertical va SIN watermark (lo pinta Remotion), el
+  fotograma de cierre se marca aparte con `stamp_watermark_on_frame`, con la
+  misma geometría que `add_watermark`. Sin eso la miniatura saldría sin marca.
+- El preset se valida siempre contra `GET /api/fx/presets` (`_valid_fx_preset`):
+  un preset guardado cuando el worker estaba vivo no rompe nada si luego se
+  apaga, simplemente cae a `none`.
+- Precedencia del preset: el del clip, si no el de la campaña
+  (`fxPresetDefault`), si no `none`.
+- En `render_all.py`, cambiar el preset global re-renderiza los clips ya hechos
+  que tuvieran otro, igual que ya hacía el encuadre.
+- Columnas nuevas: `clips.fx_preset` y `campaigns.fx_preset_default`. Las de
+  `hook` y `emphasis_json` se dejan para 13C, cuando haya código que las use.
 
 **13C — Efectos completos.** Preset `hormozi`, hook cinético, punch zooms (respetando
 `facecam`), emojis, barra de progreso, endcard animado, SFX y ducking. `hook` y
