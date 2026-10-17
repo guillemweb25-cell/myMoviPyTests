@@ -74,6 +74,17 @@ Docker app (Debian)                         FX Worker (Node + Remotion, CPU)
   es CPU; la máquina Windows ya está cargada con la GPU (WAN, ASD, YOLO) y meter ahí
   otro worker solo añade los problemas de despliegue conocidos (scp que trunca,
   watcher sobre bind-mount). Solo se movería si la CPU del Debian se queda corta.
+
+  > **Revisado el 2026-10-17 (aparcado, no decidido).** Medido: el Debian va al
+  > tope de RAM (11,7 de 12 GB) y en el Proxmox las VMs suman 32,4 GB asignados
+  > sobre 30 GB físicos, así que no se le puede dar más. El Windows tiene 32 GB
+  > con ~12 libres. Si el FX acaba siendo el cuello de botella, **mover solo el
+  > worker** (no la app): corre nativo en Windows sin Docker (`npm ci` +
+  > `node src/index.ts`), así que no aplican los problemas de despliegue de
+  > arriba, que eran por los modelos grandes y el `--reload` de los workers de
+  > GPU. Bastaría con `FX_WORKER_URL=http://192.168.1.46:8910`. Migrar la app
+  > entera se descartó: 50 contenedores Linux, nginx, certificados y dominio
+  > público, y en WSL2 los bind mounts con vídeo van lentos.
 - **Sin `--reload`** en el worker (lección del `person_worker`). Deploy = rebuild + `up -d`.
 - **Cliente:** `backend/app/services/fx_client.py`. Sube los ficheros, descarga el MP4,
   devuelve `None` ante timeout o error y **reintenta 1 vez**, como `person_client.blur`.
