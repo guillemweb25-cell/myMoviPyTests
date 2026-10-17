@@ -50,6 +50,7 @@ Subida a YouTube (SEO + compliance) → marcar "submiteado a Whop"
 5. [`05-frontend.md`](05-frontend.md) — estructura de la UI de clipping.
 6. [`06-fases.md`](06-fases.md) — **hoja de ruta por fases para reconstruirlo** (empieza aquí si vas a rehacerlo).
 7. [`07-asd-active-speaker.md`](07-asd-active-speaker.md) — encuadre "Seguir al hablante" (worker de GPU + TalkNet-ASD).
+8. [`08-fx-worker-motion-graphics.md`](08-fx-worker-motion-graphics.md) — capa de motion graphics para clips y reels (worker de Remotion, opcional con fallback).
 
 ## Cómo se ejecuta (estado actual)
 

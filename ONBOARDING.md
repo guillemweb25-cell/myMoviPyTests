@@ -191,7 +191,8 @@ reusando guion+voz sin rehacer todo). ⚠️ Ver §11 (Content ID).
 
 ## 9. Clipping / Campañas (base histórica)
 
-Ver `doc/03-pipeline-y-servicios.md` y `doc/07-asd-active-speaker.md`. Resumen: campañas por canal,
+Ver `doc/03-pipeline-y-servicios.md`, `doc/07-asd-active-speaker.md` y
+`doc/08-fx-worker-motion-graphics.md` (motion graphics, opcional). Resumen: campañas por canal,
 descarga+transcripción del vídeo fuente, `detect_clips` propone candidatos, edición (enfoque
 left/center/right/follow/**facecam**, zoom, blur de personas semi-auto), render vertical con
 subtítulos, SEO por clip y subida. Duración por defecto de campaña nueva: 40s.
