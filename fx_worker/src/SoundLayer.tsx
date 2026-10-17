@@ -13,6 +13,15 @@ type Props = {
   duck: boolean;
 };
 
+/**
+ * Nivel de mezcla de los efectos. Los ficheros estan normalizados a -3 dBFS, asi
+ * que esto es lo unico que hay que tocar para subirlos o bajarlos.
+ *
+ * 0.55 deja el whoosh unos 8 dB por debajo del pico de la voz: se oye por encima
+ * del habla sin taparla. Mas bajo y se pierde (con 0.12 no se distinguia nada).
+ */
+const SFX_VOLUME = 0.55;
+
 /** Cuanto baja la musica mientras hay voz. */
 const DUCK_FACTOR = 0.28;
 /** Margen antes y despues de cada palabra, para que no bombee. */
@@ -60,12 +69,12 @@ export const SoundLayer: React.FC<Props> = ({
       )}
       {whooshUrl && zoomTimes.map((t, i) => (
         <Sequence key={`w${i}`} from={Math.round(t * fps)} durationInFrames={Math.round(0.5 * fps)}>
-          <Audio src={whooshUrl} />
+          <Audio src={whooshUrl} volume={SFX_VOLUME} />
         </Sequence>
       ))}
       {popUrl && popTimes.map((t, i) => (
         <Sequence key={`p${i}`} from={Math.round(t * fps)} durationInFrames={Math.round(0.2 * fps)}>
-          <Audio src={popUrl} />
+          <Audio src={popUrl} volume={SFX_VOLUME} />
         </Sequence>
       ))}
     </>

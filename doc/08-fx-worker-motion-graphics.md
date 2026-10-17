@@ -366,6 +366,11 @@ ducking.
 - **Endcard animado**: lo sigue montando ffmpeg sobre el clip terminado.
 - **Hook y música no están en la UI**: solo por línea de comandos
   (`--fx-hook`, `--fx-music`). Desde la web salen subtítulos, zooms, SFX y barra.
+- **Falta banco de música para clips.** El de `backend/assets/music/` es el de
+  Macetas/Huevos/Mariposas: suena infantil y no pega en un clip de pódcast o
+  político. Guillem generará pistas con Suno; hasta entonces `--fx-music` queda
+  sin usar. Cuando las haya, conviene separarlas (p. ej. `music/clips/`) en vez
+  de mezclarlas con las de las plantas, y elegir la carpeta según la pestaña.
 
 **13D — Compliance y QA.** `safe_zones` desde las reglas de campaña,
 `fx_preset_default` por campaña, revisión de que watermark y overlay nunca quedan
