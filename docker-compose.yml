@@ -11,6 +11,9 @@ services:
     volumes:
       - .:/workspace
     working_dir: /workspace/backend
+    restart: unless-stopped         # sin esto no vuelve tras un reboot y el
+                                    # frontend (nginx) entra en bucle: no
+                                    # resuelve el upstream "backend".
     # Actualiza yt-dlp en cada arranque (sus extractores se rompen cada pocas
     # semanas) y garantiza curl_cffi para la impersonation de navegador que
     # exigen algunos sitios (Cloudflare / 403), antes de levantar la API.
