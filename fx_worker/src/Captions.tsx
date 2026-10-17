@@ -78,7 +78,11 @@ export const Captions: React.FC<Props> = ({ words, preset, safeZones, overlayCen
         flexWrap: "wrap",
         justifyContent: "center",
         alignItems: "center",
-        gap: `${fontSize * 0.22}px`,
+        // El "pop" de la palabra activa se hace con transform, que NO ocupa sitio
+        // en el layout: la palabra ampliada se sale de su caja e invade a la
+        // vecina. El hueco reserva ese crecimiento (media palabra tipo de ~4,2em
+        // a cada lado), así que con activeScale 1 queda el hueco base de siempre.
+        gap: `${fontSize * (0.22 + 2.1 * (preset.activeScale - 1))}px`,
         padding: `0 ${width * 0.07}px`,
         fontFamily: preset.fontFamily,
         fontSize,
