@@ -32,6 +32,10 @@ Orden de pasos:
      - **Arriba** (`top_ratio`): recorte enfocado del vídeo. `scale=…force_original_aspect_ratio=increase,crop=…:{x_expr}:(ih-oh)/2`.
        `focus` → `x_expr`: left `0`, center `(iw-ow)/2`, right `iw-ow`. `zoom` amplía el recorte.
      - **Abajo** (resto): la escena COMPLETA sin recortar, con letterbox (`force_original_aspect_ratio=decrease,pad=…:color=black`).
+   - Justo después se guarda una copia **`clip_<id>_raw.mp4`** (encuadre + blur, sin
+     subtítulos, overlay, watermark, FX ni cierre). El API la expone como `rawPath` y la
+     tarjeta muestra **"Descargar sin subtítulos"** (útil para pruebas). Solo existe en
+     clips generados a partir de este cambio: los antiguos hay que regenerarlos.
 2. **Extraer fotograma de cierre LIMPIO** (si `--endcard > 0`): se saca AHORA del
    vertical (antes de quemar karaoke/overlay) al `endcard%`, para que la miniatura
    no arrastre subtítulos. Se pasa luego como `clean_frame`.

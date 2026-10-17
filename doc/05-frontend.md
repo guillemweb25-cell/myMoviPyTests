@@ -78,4 +78,4 @@ Lista de campañas del canal. Cada tarjeta muestra el **progreso** (`clipStats`:
   `fileUrl(path)` para recursos, `streamJobLog` (EventSource).
 - `types.ts`: `Channel`, `Campaign`, `CampaignRules`, `ClipCandidate`, `ClipSource`, `Job`, …
   `ClipCandidate` incluye `focus, zoom, topRatio, subtitles, overlayText, endcardPercent,
-  submitted, uploadedAt, seoTitle/Description/Tags, rendered, uploaded, youtubeUrl`.
+  submitted, uploadedAt, seoTitle/Description/Tags, rendered, rawPath, uploaded, youtubeUrl`.

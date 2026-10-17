@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -705,6 +706,13 @@ def main() -> None:
     )
 
     duration = round(end - start, 3)
+
+    # Copia "raw" del vertical recien compuesto (encuadre y blur, pero sin
+    # subtitulos, overlay, watermark, FX ni cierre), para descargarla y hacer
+    # pruebas. El API la expone como `rawPath` si existe.
+    raw_path = out_path.with_name(out_path.stem + "_raw.mp4")
+    shutil.copyfile(out_path, raw_path)
+    print(f"Vertical sin subtitulos: {raw_path}", flush=True)
 
     # Camino FX (motion graphics con Remotion). Pinta subtitulos, overlay y
     # watermark en una sola pasada, con el watermark como capa fija que los

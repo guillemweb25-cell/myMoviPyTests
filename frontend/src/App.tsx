@@ -2637,6 +2637,9 @@ export default function App() {
                         {clip.rendered && clip.renderedPath && (
                           <a className="panel-link" href={api.fileUrl(clip.renderedPath)} target="_blank" rel="noreferrer">Ver / Descargar</a>
                         )}
+                        {clip.rendered && clip.rawPath && (
+                          <a className="panel-link" href={api.fileUrl(clip.rawPath)} download title="Vertical con encuadre y blur, sin subtítulos, texto fijo, watermark ni cierre">Descargar sin subtítulos</a>
+                        )}
                         {clip.rendered && !clip.uploaded && (
                           <>
                             <select value={uploadPrivacy} onChange={(e) => setUploadPrivacy(e.target.value)} style={{ padding: '8px 10px', borderRadius: 8 }}>

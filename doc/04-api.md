@@ -60,7 +60,7 @@ el frontend detecta esos params y hace `POST /api/youtube/finish`.
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | POST | `/api/clips/detect` | `{transcriptPath, channelId, parts, clipsPerPart, targetDuration}` → detecta y guarda |
-| GET | `/api/clips/list?transcriptPath=` | clips guardados (con `rendered`/`uploaded`) |
+| GET | `/api/clips/list?transcriptPath=` | clips guardados (con `rendered`/`uploaded` y `rawPath`: vertical sin subtítulos, o `null`) |
 | PATCH | `/api/clips/{id}/trim` | `{start, end}` |
 | PATCH | `/api/clips/{id}/settings` | `{focus, zoom, topRatio, subtitles, overlayText, endcardPercent}` |
 | POST | `/api/clips/{id}/render` | render de UN clip (job) |

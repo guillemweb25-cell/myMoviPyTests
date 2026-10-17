@@ -108,6 +108,7 @@ export type ClipCandidate = {
   topRatio: number
   subtitles: boolean
   renderedPath?: string
+  rawPath?: string | null
   youtubeUrl?: string
   rendered?: boolean
   uploaded?: boolean

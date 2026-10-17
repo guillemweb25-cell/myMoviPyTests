@@ -1174,6 +1174,9 @@ def _clip_manual_blur(clip: dict) -> list[list[float]]:
 def _annotate_clip(clip: dict) -> dict:
     rendered_path = clip.get("renderedPath") or ""
     clip["rendered"] = bool(rendered_path) and (ROOT_DIR / rendered_path).exists()
+    # Vertical sin subtitulos ni overlay (lo deja render_clip junto al final).
+    raw_rel = str(Path(rendered_path).with_name(Path(rendered_path).stem + "_raw.mp4")) if rendered_path else ""
+    clip["rawPath"] = raw_rel if raw_rel and (ROOT_DIR / raw_rel).exists() else None
     clip["uploaded"] = bool(clip.get("youtubeUrl"))
     # ¿Hay detección de personas cacheada para este tramo? (para restaurar el panel
     # al recargar sin volver a detectar).
