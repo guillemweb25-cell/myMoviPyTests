@@ -196,6 +196,10 @@ export const api = {
     postJson<{ focusSegments: unknown }>(`/api/clips/${clipId}/focus-plan`, { segments }),
   addManualClip: (payload: { transcriptPath: string; start: number; end: number; title?: string; channelId?: number | null }) =>
     postJson<ClipCandidate>('/api/clips/manual', payload),
+  combineClips: (clipIds: string[], targetDuration: number) =>
+    postJson<ClipCandidate>('/api/clips/combine', { clipIds, targetDuration }),
+  updateClipSegments: (clipId: string, segments: [number, number][]) =>
+    patchJson<ClipCandidate>(`/api/clips/${clipId}/segments`, { segments }),
   trimClip: (clipId: string, start: number, end: number) =>
     patchJson<ClipCandidate>(`/api/clips/${clipId}/trim`, { start, end }),
   renderClip: (clipId: string) => postJson<{ job: Job; renderedPath: string }>(`/api/clips/${clipId}/render`, {}),

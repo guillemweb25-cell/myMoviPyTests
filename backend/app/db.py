@@ -166,6 +166,9 @@ CLIP_MIGRATIONS = [
     "ALTER TABLE clips ADD COLUMN fx_preset TEXT DEFAULT 'none'",
     # Clips añadidos a mano (inicio/fin): re-detectar NO los borra.
     "ALTER TABLE clips ADD COLUMN manual INTEGER DEFAULT 0",
+    # Clip combinado: fragmentos [[start, end], ...] del video fuente (JSON). Su
+    # video_path apunta al montaje ya unido y start/end son relativos a el.
+    "ALTER TABLE clips ADD COLUMN segments TEXT DEFAULT ''",
 ]
 
 
@@ -287,6 +290,7 @@ def _clip_to_dict(row: sqlite3.Row) -> dict:
         "manualBlur": (row["manual_blur"] if "manual_blur" in row.keys() else "") or "",
         "fxPreset": (row["fx_preset"] if "fx_preset" in row.keys() else "") or "none",
         "manual": bool(row["manual"]) if "manual" in row.keys() else False,
+        "segments": json.loads(row["segments"]) if "segments" in row.keys() and row["segments"] else None,
     }
 
 
@@ -336,12 +340,12 @@ def add_manual_clip(clip: dict) -> None:
             """
             INSERT INTO clips (id, transcript_path, video_path, channel_id, start, end,
                                title, reason, score, transcript, created_at, endcard_percent,
-                               overlay_text, manual)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 50, ?, 1)
+                               overlay_text, manual, segments)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 50, ?, 1, ?)
             """,
             (clip["id"], clip["transcriptPath"], clip["videoPath"], clip["channelId"],
              clip["start"], clip["end"], clip["title"], clip["reason"], clip["transcript"],
-             clip["createdAt"], clip.get("overlayText", "")),
+             clip["createdAt"], clip.get("overlayText", ""), clip.get("segments", "")),
         )
 
 
@@ -366,7 +370,7 @@ def update_clip(clip_id: str, fields: dict) -> dict | None:
     allowed = {"focus", "zoom", "top_ratio", "subtitles", "rendered_path", "youtube_url", "channel_id",
                "seo_title", "seo_description", "seo_tags", "overlay_text", "youtube_privacy", "start", "end",
                "endcard_percent", "submitted", "uploaded_at", "blur_persons", "focus_person", "focus_segments",
-               "manual_blur", "fx_preset"}
+               "manual_blur", "fx_preset", "segments", "video_path", "transcript"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)

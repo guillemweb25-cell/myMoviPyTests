@@ -110,6 +110,8 @@ export type ClipCandidate = {
   renderedPath?: string
   rawPath?: string | null
   manual?: boolean
+  /** Clip combinado: fragmentos [inicio, fin] del vídeo fuente, en orden de montaje. */
+  segments?: [number, number][] | null
   youtubeUrl?: string
   rendered?: boolean
   uploaded?: boolean

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import signal
@@ -1163,6 +1164,127 @@ def add_manual_clip(payload: ManualClipRequest) -> dict:
         "createdAt": now_iso(),
         "overlayText": overlay,
     })
+    return _annotate_clip(db.get_clip(clip_id))
+
+
+class CombineClipsRequest(BaseModel):
+    clipIds: list[str] = Field(..., min_length=2)
+    targetDuration: int = Field(45, ge=10, le=170)
+
+
+class ClipSegmentsRequest(BaseModel):
+    segments: list[list[float]] = Field(..., min_length=1)
+
+
+def _materialize_combo(clip_id: str, source_rel: str, segments: list[list[float]]) -> tuple[str, float]:
+    """Une los fragmentos (corte seco) en <carpeta fuente>/combos/<id>_<hash>/combo.mp4.
+    Cada version de fragmentos va en su carpeta: asi sus caches (personas, ASD, render)
+    no se mezclan con las de otra version."""
+    from .services.clip_combiner import concat_segments
+
+    digest = hashlib.md5(json.dumps(segments).encode()).hexdigest()[:8]
+    out = (ROOT_DIR / source_rel).parent / "combos" / f"{clip_id}_{digest}" / "combo.mp4"
+    if not out.exists():
+        try:
+            concat_segments(ROOT_DIR / source_rel, segments, out)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return str(out.relative_to(ROOT_DIR)), round(sum(e - s for s, e in segments), 3)
+
+
+def _validate_segments(segments: list[list[float]], duration: float) -> list[list[float]]:
+    clean = []
+    for seg in segments:
+        if len(seg) != 2:
+            raise HTTPException(status_code=400, detail="Cada fragmento es [inicio, fin].")
+        s, e = round(float(seg[0]), 3), round(float(seg[1]), 3)
+        if s < 0 or e - s < 0.5:
+            raise HTTPException(status_code=400, detail=f"Fragmento no valido: {s}-{e} (minimo 0,5 s).")
+        if duration and e > duration + 0.5:
+            raise HTTPException(status_code=400, detail=f"El fragmento {s:.0f}-{e:.0f}s pasa de la duracion del video.")
+        clean.append([s, e])
+    return clean
+
+
+@app.post("/api/clips/combine")
+def combine_clips_endpoint(payload: CombineClipsRequest) -> dict:
+    """La IA monta un short con fragmentos de los clips elegidos (corte seco). Sale
+    como un clip nuevo; los originales no se tocan."""
+    from .services.clip_combiner import combine_clips, segments_text
+
+    clips = [db.get_clip(cid) for cid in payload.clipIds]
+    if any(c is None for c in clips):
+        raise HTTPException(status_code=404, detail="Algun clip no existe")
+    if any(c.get("segments") for c in clips):
+        raise HTTPException(status_code=400, detail="No se puede combinar un clip que ya es combinado.")
+    transcript_rel = clips[0]["transcriptPath"]
+    if any(c["transcriptPath"] != transcript_rel for c in clips):
+        raise HTTPException(status_code=400, detail="Los clips tienen que ser del mismo video.")
+    transcript = resolve_within_root(transcript_rel)
+    source_rel = _sibling_video(transcript)
+    if not source_rel:
+        raise HTTPException(status_code=400, detail="No hay video junto a la transcripcion")
+
+    # En el orden del video: el modelo decide el orden del montaje.
+    ranges = sorted((float(c["start"]), float(c["end"])) for c in clips)
+    try:
+        result = combine_clips(transcript, ranges, target_dur=payload.targetDuration)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Fallo la combinacion: {exc}") from exc
+
+    clip_id = uuid.uuid4().hex[:12]
+    segments = result["segments"]
+    video_rel, duration = _materialize_combo(clip_id, source_rel, segments)
+    campaign = db.get_campaign_by_transcript(transcript_rel)
+    rules = (campaign or {}).get("rules") or {}
+    overlay = (rules.get("onScreenText") or "").strip() or (rules.get("captionRequired") or "").strip()
+    db.add_manual_clip({
+        "id": clip_id,
+        "transcriptPath": transcript_rel,
+        "videoPath": video_rel,
+        "channelId": clips[0].get("channelId") or channel_id_from_path(source_rel),
+        "start": 0.0,
+        "end": duration,
+        "title": result["title"] or " + ".join(c["title"] for c in clips)[:90],
+        "reason": "Combinado: " + (result["reason"] or ", ".join(c["title"] for c in clips)),
+        "transcript": segments_text(transcript, segments),
+        "createdAt": now_iso(),
+        "overlayText": overlay,
+        "segments": json.dumps(segments),
+    })
+    return _annotate_clip(db.get_clip(clip_id))
+
+
+@app.patch("/api/clips/{clip_id}/segments")
+def update_clip_segments(clip_id: str, payload: ClipSegmentsRequest) -> dict:
+    """Cambia los fragmentos de un clip combinado (en segundos del video fuente) y
+    vuelve a montar el video. El render anterior deja de valer."""
+    from .services.clip_combiner import segments_text
+
+    clip = db.get_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip no encontrado")
+    if not clip.get("segments"):
+        raise HTTPException(status_code=400, detail="Este clip no es combinado.")
+    if clip.get("youtubeUrl"):
+        raise HTTPException(status_code=400, detail="El clip ya esta subido: no se pueden cambiar sus fragmentos.")
+    transcript = resolve_within_root(clip["transcriptPath"])
+    source_rel = _sibling_video(transcript)
+    if not source_rel:
+        raise HTTPException(status_code=400, detail="No hay video junto a la transcripcion")
+    segments = _validate_segments(payload.segments, _video_duration(ROOT_DIR / source_rel))
+
+    old_dir = (ROOT_DIR / clip["videoPath"]).parent
+    video_rel, duration = _materialize_combo(clip_id, source_rel, segments)
+    db.update_clip(clip_id, {
+        "video_path": video_rel, "start": 0.0, "end": duration,
+        "segments": json.dumps(segments), "transcript": segments_text(transcript, segments),
+        "rendered_path": "",
+    })
+    # La version anterior (montaje, render y caches) ya no la usa nadie.
+    new_dir = (ROOT_DIR / video_rel).parent
+    if old_dir != new_dir and old_dir.parent.name == "combos":
+        shutil.rmtree(old_dir, ignore_errors=True)
     return _annotate_clip(db.get_clip(clip_id))
 
 

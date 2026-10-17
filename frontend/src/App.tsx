@@ -24,6 +24,23 @@ function formatSeconds(value: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
+/** Como formatSeconds pero sin perder décimas (para editar fragmentos sin redondear). */
+function formatPrecise(value: number): string {
+  const v = Math.max(0, Math.round(value * 10) / 10)
+  const minutes = Math.floor(v / 60)
+  const seconds = (v - minutes * 60).toFixed(1).replace(/\.0$/, '')
+  return `${minutes}:${seconds.padStart(seconds.includes('.') ? 4 : 2, '0')}`
+}
+
+function formatSegments(segments: [number, number][]): string {
+  return segments.map(([a, b]) => `${formatPrecise(a)}-${formatPrecise(b)}`).join(', ')
+}
+
+/** Tramos del vídeo fuente que usa un clip (varios si es combinado). */
+function sourceRanges(c: ClipCandidate): [number, number][] {
+  return c.segments?.length ? c.segments : [[c.start, c.end]]
+}
+
 /** "2:17", "1:02:17", "137" o "2:17.5" -> segundos. null si no se entiende. */
 function parseTimecode(value: string): number | null {
   const v = value.trim().replace(',', '.')
@@ -83,6 +100,11 @@ export default function App() {
   const [manualEnd, setManualEnd] = useState('')
   const [manualTitle, setManualTitle] = useState('')
   const [isAddingManual, setIsAddingManual] = useState(false)
+  const [combineIds, setCombineIds] = useState<string[]>([])
+  const [combineTarget, setCombineTarget] = useState(45)
+  const [isCombining, setIsCombining] = useState(false)
+  const [segmentDrafts, setSegmentDrafts] = useState<Record<string, string>>({})
+  const [savingSegmentsId, setSavingSegmentsId] = useState<string | null>(null)
   const [isDownloadingThumbnail, setIsDownloadingThumbnail] = useState(false)
   const [isConvertingImageToPng, setIsConvertingImageToPng] = useState(false)
   const [isDetectingInsertedFrames, setIsDetectingInsertedFrames] = useState(false)
@@ -1058,6 +1080,49 @@ export default function App() {
       handleApiError(e)
     } finally {
       setIsAddingManual(false)
+    }
+  }
+
+  async function handleCombineClips() {
+    if (combineIds.length < 2) return
+    setIsCombining(true)
+    setError('')
+    try {
+      const clip = await api.combineClips(combineIds, combineTarget)
+      setClipCandidates((prev) => [clip, ...prev])
+      setCombineIds([])
+      goToClip(clip.id)
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setIsCombining(false)
+    }
+  }
+
+  async function handleSaveSegments(clip: ClipCandidate) {
+    const draft = segmentDrafts[clip.id]
+    if (draft === undefined) return
+    const segments: [number, number][] = []
+    for (const part of draft.split(',').map((p) => p.trim()).filter(Boolean)) {
+      const [a, b] = part.split(/\s*[-–]\s*/)
+      const s = parseTimecode(a || ''), e = parseTimecode(b || '')
+      if (s === null || e === null || e - s < 0.5) {
+        setError(`Fragmento no válido: "${part}". Formato: 20:06-20:14, 50:00.5-50:10`)
+        return
+      }
+      segments.push([s, e])
+    }
+    if (!segments.length) return
+    setSavingSegmentsId(clip.id)
+    setError('')
+    try {
+      const updated = await api.updateClipSegments(clip.id, segments)
+      setClipCandidates((prev) => prev.map((c) => (c.id === clip.id ? updated : c)))
+      setSegmentDrafts((prev) => { const next = { ...prev }; delete next[clip.id]; return next })
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setSavingSegmentsId(null)
     }
   }
 
@@ -2325,7 +2390,7 @@ export default function App() {
                       const CELLS = Math.min(240, Math.max(60, Math.round(dur / 30)))
                       const cellSec = dur / CELLS
                       // Unión de rangos clipeados (sin contar solapes) para % y minutos restantes.
-                      const sorted = clipCandidates.map((c) => [c.start, c.end] as [number, number]).sort((a, b) => a[0] - b[0])
+                      const sorted = clipCandidates.flatMap(sourceRanges).sort((a, b) => a[0] - b[0])
                       let union = 0, curS = -1, curE = -1
                       for (const [s, e] of sorted) {
                         if (s > curE) { union += Math.max(0, curE - curS); curS = s; curE = e }
@@ -2338,7 +2403,7 @@ export default function App() {
                         const t0 = i * cellSec, t1 = (i + 1) * cellSec
                         let cov = 0, count = 0
                         for (const c of clipCandidates) {
-                          const ov = Math.min(t1, c.end) - Math.max(t0, c.start)
+                          const ov = sourceRanges(c).reduce((acc, [s, e]) => acc + Math.max(0, Math.min(t1, e) - Math.max(t0, s)), 0)
                           if (ov > 0) { cov += ov; count++ }
                         }
                         const level = cov / cellSec < 0.05 ? 0 : Math.min(4, count)
@@ -2355,7 +2420,7 @@ export default function App() {
                                 key={c.i}
                                 className={`cov-cell l${c.level}`}
                                 title={`${formatSeconds(c.t0)}–${formatSeconds(c.t1)} · ${c.count} clip${c.count !== 1 ? 's' : ''}`}
-                                onClick={() => { const cl = clipCandidates.find((x) => Math.min(c.t1, x.end) > Math.max(c.t0, x.start)); if (cl) goToClip(cl.id) }}
+                                onClick={() => { const cl = clipCandidates.find((x) => sourceRanges(x).some(([s, e]) => Math.min(c.t1, e) > Math.max(c.t0, s))); if (cl) goToClip(cl.id) }}
                               />
                             ))}
                           </div>
@@ -2592,16 +2657,42 @@ export default function App() {
                       )
                     })()}
 
+                    {combineIds.length > 0 && (
+                      <div className="campaign-status" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <span>🔗 {combineIds.length} clip{combineIds.length !== 1 ? 's' : ''} para combinar{combineIds.length < 2 ? ' — elige al menos otro' : ''}</span>
+                        <label className="field" style={{ maxWidth: 140, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <span>Duración (s)</span>
+                          <input type="number" min={10} max={170} value={combineTarget} onChange={(e) => setCombineTarget(Number(e.target.value) || 45)} style={{ width: 70 }} />
+                        </label>
+                        <button className="primary" disabled={isCombining || combineIds.length < 2} onClick={handleCombineClips}>
+                          {isCombining ? 'Montando…' : '🔗 Combinar con IA'}
+                        </button>
+                        <button disabled={isCombining} onClick={() => setCombineIds([])}>Cancelar</button>
+                        <span className="help">La IA monta un short nuevo con fragmentos de estos clips, con corte seco. Los originales no se tocan.</span>
+                      </div>
+                    )}
+
                     <div className="jobs-list clip-list" style={{ maxHeight: 'unset' }}>
                   {clipCandidates.map((clip) => (
                     <article key={clip.id} id={`clip-${clip.id}`} className="clip-card">
                       <div className="viewer-header">
                         <div>
                           <h3 style={{ margin: 0 }}>
-                            <span className="status completed" style={{ marginRight: 8 }}>{clip.manual ? '✋ manual' : clip.score}</span>
+                            {!clip.segments?.length && (
+                              <input
+                                type="checkbox"
+                                title="Elegir para combinar con otros clips"
+                                checked={combineIds.includes(clip.id)}
+                                onChange={(e) => setCombineIds((prev) => e.target.checked ? [...prev, clip.id] : prev.filter((id) => id !== clip.id))}
+                                style={{ marginRight: 8, verticalAlign: 'middle' }}
+                              />
+                            )}
+                            <span className="status completed" style={{ marginRight: 8 }}>{clip.segments?.length ? '🔗 combinado' : clip.manual ? '✋ manual' : clip.score}</span>
                             {clip.title || 'Clip'}
                           </h3>
-                          <p className="help">{formatSeconds(clip.start)} → {formatSeconds(clip.end)} ({Math.round(clip.duration)}s)</p>
+                          {clip.segments?.length
+                            ? <p className="help">{clip.segments.length} fragmentos ({Math.round(clip.duration)}s)</p>
+                            : <p className="help">{formatSeconds(clip.start)} → {formatSeconds(clip.end)} ({Math.round(clip.duration)}s)</p>}
                           <div className="actions-row" style={{ gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
                             <span className="help">Inicio</span>
                             <button className="link-btn" onClick={() => handleTrimClip(clip, -5, 0)}>−5s</button>
@@ -2621,6 +2712,24 @@ export default function App() {
                       </div>
 
                       <p className="card-detail">{clip.reason}</p>
+
+                      {!!clip.segments?.length && (
+                        <div className="actions-row" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                          <label className="field" style={{ flex: 1, minWidth: 260 }}>
+                            <span>Fragmentos (en orden, tiempos del vídeo original)</span>
+                            <input
+                              value={segmentDrafts[clip.id] ?? formatSegments(clip.segments)}
+                              onChange={(e) => setSegmentDrafts((prev) => ({ ...prev, [clip.id]: e.target.value }))}
+                              disabled={clip.uploaded}
+                            />
+                          </label>
+                          {segmentDrafts[clip.id] !== undefined && segmentDrafts[clip.id] !== formatSegments(clip.segments) && (
+                            <button className="primary" disabled={savingSegmentsId === clip.id} onClick={() => handleSaveSegments(clip)}>
+                              {savingSegmentsId === clip.id ? 'Montando…' : 'Aplicar fragmentos'}
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       <div className="form-grid">
                         <label className="field">

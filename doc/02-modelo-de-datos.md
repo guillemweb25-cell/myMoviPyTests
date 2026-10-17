@@ -115,5 +115,12 @@ Funciones clave en `db.py`:
   Inserta `endcard_percent=50` por defecto.
 - `add_manual_clip(clip)`: clip con inicio/fin puestos a mano (`manual=1`, `score=0`).
   `load_clips` los devuelve primero (`ORDER BY manual DESC, score DESC`).
+- **Clips combinados** (`segments`, JSON `[[s,e],...]` del vídeo fuente en orden de
+  montaje): son `manual=1`, su `video_path` apunta al montaje ya unido
+  (`<carpeta fuente>/combos/<id>_<hash>/combo.mp4`) y `start/end` son relativos a él
+  (`0 … duración`). Así encuadre, blur, ASD, render, 16:9 y recorte funcionan sin
+  cambios. Cada versión de fragmentos va en su carpeta para no mezclar cachés; al
+  editarlos se borra la anterior. El vídeo fuente se saca de la transcripción
+  (`_sibling_video`).
 - `load_clips(transcript_path)`, `get_clip(id)`, `update_clip(id, fields)` (con set `allowed`).
 - `get_campaign_by_transcript(path)` para recuperar las reglas de compliance al subir.

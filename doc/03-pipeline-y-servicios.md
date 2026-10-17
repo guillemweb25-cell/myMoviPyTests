@@ -28,6 +28,18 @@
 - Agrega todos y ordena cronológicamente por `start`.
 - Cada clip: `{start, end, title, reason, score, transcript}`.
 
+
+## Combinar clips — `services/clip_combiner.py`
+
+`combine_clips(subtitles_path, ranges, target_dur)`: con los clips elegidos (mismo
+vídeo), numera sus cues y le pide a OpenAI un montaje (gancho → desarrollo → cierre)
+como **rangos de cues**, no como tiempos: corta siempre en límite de frase y no puede
+inventar marcas. Se descartan los rangos que salgan de los clips o mezclen dos. Al
+modelo se le da lo que dura cada cue; si aun así pasa de `target_dur + 15`, se le
+pide **una vez** que recorte. `concat_segments` une los fragmentos con **corte seco**
+(un `-ss … -i` por fragmento + `concat`; 10 ms de fundido de audio en cada borde para
+evitar chasquidos, inaudible). Probado: 6 cortes, desfase A/V de 35 ms.
+
 ## Render de UN clip — `render_clip.py`
 
 Orquesta el pipeline completo de un short. Argumentos: `--video --start --end --out

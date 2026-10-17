@@ -61,6 +61,8 @@ el frontend detecta esos params y hace `POST /api/youtube/finish`.
 |--------|------|-------------|
 | POST | `/api/clips/detect` | `{transcriptPath, channelId, parts, clipsPerPart, targetDuration}` → detecta y guarda |
 | POST | `/api/clips/manual` | `{transcriptPath, start, end, title?, channelId?}` (segundos) → añade un clip a mano con el texto de la transcripción de ese tramo y el texto en pantalla de la campaña; valida fin ≤ duración del vídeo |
+| POST | `/api/clips/combine` | `{clipIds (≥2, mismo vídeo), targetDuration}` → la IA monta un clip nuevo con fragmentos de esos clips (corte seco). Ver `clip_combiner.py` |
+| PATCH | `/api/clips/{id}/segments` | `{segments: [[s,e],...]}` (segundos del vídeo fuente) → cambia los fragmentos de un combinado y lo vuelve a montar; borra el render (no si ya está subido) |
 | GET | `/api/clips/list?transcriptPath=` | clips guardados (con `rendered`/`uploaded` y `rawPath`: vertical sin subtítulos, o `null`) |
 | PATCH | `/api/clips/{id}/trim` | `{start, end}` |
 | PATCH | `/api/clips/{id}/settings` | `{focus, zoom, topRatio, subtitles, overlayText, endcardPercent}` |
