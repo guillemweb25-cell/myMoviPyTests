@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
 
 from app import db  # noqa: E402
-from app.services.clip_seo import generate_clip_seo, strip_wrapping_quotes  # noqa: E402
+from app.services.clip_seo import generate_clip_seo, resolve_tag_handle, strip_wrapping_quotes  # noqa: E402
 from app.services.youtube_service import YouTubeService  # noqa: E402
 
 
@@ -53,12 +53,21 @@ def main() -> None:
         print("Generando SEO (titulo, descripcion, tags)...", flush=True)
         campaign = db.get_campaign_by_transcript(clip.get("transcriptPath") or "")
         campaign_rules = (campaign or {}).get("rules") or None
-        seo = generate_clip_seo(clip, channel, root, campaign_rules=campaign_rules)
+        seo = generate_clip_seo(clip, channel, root, campaign_rules=campaign_rules,
+                                tag_handle=resolve_tag_handle(campaign))
         title, description, tags = seo["title"], seo["description"], seo["tags"]
         db.update_clip(args.clip, {"seo_title": title, "seo_description": description, "seo_tags": tags})
 
     title = strip_wrapping_quotes(title)
     print(f"Titulo: {title}", flush=True)
+
+    # Si ya estaba subido, esto es una RESUBIDA: YouTube no reemplaza el fichero
+    # de un video, asi que se crea otro y el anterior sigue publicado. Se guarda
+    # su URL antes de pisarla, que es la unica forma de volver a encontrarlo
+    # para ocultarlo o borrarlo.
+    previous_url = (clip.get("youtubeUrl") or "").strip()
+    if previous_url:
+        print(f"RESUBIDA. El video anterior sigue publicado: {previous_url}", flush=True)
 
     print("Subiendo a YouTube...", flush=True)
     service = YouTubeService(channel["id"], root / "youtube_creds")
@@ -74,7 +83,10 @@ def main() -> None:
     video_id = response["id"]
     url = f"https://www.youtube.com/watch?v={video_id}"
     uploaded_at = datetime.now(timezone.utc).isoformat()
-    db.update_clip(args.clip, {"youtube_url": url, "youtube_privacy": args.privacy, "uploaded_at": uploaded_at})
+    updates = {"youtube_url": url, "youtube_privacy": args.privacy, "uploaded_at": uploaded_at}
+    if previous_url:
+        updates["previous_youtube_url"] = previous_url
+    db.update_clip(args.clip, updates)
     print(f"YOUTUBE_URL: {url}", flush=True)
     print("Subida completada.", flush=True)
 

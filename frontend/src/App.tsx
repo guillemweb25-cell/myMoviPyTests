@@ -1400,6 +1400,29 @@ export default function App() {
     }
   }
 
+  async function handleReuploadClip(clip: ClipCandidate) {
+    // YouTube NO reemplaza el fichero de un vídeo ya publicado: esto sube uno
+    // nuevo y el anterior se queda donde está. Por eso se avisa con su enlace
+    // delante, que es lo que hace falta para ir a ocultarlo.
+    const lines = [
+      'YouTube no puede sustituir el vídeo de una publicación.',
+      '',
+      'Se subirá un vídeo NUEVO y el anterior SEGUIRÁ PUBLICADO:',
+      clip.youtubeUrl || '(sin enlace)',
+      '',
+    ]
+    if (clip.submitted) {
+      lines.push('⚠️ Este clip ya está marcado como ENVIADO a la campaña.')
+      lines.push('Si enviaste ese enlace, al ocultarlo puedes perder el pago.')
+      lines.push('')
+    }
+    lines.push('Después tendrás los dos enlaces para decidir qué hacer con el viejo.')
+    lines.push('')
+    lines.push('¿Subir de nuevo?')
+    if (!window.confirm(lines.join('\n'))) return
+    await handleUploadClip(clip)
+  }
+
   async function handleUploadClip(clip: ClipCandidate) {
     setUploadingClipId(clip.id)
     setError('')
@@ -2933,6 +2956,16 @@ export default function App() {
                             </select>
                           </label>
                         )}
+                        {clip.rendered && clip.uploaded && (
+                          <button
+                            className="panel-link panel-link-button"
+                            disabled={uploadingClipId === clip.id}
+                            onClick={() => handleReuploadClip(clip)}
+                            title="Sube de nuevo el clip renderizado. YouTube crea un vídeo nuevo: el anterior sigue publicado."
+                          >
+                            {uploadingClipId === clip.id ? 'Subiendo...' : 'Resubir a YouTube'}
+                          </button>
+                        )}
                         <button className="panel-link panel-link-button" disabled={generatingSeoId === clip.id} onClick={() => handleGenerateSeo(clip)}>
                           {generatingSeoId === clip.id ? 'Generando textos...' : clip.seoTitle ? 'Regenerar textos SEO' : 'Generar textos SEO'}
                         </button>
@@ -3002,6 +3035,16 @@ export default function App() {
                             <p className="help">✅ Cierre con el fotograma del {clip.endcardPercent}%. Si eliges otro, pulsa <strong>Regenerar</strong> para aplicarlo.</p>
                           ) : null}
                         </div>
+                      )}
+
+                      {clip.previousYoutubeUrl && (
+                        <p className="help">
+                          ⚠️ Resubido. El vídeo anterior sigue publicado:{' '}
+                          <a className="panel-link" href={clip.previousYoutubeUrl} target="_blank" rel="noreferrer">
+                            {clip.previousYoutubeUrl}
+                          </a>{' '}
+                          — ocúltalo o bórralo en Studio si ya no lo quieres.
+                        </p>
                       )}
 
                       {clip.youtubeUrl && (

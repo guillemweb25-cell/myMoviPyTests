@@ -74,6 +74,7 @@ el frontend detecta esos params y hace `POST /api/youtube/finish`.
 | POST | `/api/clips/{id}/frames` | extrae 3 fotogramas (25/50/75%) del render para elegir miniatura |
 | POST | `/api/clips/{id}/seo` | genera título/desc/tags |
 | POST | `/api/clips/{id}/upload` | `{privacy}` → sube a YouTube (job) |
+| | | **Resubir**: el mismo endpoint vale para un clip ya subido. YouTube no reemplaza el fichero, así que crea un vídeo NUEVO y el anterior sigue publicado; su URL se guarda en `clips.previous_youtube_url` para poder ir a ocultarlo |
 | POST | `/api/clips/{id}/visibility` | `{privacy}` → cambia visibilidad tras subir |
 | POST | `/api/clips/{id}/submitted` | `{submitted}` → marca enviado a Whop |
 

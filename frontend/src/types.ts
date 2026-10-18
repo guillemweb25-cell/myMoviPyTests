@@ -132,6 +132,8 @@ export type ClipCandidate = {
   hasPersons?: boolean
   /** Preset de motion graphics; 'none' = subtítulos ASS de siempre. */
   fxPreset?: string
+  /** Enlace de la subida anterior, si el clip se resubió (el vídeo sigue ahí). */
+  previousYoutubeUrl?: string
 }
 
 export type ReelItem = {

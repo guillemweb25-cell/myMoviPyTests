@@ -165,6 +165,7 @@ CLIP_MIGRATIONS = [
     "ALTER TABLE clips ADD COLUMN focus_segments TEXT DEFAULT ''",
     "ALTER TABLE clips ADD COLUMN manual_blur TEXT DEFAULT ''",
     "ALTER TABLE clips ADD COLUMN fx_preset TEXT DEFAULT 'none'",
+    "ALTER TABLE clips ADD COLUMN previous_youtube_url TEXT DEFAULT ''",
     # Clips añadidos a mano (inicio/fin): re-detectar NO los borra.
     "ALTER TABLE clips ADD COLUMN manual INTEGER DEFAULT 0",
     # Clip combinado: fragmentos [[start, end], ...] del video fuente (JSON). Su
@@ -290,6 +291,11 @@ def _clip_to_dict(row: sqlite3.Row) -> dict:
         "focusSegments": (row["focus_segments"] if "focus_segments" in row.keys() else "") or "",
         "manualBlur": (row["manual_blur"] if "manual_blur" in row.keys() else "") or "",
         "fxPreset": (row["fx_preset"] if "fx_preset" in row.keys() else "") or "none",
+        # URL de la subida anterior, cuando el clip se ha resubido. YouTube no
+        # reemplaza el fichero de un video: resubir crea otro y el viejo sigue
+        # publicado, asi que hay que conservar su enlace para poder ir a
+        # ocultarlo o borrarlo.
+        "previousYoutubeUrl": (row["previous_youtube_url"] if "previous_youtube_url" in row.keys() else "") or "",
         "manual": bool(row["manual"]) if "manual" in row.keys() else False,
         "segments": json.loads(row["segments"]) if "segments" in row.keys() and row["segments"] else None,
     }
@@ -371,7 +377,8 @@ def update_clip(clip_id: str, fields: dict) -> dict | None:
     allowed = {"focus", "zoom", "top_ratio", "subtitles", "rendered_path", "youtube_url", "channel_id",
                "seo_title", "seo_description", "seo_tags", "overlay_text", "youtube_privacy", "start", "end",
                "endcard_percent", "submitted", "uploaded_at", "blur_persons", "focus_person", "focus_segments",
-               "manual_blur", "fx_preset", "segments", "video_path", "transcript"}
+               "manual_blur", "fx_preset", "segments", "video_path", "transcript",
+               "previous_youtube_url"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)
