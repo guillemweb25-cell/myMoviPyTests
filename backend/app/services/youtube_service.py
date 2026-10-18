@@ -126,6 +126,36 @@ class YouTubeService:
         body = {"id": video_id, "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}
         return youtube.videos().update(part="status", body=body).execute()
 
+    def update_video_description(self, video_id: str, description: str) -> dict:
+        """Cambia SOLO la descripcion de un video ya subido.
+
+        OJO: `videos().update` con part="snippet" REEMPLAZA el snippet entero, y
+        si falta `title` o `categoryId` YouTube los borra. Por eso se lee antes
+        el snippet actual y se reenvia con la descripcion cambiada; asi titulo,
+        tags y categoria se quedan como estaban.
+        """
+        creds = self.get_credentials()
+        if not creds:
+            raise RuntimeError("El canal no esta autenticado con YouTube.")
+        youtube = build("youtube", "v3", credentials=creds)
+
+        current = youtube.videos().list(part="snippet", id=video_id).execute()
+        items = current.get("items") or []
+        if not items:
+            raise RuntimeError(f"YouTube no devolvio el video {video_id} (¿borrado o de otro canal?).")
+        snippet = items[0]["snippet"]
+
+        body = {
+            "id": video_id,
+            "snippet": {
+                "title": snippet.get("title", ""),
+                "description": description[:5000],
+                "categoryId": snippet.get("categoryId", "22"),
+                "tags": snippet.get("tags", []),
+            },
+        }
+        return youtube.videos().update(part="snippet", body=body).execute()
+
     def upload_video(self, video_path: Path, metadata: dict[str, Any]) -> dict:
         creds = self.get_credentials()
         if not creds:

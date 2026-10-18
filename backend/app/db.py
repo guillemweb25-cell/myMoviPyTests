@@ -133,6 +133,7 @@ CAMPAIGN_MIGRATIONS = [
     "ALTER TABLE campaigns ADD COLUMN watermark_path TEXT DEFAULT ''",
     "ALTER TABLE campaigns ADD COLUMN facecam TEXT DEFAULT ''",
     "ALTER TABLE campaigns ADD COLUMN fx_preset_default TEXT DEFAULT 'none'",
+    "ALTER TABLE campaigns ADD COLUMN tag_handle TEXT DEFAULT ''",
 ]
 
 
@@ -463,6 +464,10 @@ def _campaign_to_dict(row: sqlite3.Row) -> dict:
         "watermarkPath": (row["watermark_path"] if "watermark_path" in row.keys() else "") or "",
         "facecam": _parse_json_obj(row["facecam"] if "facecam" in row.keys() else ""),
         "fxPresetDefault": (row["fx_preset_default"] if "fx_preset_default" in row.keys() else "") or "none",
+        # Canal a etiquetar. Se guarda aparte de rules.handles.youtube (que lo
+        # saca el modelo del brief) para que lo escrito a mano no se pierda al
+        # volver a extraer el brief. Manda este si esta relleno.
+        "tagHandle": (row["tag_handle"] if "tag_handle" in row.keys() else "") or "",
     }
 
 
@@ -532,7 +537,7 @@ def get_campaign_by_transcript(transcript_path: str) -> dict | None:
 
 
 def update_campaign(campaign_id: int, fields: dict) -> dict | None:
-    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status", "brief_url", "rules_json", "watermark_path", "facecam", "fx_preset_default"}
+    allowed = {"name", "campaign_url", "transcript_path", "video_path", "status", "brief_url", "rules_json", "watermark_path", "facecam", "fx_preset_default", "tag_handle"}
     updates = {key: value for key, value in fields.items() if key in allowed}
     if updates:
         assignments = ", ".join(f"{key} = ?" for key in updates)

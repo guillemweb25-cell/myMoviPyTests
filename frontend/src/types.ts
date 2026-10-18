@@ -81,6 +81,8 @@ export type Campaign = {
   clipStats?: { total: number; rendered: number; uploaded: number; submitted: number }
   watermarkPath?: string
   facecam?: { x: number; y: number; w: number; h: number; zoom: number } | null
+  /** Canal a etiquetar al principio de la descripción SEO (ej. "@elcanal"). */
+  tagHandle?: string
 }
 
 export type ClipSource = {

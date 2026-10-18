@@ -74,6 +74,18 @@ Una campaña = un vídeo fuente + un link de campaña (Whop) + su brief + sus cl
 
 El nexo campaña↔clips es `transcript_path` (no un FK): `get_campaign_by_transcript(path)`.
 
+### `tag_handle` (canal a etiquetar)
+
+Canal que la campaña obliga a mencionar, p. ej. `@elcanal`. Se guarda **aparte**
+de `rules.handles.youtube` (que lo extrae el modelo del brief) para que lo
+escrito a mano no se pierda al volver a extraer el brief: si `tag_handle` está
+relleno, manda él.
+
+`generate_clip_seo` lo pone como **primera línea de la descripción, sola**. Eso
+es a propósito: la API sube texto plano y YouTube no lo convierte en enlace al
+canal, así que hay que re-teclear la `@` en Studio; al estar arriba del todo ese
+paso manual es de dos segundos por clip.
+
 ## Tabla `clips`
 
 Un clip = un candidato detectado con sus ajustes de render y su estado de subida.

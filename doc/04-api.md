@@ -43,7 +43,9 @@ el frontend detecta esos params y hace `POST /api/youtube/finish`.
 | GET | `/api/campaigns?channelId=` | lista del canal (incluye `clipStats` por campaña) |
 | GET | `/api/campaigns/{id}` | una campaña (incluye `clipStats`) |
 | POST | `/api/campaigns` | crear `{channelId, name, sourceUrl, campaignUrl, cookiesFile?}` → descarga+transcribe (job) |
-| PATCH | `/api/campaigns/{id}` | actualizar `{name?, campaignUrl?}` |
+| PATCH | `/api/campaigns/{id}` | actualizar `{name?, campaignUrl?, tagHandle?}` (la `@` se añade sola) |
+| POST | `/api/campaigns/{id}/tag-descriptions` | antepone el canal a etiquetar a las descripciones SEO que no lo lleven (idempotente, no llama al modelo) |
+| POST | `/api/campaigns/{id}/sync-youtube` | sube a YouTube la descripción guardada de los clips publicados. `{dryRun}` **por defecto `true`**: solo informa de qué tocaría |
 | POST | `/api/campaigns/{id}/brief` | extraer reglas del brief `{briefUrl? | briefText?}` |
 | POST | `/api/campaigns/{id}/apply-rules` | aplicar reglas a los clips |
 | DELETE | `/api/campaigns/{id}` | borrar |

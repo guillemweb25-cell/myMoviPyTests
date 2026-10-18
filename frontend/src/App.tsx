@@ -221,6 +221,8 @@ export default function App() {
   const [globalFocus, setGlobalFocus] = useState<'left' | 'center' | 'right' | 'follow' | 'facecam'>('center')
   // Presets de motion graphics que ofrece el worker de FX. Lista vacía = no hay
   // worker: se ocultan los selectores y todo va por el camino ASS de siempre.
+  const [tagHandleDraft, setTagHandleDraft] = useState('')
+  const [tagBusy, setTagBusy] = useState('')
   const [fxPresets, setFxPresets] = useState<string[]>([])
   const [globalFxPreset, setGlobalFxPreset] = useState<string>('none')
   const [clipTab, setClipTab] = useState<'create' | 'manage' | 'youtube'>(() => loadNav().clipTab || 'create')
@@ -437,6 +439,12 @@ export default function App() {
     () => campaigns.find((c) => c.id === activeCampaignId) ?? null,
     [campaigns, activeCampaignId],
   )
+
+  // El borrador del canal a etiquetar sigue a la campaña abierta; si no, al
+  // cambiar de campaña se quedaría el valor de la anterior en el recuadro.
+  useEffect(() => {
+    setTagHandleDraft(activeCampaign?.tagHandle || '')
+  }, [activeCampaign?.id, activeCampaign?.tagHandle])
 
   function handleOpenCampaign(campaign: Campaign) {
     setActiveCampaignId(campaign.id)
@@ -1037,6 +1045,60 @@ export default function App() {
       status = current.status
     }
     return status
+  }
+
+  async function handleSaveTagHandle(campaign: Campaign) {
+    const handle = tagHandleDraft.trim()
+    if (handle === (campaign.tagHandle || '')) return
+    try {
+      const updated = await api.updateCampaign(campaign.id, { tagHandle: handle })
+      setCampaigns((prev) => prev.map((c) => (c.id === campaign.id ? updated : c)))
+      setTagHandleDraft(updated.tagHandle || '')
+    } catch (e) {
+      handleApiError(e)
+    }
+  }
+
+  async function handleTagDescriptions(campaign: Campaign) {
+    setTagBusy('tag')
+    setError('')
+    try {
+      const r = await api.tagCampaignDescriptions(campaign.id)
+      await loadSavedClips(campaign.transcriptPath)
+      setError(`✅ ${r.handle}: añadido a ${r.updated} descripcion(es). `
+        + `${r.alreadyTagged} ya lo tenían, ${r.withoutSeo} sin SEO todavía.`)
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setTagBusy('')
+    }
+  }
+
+  async function handleSyncYoutube(campaign: Campaign) {
+    setTagBusy('sync')
+    setError('')
+    try {
+      // Primero se simula: cambiar descripciones de vídeos publicados no se
+      // deshace solo, así que se enseña la lista y se pide confirmación.
+      const plan = await api.syncCampaignYoutube(campaign.id, true)
+      if (!plan.updated) {
+        setError(`No hay vídeos que actualizar (${plan.skipped} clips sin subir o sin descripción).`)
+        return
+      }
+      const ok = window.confirm(
+        `Se va a REEMPLAZAR la descripción en YouTube de ${plan.updated} vídeo(s) ya publicados.\n\n`
+        + plan.clips.slice(0, 8).map((c) => `· ${c.firstLine || c.videoId}`).join('\n')
+        + (plan.clips.length > 8 ? `\n· ...y ${plan.clips.length - 8} más` : '')
+        + '\n\nEl título, los tags y la categoría no se tocan. ¿Continuar?')
+      if (!ok) return
+      const r = await api.syncCampaignYoutube(campaign.id, false)
+      setError(`✅ Actualizados ${r.updated} vídeo(s) en YouTube.`
+        + (r.errors.length ? ` ⚠️ ${r.errors.length} con error: ${r.errors[0].error}` : ''))
+    } catch (e) {
+      handleApiError(e)
+    } finally {
+      setTagBusy('')
+    }
   }
 
   async function handleClipSettingChange(clip: ClipCandidate, patch: Partial<ClipCandidate>) {
@@ -2502,6 +2564,46 @@ export default function App() {
                         )}
                       </div>
                     )}
+
+                    <div className="seo-box">
+                      <div className="seo-head">
+                        <span>Canal a etiquetar en la descripción</span>
+                      </div>
+                      <div className="seo-field">
+                        <input
+                          value={tagHandleDraft}
+                          placeholder={activeCampaign.rules?.handles?.youtube || '@elcanal'}
+                          onChange={(e) => setTagHandleDraft(e.target.value)}
+                          onBlur={() => handleSaveTagHandle(activeCampaign)}
+                        />
+                      </div>
+                      <p className="help">
+                        Va como primera línea de la descripción SEO, en su propia línea, para
+                        poder convertirlo en chip enlazado desde Studio. Si lo dejas vacío se usa
+                        el del brief ({activeCampaign.rules?.handles?.youtube || 'ninguno'}).
+                      </p>
+                      <div className="batch-render-bar">
+                        <button
+                          className="link-btn"
+                          disabled={tagBusy !== ''}
+                          onClick={() => handleTagDescriptions(activeCampaign)}
+                        >
+                          {tagBusy === 'tag' ? 'Añadiendo...' : 'Añadir a las descripciones ya hechas'}
+                        </button>
+                        <button
+                          className="link-btn"
+                          disabled={tagBusy !== ''}
+                          onClick={() => handleSyncYoutube(activeCampaign)}
+                        >
+                          {tagBusy === 'sync' ? 'Actualizando...' : 'Actualizar descripciones en YouTube'}
+                        </button>
+                      </div>
+                      <p className="help">
+                        El primero solo toca lo guardado aquí; el segundo reemplaza la descripción
+                        en los vídeos ya publicados (enseña antes la lista y pide confirmación).
+                        Ni uno ni otro cambian el título ni los tags.
+                      </p>
+                    </div>
 
                     <div className="seo-box" style={{ marginTop: 4 }}>
                       <div className="seo-head"><span>💧 Watermark de la campaña (se superpone arriba centrado en todos los clips)</span></div>

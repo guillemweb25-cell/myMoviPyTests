@@ -115,6 +115,8 @@ class CampaignCreateRequest(BaseModel):
 class CampaignUpdateRequest(BaseModel):
     name: str | None = None
     campaignUrl: str | None = None
+    # Canal a etiquetar al principio de la descripcion (p.ej. "@elcanal").
+    tagHandle: str | None = Field(default=None, max_length=100)
 
 
 class ClipSourceFromUrlRequest(BaseModel):
@@ -818,6 +820,13 @@ def update_campaign_endpoint(campaign_id: int, payload: CampaignUpdateRequest) -
         fields["name"] = payload.name.strip()
     if payload.campaignUrl is not None:
         fields["campaign_url"] = payload.campaignUrl.strip()
+    if payload.tagHandle is not None:
+        handle = payload.tagHandle.strip()
+        # Se guarda siempre con @ delante: asi la descripcion queda igual tanto
+        # si el usuario lo escribe con arroba como sin ella.
+        if handle and not handle.startswith("@") and "://" not in handle:
+            handle = f"@{handle}"
+        fields["tag_handle"] = handle
     return db.update_campaign(campaign_id, fields)
 
 
@@ -909,6 +918,89 @@ def campaign_coverage(campaign_id: int) -> dict:
         "title": c.get("title") or "", "rendered": bool(c.get("renderedPath")), "uploaded": bool(c.get("youtubeUrl")),
     } for c in clips]
     return {"duration": duration, "clips": ranges}
+
+
+@app.post("/api/campaigns/{campaign_id}/tag-descriptions")
+def tag_campaign_descriptions(campaign_id: int) -> dict:
+    """Antepone el canal a etiquetar a las descripciones SEO que no lo lleven.
+
+    Para clips a los que ya se les genero el SEO (subidos o no) antes de rellenar
+    el campo. No regenera nada con el modelo: solo añade la primera linea, asi
+    que es barato y no cambia el texto que ya habia.
+    """
+    from .services.clip_seo import description_has_handle, prepend_handle, resolve_tag_handle
+
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+    handle = resolve_tag_handle(campaign)
+    if not handle:
+        raise HTTPException(status_code=400,
+                            detail="La campana no tiene canal a etiquetar. Rellena el campo primero.")
+
+    updated, already, sin_seo = [], 0, 0
+    for clip in db.load_clips(campaign.get("transcriptPath") or ""):
+        description = clip.get("seoDescription") or ""
+        if not description.strip():
+            sin_seo += 1
+            continue
+        if description_has_handle(description, handle):
+            already += 1
+            continue
+        db.update_clip(clip["id"], {"seo_description": prepend_handle(description, handle)})
+        updated.append(clip["id"])
+    return {"handle": handle, "updated": len(updated), "alreadyTagged": already,
+            "withoutSeo": sin_seo, "clipIds": updated}
+
+
+class SyncYoutubeRequest(BaseModel):
+    # Por defecto SIMULA: dice que videos tocaria sin llamar a YouTube. Cambiar
+    # descripciones de videos ya publicados no se deshace solo, asi que conviene
+    # mirar la lista antes.
+    dryRun: bool = True
+
+
+@app.post("/api/campaigns/{campaign_id}/sync-youtube")
+def sync_campaign_descriptions(campaign_id: int, payload: SyncYoutubeRequest) -> dict:
+    """Sube a YouTube la descripcion SEO guardada de los clips ya publicados.
+
+    Solo toca la descripcion: el titulo, los tags y la categoria se quedan como
+    estaban (ver `update_video_description`). Va clip a clip y devuelve el
+    detalle, para que un fallo en uno no tumbe el resto.
+    """
+    from .services.youtube_service import YouTubeService
+
+    campaign = db.get_campaign(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campana no encontrada")
+
+    done, skipped, errors = [], 0, []
+    services: dict[int, YouTubeService] = {}
+    for clip in db.load_clips(campaign.get("transcriptPath") or ""):
+        url = clip.get("youtubeUrl") or ""
+        match = re.search(r"[?&]v=([A-Za-z0-9_-]+)", url)
+        description = (clip.get("seoDescription") or "").strip()
+        if not match or not description:
+            skipped += 1
+            continue
+        channel_id = clip.get("channelId") or channel_id_from_path(clip.get("videoPath"))
+        if not channel_id:
+            errors.append({"clipId": clip["id"], "error": "sin canal"})
+            continue
+        if payload.dryRun:
+            done.append({"clipId": clip["id"], "videoId": match.group(1),
+                         "title": clip.get("seoTitle") or clip.get("title") or "",
+                         "firstLine": description.split("\n", 1)[0][:80]})
+            continue
+        if channel_id not in services:
+            services[channel_id] = YouTubeService(channel_id, YOUTUBE_CREDS_DIR)
+        try:
+            services[channel_id].update_video_description(match.group(1), description)
+            done.append({"clipId": clip["id"], "videoId": match.group(1)})
+        except Exception as exc:  # noqa: BLE001
+            errors.append({"clipId": clip["id"], "error": str(exc)[:200]})
+    return {"dryRun": payload.dryRun, "updated": len(done), "skipped": skipped,
+            "errors": errors, "clips": done}
 
 
 @app.post("/api/campaigns/{campaign_id}/watermark")
@@ -2334,7 +2426,7 @@ def plant_upload(plant_id: str, payload: PlantUploadRequest) -> dict:
 
 @app.post("/api/clips/{clip_id}/seo")
 def generate_clip_seo_endpoint(clip_id: str) -> dict:
-    from .services.clip_seo import generate_clip_seo
+    from .services.clip_seo import generate_clip_seo, resolve_tag_handle
 
     clip = db.get_clip(clip_id)
     if not clip:
@@ -2347,7 +2439,8 @@ def generate_clip_seo_endpoint(clip_id: str) -> dict:
     campaign = db.get_campaign_by_transcript(clip.get("transcriptPath") or "")
     campaign_rules = (campaign or {}).get("rules") or None
     try:
-        seo = generate_clip_seo(clip, channel, ROOT_DIR, campaign_rules=campaign_rules)
+        seo = generate_clip_seo(clip, channel, ROOT_DIR, campaign_rules=campaign_rules,
+                                tag_handle=resolve_tag_handle(campaign))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"Fallo la generacion de SEO: {exc}") from exc
     db.update_clip(clip_id, {

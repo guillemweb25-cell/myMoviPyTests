@@ -148,8 +148,17 @@ export const api = {
   campaign: (id: number) => getJson<Campaign>(`/api/campaigns/${id}`),
   createCampaign: (payload: { channelId: number; name: string; sourceUrl: string; campaignUrl: string; cookiesFile?: string }) =>
     postJson<{ campaign: Campaign; job: Job | null }>('/api/campaigns', payload),
-  updateCampaign: (id: number, payload: { name?: string; campaignUrl?: string }) =>
+  updateCampaign: (id: number, payload: { name?: string; campaignUrl?: string; tagHandle?: string }) =>
     patchJson<Campaign>(`/api/campaigns/${id}`, payload),
+  tagCampaignDescriptions: (id: number) =>
+    postJson<{ handle: string; updated: number; alreadyTagged: number; withoutSeo: number }>(
+      `/api/campaigns/${id}/tag-descriptions`, {}),
+  syncCampaignYoutube: (id: number, dryRun: boolean) =>
+    postJson<{
+      dryRun: boolean; updated: number; skipped: number
+      errors: { clipId: string; error: string }[]
+      clips: { clipId: string; videoId: string; title?: string; firstLine?: string }[]
+    }>(`/api/campaigns/${id}/sync-youtube`, { dryRun }),
   deleteCampaign: (id: number) => del<{ deleted: number }>(`/api/campaigns/${id}`),
   extractBrief: (id: number, payload: { briefUrl?: string; briefText?: string }) =>
     postJson<{ campaign: Campaign; rules: Record<string, unknown> }>(`/api/campaigns/${id}/brief`, payload),

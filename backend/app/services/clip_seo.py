@@ -53,7 +53,43 @@ def read_source_info(video_folder: Path) -> tuple[str, str]:
     return title, url
 
 
-def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dict | None = None) -> dict:
+def resolve_tag_handle(campaign: dict | None) -> str:
+    """Canal a etiquetar en la descripcion.
+
+    Manda el campo escrito a mano en la campana; si esta vacio, el que saco el
+    modelo del brief. Asi re-extraer el brief no pisa lo que puso el usuario.
+    """
+    if not campaign:
+        return ""
+    manual = (campaign.get("tagHandle") or "").strip()
+    if manual:
+        return manual
+    return ((campaign.get("rules") or {}).get("handles") or {}).get("youtube", "").strip()
+
+
+def description_has_handle(description: str, handle: str) -> bool:
+    """True si la descripcion ya empieza por ese handle (en su propia linea)."""
+    if not handle:
+        return True
+    first = (description or "").lstrip().split("\n", 1)[0].strip()
+    return first.casefold() == handle.strip().casefold()
+
+
+def prepend_handle(description: str, handle: str) -> str:
+    """Pone el handle como PRIMERA linea, separado por una linea en blanco.
+
+    Mismo formato que genera `generate_clip_seo`, para que una descripcion
+    retocada a mano quede igual que una recien generada.
+    """
+    handle = (handle or "").strip()
+    if not handle or description_has_handle(description, handle):
+        return description
+    body = (description or "").strip()
+    return f"{handle}\n\n{body}" if body else handle
+
+
+def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dict | None = None,
+                      tag_handle: str = "") -> dict:
     """Genera {title, description, tags} para un clip segun las reglas del canal
     y, si se pasan, las reglas de compliance de la campana (caption obligatorio,
     hashtags). La descripcion incluye el titulo y enlace del video original.
@@ -91,9 +127,10 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dic
     # como tag; hay que re-teclear la @ en Studio y elegir el canal. Poniendolo el
     # primero, ese paso manual es de 2 segundos por clip.
     header: list[str] = []
-    if campaign_rules:
-        handles = campaign_rules.get("handles") or {}
-        yt_handle = (handles.get("youtube") or "").strip()
+    if campaign_rules or tag_handle:
+        handles = (campaign_rules or {}).get("handles") or {}
+        # El campo de la campana manda sobre lo que saco el modelo del brief.
+        yt_handle = (tag_handle or handles.get("youtube") or "").strip()
         ig_handle = (handles.get("instagram") or "").strip()
         if yt_handle:
             # @handle de YouTube: hay que convertirlo a "chip" a mano en Studio
@@ -102,7 +139,7 @@ def generate_clip_seo(clip: dict, channel: dict, root: Path, campaign_rules: dic
         if ig_handle:
             # Los @ de Instagram NO enlazan desde YouTube → URL clicable de verdad.
             header.append(f"https://www.instagram.com/{ig_handle.lstrip('@')}")
-        required = (campaign_rules.get("captionRequired") or "").strip()
+        required = ((campaign_rules or {}).get("captionRequired") or "").strip()
         if required:
             header.append(required)
 
