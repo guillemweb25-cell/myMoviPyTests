@@ -2959,11 +2959,18 @@ export default function App() {
                         {clip.rendered && clip.uploaded && (
                           <button
                             className="panel-link panel-link-button"
-                            disabled={uploadingClipId === clip.id}
+                            /* Una sola resubida. A la segunda habría ya dos vídeos
+                               huérfanos en el canal y solo se guarda el enlace de
+                               uno, así que el viejo se perdería de vista. */
+                            disabled={uploadingClipId === clip.id || !!clip.previousYoutubeUrl}
                             onClick={() => handleReuploadClip(clip)}
-                            title="Sube de nuevo el clip renderizado. YouTube crea un vídeo nuevo: el anterior sigue publicado."
+                            title={clip.previousYoutubeUrl
+                              ? 'Este clip ya se resubió una vez. Oculta o borra el vídeo antiguo antes de volver a subirlo.'
+                              : 'Sube de nuevo el clip renderizado. YouTube crea un vídeo nuevo: el anterior sigue publicado.'}
                           >
-                            {uploadingClipId === clip.id ? 'Subiendo...' : 'Resubir a YouTube'}
+                            {uploadingClipId === clip.id
+                              ? 'Subiendo...'
+                              : clip.previousYoutubeUrl ? '✓ Ya resubido' : 'Resubir a YouTube'}
                           </button>
                         )}
                         <button className="panel-link panel-link-button" disabled={generatingSeoId === clip.id} onClick={() => handleGenerateSeo(clip)}>
