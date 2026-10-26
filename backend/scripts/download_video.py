@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import argparse, json, os, re, shutil
+import argparse, json, os, re, shutil, time
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 
@@ -10,6 +10,69 @@ from yt_dlp.utils import DownloadError
 from kvs_fallback import download_direct, extract_kvs, is_flashvars_error
 from wetransfer_dl import is_wetransfer, resolve_wetransfer
 from gdrive_dl import download_gdrive, is_gdrive
+
+
+COOKIES_DIR = "cookies"
+
+# Esperas entre reintentos, en segundos. Largas a proposito: un 429 es un limite
+# por tiempo, y reintentar a los 2 segundos solo gasta otro intento. Peor aun,
+# machacar mientras te limitan alarga el bloqueo.
+RETRY_WAITS = (20, 60, 180)
+
+
+def _bare_host(host: str) -> str:
+    host = (host or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def find_cookies_for(url: str, cookies_dir: str = COOKIES_DIR) -> str | None:
+    """Busca en `cookies/` el fichero de cookies de este sitio.
+
+    Convencion de nombres (la que ya se usaba a mano):
+    `<host>_cookies.txt`, p.ej. `www.instagram.com_cookies.txt`. Se ignora el
+    `www.` al comparar, asi que ese fichero vale para instagram.com y viceversa.
+    """
+    host = _bare_host(urlparse(url).hostname or "")
+    if not host or not os.path.isdir(cookies_dir):
+        return None
+
+    best: tuple[str, str] | None = None
+    for name in sorted(os.listdir(cookies_dir)):
+        if not name.endswith("_cookies.txt"):
+            continue
+        domain = _bare_host(name[: -len("_cookies.txt")])
+        if not domain:
+            continue
+        # Vale el dominio exacto o uno del que el host sea subdominio.
+        if host == domain or host.endswith("." + domain) or domain.endswith("." + host):
+            # Ante varios, gana el mas especifico.
+            if best is None or len(domain) > len(best[0]):
+                best = (domain, os.path.join(cookies_dir, name))
+    return best[1] if best else None
+
+
+def _is_transient(message: str) -> bool:
+    """¿Merece la pena reintentar? 429, cortes de red y 5xx del servidor si; que
+    el video no exista o pida login, no: reintentar daria el mismo error."""
+    low = message.lower()
+    return any(s in low for s in (
+        "429", "too many requests", "timed out", "timeout", "connection reset",
+        "remote end closed", "temporarily unavailable", "http error 5",
+    ))
+
+
+def with_retry(action, what: str):
+    """Ejecuta `action` reintentando solo los fallos que pueden pasarse solos."""
+    for attempt, wait in enumerate((*RETRY_WAITS, None), start=1):
+        try:
+            return action()
+        except DownloadError as exc:
+            message = str(exc)
+            if wait is None or not _is_transient(message):
+                raise
+            print(f"⏳ {what} falló ({message.strip()[:110]}).", flush=True)
+            print(f"   Reintento {attempt}/{len(RETRY_WAITS)} en {wait}s...", flush=True)
+            time.sleep(wait)
 
 
 def clean_title(title: str) -> str:
@@ -50,6 +113,14 @@ def _write_source_metadata(out_dir, url, title, browser, cookies_file):
 
 def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None, outbase="output"):
 
+    # Si no se eligio fichero de cookies, se busca uno por el dominio de la URL.
+    # Lo elegido a mano manda siempre.
+    if not cookies_file:
+        auto = find_cookies_for(url)
+        if auto:
+            cookies_file = auto
+            print(f"🍪 Cookies detectadas por dominio: {auto}", flush=True)
+
     # 0) WeTransfer (yt-dlp no lo soporta): resolver enlace directo y descargar.
     if is_wetransfer(url):
         direct, filename = resolve_wetransfer(url)
@@ -86,7 +157,8 @@ def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None, 
     # 1) TÍTULO (con fallback KVS si yt-dlp no reconoce el reproductor)
     kvs_formats = None
     try:
-        title = get_video_title(url, browser, cookies_file)
+        title = with_retry(lambda: get_video_title(url, browser, cookies_file),
+                           "Obtener el título")
     except DownloadError as exc:
         if not is_flashvars_error(str(exc)):
             raise
@@ -147,9 +219,12 @@ def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None, 
         print(f"✅ Vídeo guardado en: {out_dir}")
         return str(video_path), out_dir
 
-    try:
+    def _download():
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
+
+    try:
+        with_retry(_download, "Descargar el vídeo")
     except DownloadError as e:
         msg = str(e)
         if is_flashvars_error(msg):
@@ -161,6 +236,10 @@ def download_video(url: str, ffmpeg_path=None, browser=None, cookies_file=None, 
             return str(video_path), out_dir
         if "Sign in to confirm you're not a bot" in msg and not browser:
             print("⚠️ YouTube pide login. Usa --browser chrome / firefox / brave")
+        if "empty media response" in msg.lower() and not cookies_file:
+            host = _bare_host(urlparse(url).hostname or "")
+            print(f"⚠️ {host} pide sesión iniciada para este contenido. Exporta tus "
+                  f"cookies y guárdalas como cookies/{host}_cookies.txt: se cogerán solas.")
         raise SystemExit(1)
 
     print(f"✅ Vídeo guardado en: {out_dir}")
