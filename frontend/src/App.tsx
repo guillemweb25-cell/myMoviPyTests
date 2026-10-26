@@ -440,6 +440,14 @@ export default function App() {
     [campaigns, activeCampaignId],
   )
 
+  // Ruta del vídeo recién descargado, que download_video.py deja en el log como
+  // "VIDEO_PATH: ...". Sirve para ofrecerlo desde aquí y no tener que volver al
+  // sitio de origen a por él.
+  const downloadedVideoPath = useMemo(() => {
+    const match = /^VIDEO_PATH:\s*(.+)$/m.exec(selectedLog)
+    return match ? match[1].trim() : ''
+  }, [selectedLog])
+
   // El borrador del canal a etiquetar sigue a la campaña abierta; si no, al
   // cambiar de campaña se quedaría el valor de la anterior en el recuadro.
   useEffect(() => {
@@ -3698,6 +3706,25 @@ export default function App() {
             </div>
             <div className="panel">
               <h3>Log</h3>
+              {downloadedVideoPath && (
+                <div className="actions-row" style={{ alignItems: 'center', marginBottom: 10 }}>
+                  <a
+                    className="panel-link"
+                    href={api.fileUrl(downloadedVideoPath)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    ⬇️ {downloadedVideoPath.split('/').pop()}
+                  </a>
+                  <button
+                    className="panel-link panel-link-button"
+                    onClick={() => handleCopyUrl(`${window.location.origin}${api.fileUrl(downloadedVideoPath)}`)}
+                  >
+                    {copiedUrl === `${window.location.origin}${api.fileUrl(downloadedVideoPath)}`
+                      ? '¡Copiado!' : 'Copiar enlace'}
+                  </button>
+                </div>
+              )}
               <pre>{selectedLog || 'Selecciona un job para ver salida.'}</pre>
             </div>
           </section>

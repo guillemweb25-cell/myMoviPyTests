@@ -83,7 +83,7 @@ el frontend detecta esos params y hace `POST /api/youtube/finish`.
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | GET | `/api/files?path=` | listar directorio (dentro de `output/`) |
-| GET | `/api/file?path=` | servir/descargar un fichero (acepta `?token=`) |
+| GET | `/api/file?path=` | servir/descargar un fichero (acepta `?token=`). `download_video.py` deja la ruta del vídeo en el log como `VIDEO_PATH: ...` y la UI la convierte en enlace de descarga, para no volver al sitio de origen |
 
 > **`clipStats`** (en las respuestas de campañas): `{total, rendered, uploaded, submitted}`,
 > agregado de los clips por `transcript_path`. Se usa para el progreso en "Mis campañas".

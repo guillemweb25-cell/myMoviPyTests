@@ -265,4 +265,8 @@ if __name__ == "__main__":
     p.add_argument("--browser", default=None)
     p.add_argument("--cookies", default=None)
     a = p.parse_args()
-    download_video(a.url, a.ffmpeg, a.browser, a.cookies)
+    video_path, _ = download_video(a.url, a.ffmpeg, a.browser, a.cookies)
+    # Marca que lee la UI para ofrecer el fichero sin volver al sitio de origen.
+    # Relativa a la raiz del proyecto, que es lo que espera /api/file.
+    if video_path:
+        print(f"VIDEO_PATH: {os.path.relpath(video_path, os.getcwd())}", flush=True)
